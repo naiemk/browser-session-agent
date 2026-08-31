@@ -85,31 +85,33 @@ describe("web host + desktop node", () => {
     worlds.push(world);
 
     const chat = await chatClient(api.port, "secret");
-    await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
+    try {
+      await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
 
-    chat.send({ type: "command", name: "browser-start", args: `--url ${origin}/login Sign in` });
-    await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Started"));
+      chat.send({ type: "command", name: "browser-start", args: `--url ${origin}/login Sign in` });
+      await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Started"));
 
-    const observation = await api.hub.call<{ url: string }>("inspect", []);
-    assert.match(observation.url, /login/);
+      const observation = await api.hub.call<{ url: string }>("inspect", []);
+      assert.match(observation.url, /login/);
 
-    const health = (await fetch(`http://127.0.0.1:${api.port}/healthz`).then((r) => r.json())) as {
-      nodeConnected: boolean;
-    };
-    assert.equal(health.nodeConnected, true);
+      const health = (await fetch(`http://127.0.0.1:${api.port}/healthz`).then((r) => r.json())) as {
+        nodeConnected: boolean;
+      };
+      assert.equal(health.nodeConnected, true);
 
-    await node.close();
-    await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && !m.connected);
+      await node.close();
+      await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && !m.connected);
 
-    await assert.rejects(
-      () => api.hub.call("inspect", []),
-      (err: unknown) => err instanceof AgentError && err.code === "node_disconnected",
-    );
+      await assert.rejects(
+        () => api.hub.call("inspect", []),
+        (err: unknown) => err instanceof AgentError && err.code === "node_disconnected",
+      );
 
-    chat.send({ type: "takeover_input", event: { kind: "mouse", action: "move", x: 0.5, y: 0.5 } });
-    await waitFor(chat.inbox, (m) => m.type === "error" && m.message.includes("awaiting_takeover"));
-
-    chat.close();
+      chat.send({ type: "takeover_input", event: { kind: "mouse", action: "move", x: 0.5, y: 0.5 } });
+      await waitFor(chat.inbox, (m) => m.type === "error" && m.message.includes("awaiting_takeover"));
+    } finally {
+      chat.close();
+    }
   });
 
   it("allows remote input only during takeover and streams a screencast frame", async () => {
@@ -128,21 +130,23 @@ describe("web host + desktop node", () => {
     worlds.push({ api, node, server, cleanupHome: cleanup });
 
     const chat = await chatClient(api.port, "secret");
-    await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
-    chat.send({ type: "command", name: "browser-start", args: `--url ${origin}/login Sign in` });
-    await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Started"));
-    api.hub.startScreencast();
-    await waitFor(chat.inbox, (m) => m.type === "frame" && Boolean(m.jpeg), 15_000);
+    try {
+      await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
+      chat.send({ type: "command", name: "browser-start", args: `--url ${origin}/login Sign in` });
+      await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Started"));
+      api.hub.startScreencast();
+      await waitFor(chat.inbox, (m) => m.type === "frame" && Boolean(m.jpeg), 15_000);
 
-    assert.throws(
-      () => api.hub.forwardTakeoverInput({ kind: "mouse", action: "move", x: 0.2, y: 0.2 }),
-      /awaiting_takeover/,
-    );
+      assert.throws(
+        () => api.hub.forwardTakeoverInput({ kind: "mouse", action: "move", x: 0.2, y: 0.2 }),
+        /awaiting_takeover/,
+      );
 
-    chat.send({ type: "command", name: "browser-takeover", args: "" });
-    await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Takeover"));
-    api.hub.forwardTakeoverInput({ kind: "mouse", action: "move", x: 0.2, y: 0.2 });
-
-    chat.close();
+      chat.send({ type: "command", name: "browser-takeover", args: "" });
+      await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Takeover"));
+      api.hub.forwardTakeoverInput({ kind: "mouse", action: "move", x: 0.2, y: 0.2 });
+    } finally {
+      chat.close();
+    }
   });
 });

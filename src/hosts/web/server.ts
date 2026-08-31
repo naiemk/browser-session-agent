@@ -67,8 +67,18 @@ export async function startOperatorApi(options: OperatorApiOptions = {}): Promis
     close: async () => {
       for (const runtime of runtimes) await runtime.dispose();
       hub.detach();
+      for (const client of wss.clients) {
+        client.terminate();
+      }
       wss.close();
-      await new Promise<void>((resolve) => http.close(() => resolve()));
+      http.closeAllConnections();
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 1000);
+        http.close(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     },
   };
 }

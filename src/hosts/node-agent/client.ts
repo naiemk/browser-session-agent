@@ -26,6 +26,7 @@ export class NodeAgent {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
   private screencastOn = false;
+  private screenshotTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: NodeAgentOptions) {
     this.apiUrl = options.apiUrl;
@@ -50,6 +51,7 @@ export class NodeAgent {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.stopScreenshotLoop();
     await this.session.worker.stopScreencast().catch(() => undefined);
     this.screencastOn = false;
     this.socket?.close();
@@ -75,6 +77,7 @@ export class NodeAgent {
 
     ws.on("close", () => {
       this.socket = null;
+      this.stopScreenshotLoop();
       void this.session.worker.stopScreencast().catch(() => undefined);
       this.screencastOn = false;
       this.scheduleReconnect();
@@ -111,6 +114,7 @@ export class NodeAgent {
       return;
     }
     if (message.type === "stop_screencast") {
+      this.stopScreenshotLoop();
       await this.session.worker.stopScreencast().catch(() => undefined);
       this.screencastOn = false;
       return;
@@ -146,14 +150,38 @@ export class NodeAgent {
 
   private async beginScreencast(): Promise<void> {
     if (this.screencastOn && this.session.worker.workerInfo) return;
+    if (!this.session.worker.workerInfo) return;
     try {
-      if (!this.session.worker.workerInfo) return;
+      const snap = await this.session.worker.screenshotJpeg();
+      this.send({ type: "frame", jpeg: snap.jpeg, tabId: snap.tabId });
+    } catch {
+      // tab not ready yet
+    }
+    try {
       await this.session.worker.startScreencast((jpeg, tabId) => {
+        this.stopScreenshotLoop();
         this.send({ type: "frame", jpeg, tabId });
       });
       this.screencastOn = true;
     } catch {
       this.screencastOn = false;
+      this.startScreenshotLoop();
     }
+  }
+
+  private startScreenshotLoop(): void {
+    if (this.screenshotTimer) return;
+    this.screenshotTimer = setInterval(() => {
+      void this.session.worker
+        .screenshotJpeg()
+        .then((snap) => this.send({ type: "frame", jpeg: snap.jpeg, tabId: snap.tabId }))
+        .catch(() => undefined);
+    }, 750);
+  }
+
+  private stopScreenshotLoop(): void {
+    if (!this.screenshotTimer) return;
+    clearInterval(this.screenshotTimer);
+    this.screenshotTimer = null;
   }
 }

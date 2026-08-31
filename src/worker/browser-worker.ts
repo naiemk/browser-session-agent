@@ -218,6 +218,13 @@ export class BrowserWorker {
     await this.requirePage(tabId).screenshot({ path, fullPage: false });
   }
 
+  async screenshotJpeg(tabId?: string): Promise<{ jpeg: string; tabId: string }> {
+    const page = this.requirePage(tabId);
+    const id = this.idOf(page);
+    const buf = await page.screenshot({ type: "jpeg", quality: 50 });
+    return { jpeg: buf.toString("base64"), tabId: id };
+  }
+
   async navigate(tabId: string | undefined, url: string): Promise<void> {
     await this.requirePage(tabId).goto(url, { waitUntil: "domcontentloaded" });
   }
