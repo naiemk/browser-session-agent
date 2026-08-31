@@ -1,0 +1,286 @@
+import { AuthStorage, createAgentSession, defineTool, getAgentDir, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { bindBrowserExtension } from "../../host/bind-extension.ts";
+import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../host/memory-host.ts";
+import { RpcSessionHandle } from "../../host/session-handle.ts";
+import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
+import type { ChatClientMessage, ChatServerMessage, OperatorState } from "../shared/protocol.ts";
+import { resolveCostExtensions } from "./pi-packages.ts";
+import type { NodeHub } from "./hub.ts";
+
+export interface OperatorRuntimeOptions {
+  cwd?: string;
+  agentDir?: string;
+  sessionDir?: string;
+}
+
+export class OperatorRuntime {
+  readonly host = new MemoryOperatorHost();
+  readonly api: ExtensionAPI & {
+    tools: Map<string, import("../../pi-api.ts").RegisteredTool>;
+    commands: Map<string, import("../../pi-api.ts").RegisteredCommand>;
+  };
+  readonly handle: RpcSessionHandle;
+  private pi: Awaited<ReturnType<typeof createAgentSession>>["session"] | null = null;
+  private modelRegistry: ModelRegistry | null = null;
+  private unsubscribePi: (() => void) | null = null;
+  private readonly send: (message: ChatServerMessage) => void;
+  private readonly hub: NodeHub;
+  private readonly options: OperatorRuntimeOptions;
+  sessionId = `sess_${Date.now().toString(36)}`;
+  model = "auto";
+  thinking = "medium";
+  private models: Array<{ id: string; label: string }> = [
+    { id: "auto", label: "Pi Router (Auto)" },
+    { id: "low", label: "@low" },
+    { id: "medium", label: "@medium" },
+    { id: "high", label: "@high" },
+    { id: "ultra", label: "@ultra" },
+  ];
+
+  constructor(hub: NodeHub, send: (message: ChatServerMessage) => void, options: OperatorRuntimeOptions = {}) {
+    this.hub = hub;
+    this.send = send;
+    this.options = options;
+    this.handle = new RpcSessionHandle(hub);
+    this.api = createExtensionApi(this.host);
+    bindBrowserExtension(this.api, this.handle);
+    this.host.listeners = {
+      onNotify: (message, level) => this.send({ type: "notify", message, level }),
+      onUiRequest: (request) => this.send({ type: "ui_request", ...request }),
+      onToolsChanged: () => this.send({ type: "stateSync", state: this.state() }),
+    };
+  }
+
+  state(): OperatorState {
+    return {
+      sessionId: this.sessionId,
+      model: this.model,
+      thinking: this.thinking,
+      activeTools: this.host.getActiveTools(),
+      nodeConnected: this.hub.connected,
+      takeover: this.hub.takeover,
+      currentRunId: this.handle.currentRunId,
+    };
+  }
+
+  async start(): Promise<void> {
+    if (process.env.BSA_NO_PI === "1") {
+      this.send({ type: "models", models: this.models });
+      this.send({ type: "stateSync", state: this.state() });
+      return;
+    }
+    try {
+      const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
+      const authStorage = AuthStorage.create();
+      this.modelRegistry = ModelRegistry.create(authStorage);
+      const extras = await resolveCostExtensions();
+      const cwd = this.options.cwd ?? process.cwd();
+      const agentDir = this.options.agentDir ?? getAgentDir();
+      const loader = new DefaultResourceLoader({
+        cwd,
+        agentDir,
+        additionalExtensionPaths: extras,
+        appendSystemPrompt: [
+          "You operate a remote headed Chromium on the operator's desktop through browser_* tools. If the browser node is disconnected, say so and do not invent page state.",
+        ],
+      });
+      await loader.reload();
+      const customTools = [...this.api.tools.values()].map((tool) => this.toPiTool(tool));
+      const result = await createAgentSession({
+        cwd,
+        agentDir,
+        authStorage,
+        modelRegistry: this.modelRegistry,
+        resourceLoader: loader,
+        sessionManager: this.options.sessionDir
+          ? SessionManager.create(cwd, this.options.sessionDir)
+          : SessionManager.inMemory(cwd),
+        customTools,
+        noTools: "builtin",
+        thinkingLevel: "medium",
+      });
+      this.pi = result.session;
+      this.model = describeModel(result.session.model) ?? this.model;
+      this.thinking = String(result.session.thinkingLevel ?? this.thinking);
+      this.unsubscribePi = result.session.subscribe((event) => {
+        this.send({ type: "agentEvent", event: normalizeAgentEvent(event) });
+      });
+      const available = this.modelRegistry.getAvailable();
+      this.models = [
+        { id: "auto", label: "Pi Router (Auto)" },
+        { id: "low", label: "@low" },
+        { id: "medium", label: "@medium" },
+        { id: "high", label: "@high" },
+        { id: "ultra", label: "@ultra" },
+        ...available.map((model) => ({
+          id: `${model.provider}/${model.id}`,
+          label: `${model.provider}/${model.id}`,
+        })),
+      ];
+    } catch (err) {
+      this.pi = null;
+      this.send({
+        type: "notify",
+        message: `Pi session unavailable (${err instanceof Error ? err.message : String(err)}). Slash commands still work.`,
+        level: "warning",
+      });
+    }
+    this.send({ type: "models", models: this.models });
+    this.send({ type: "stateSync", state: this.state() });
+  }
+
+  async handleClient(message: ChatClientMessage): Promise<void> {
+    switch (message.type) {
+      case "hello":
+        this.send({ type: "hello_ok", protocol: 1 });
+        this.send({ type: "models", models: this.models });
+        this.send({ type: "stateSync", state: this.state() });
+        this.send({
+          type: "nodeStatus",
+          connected: this.hub.connected,
+          takeover: this.hub.takeover,
+          reason: this.hub.connected ? undefined : "browser node disconnected",
+        });
+        if (this.hub.connected) this.hub.startScreencast();
+        return;
+      case "prompt":
+        await this.prompt(message.text);
+        return;
+      case "abort":
+        await this.pi?.abort();
+        return;
+      case "setModel":
+        await this.setModel(message.model);
+        return;
+      case "setThinking":
+        this.thinking = message.level;
+        this.pi?.setThinkingLevel(message.level as "off" | "minimal" | "low" | "medium" | "high" | "xhigh");
+        this.send({ type: "stateSync", state: this.state() });
+        return;
+      case "command":
+        await this.runCommand(message.name, message.args ?? "");
+        return;
+      case "ui_answer":
+        this.host.answer(message.requestId, message.value);
+        return;
+      case "takeover_input":
+        try {
+          this.hub.forwardTakeoverInput(message.event);
+        } catch (err) {
+          this.send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+        }
+        return;
+      case "newSession":
+        this.sessionId = `sess_${Date.now().toString(36)}`;
+        this.send({ type: "stateSync", state: this.state() });
+        return;
+      case "loadSession":
+        this.send({ type: "notify", message: "Session resume uses the same ~/.pi/agent/sessions as the TUI when configured.", level: "info" });
+        return;
+    }
+  }
+
+  async dispose(): Promise<void> {
+    this.unsubscribePi?.();
+    this.pi?.dispose();
+    this.pi = null;
+  }
+
+  private async prompt(text: string): Promise<void> {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("/")) {
+      const [name, ...rest] = trimmed.slice(1).split(/\s+/);
+      await this.runCommand(name ?? "", rest.join(" "));
+      return;
+    }
+    if (!this.hub.connected && looksLikeBrowserWork(trimmed)) {
+      this.send({
+        type: "notify",
+        message: "Browser node disconnected. Chat can continue, but browser tools will fail until the desktop node reconnects.",
+        level: "warning",
+      });
+    }
+    if (!this.pi) {
+      this.send({
+        type: "error",
+        message: "No authenticated Pi model. Configure ~/.pi/agent/models.json or provider API keys. Slash commands still work.",
+      });
+      return;
+    }
+    await this.pi.prompt(trimmed);
+  }
+
+  private async runCommand(name: string, args: string): Promise<void> {
+    const key = name.replace(/^\//, "");
+    const command = this.api.commands.get(key);
+    if (!command) {
+      this.send({ type: "error", message: `Unknown command /${key}` });
+      return;
+    }
+    try {
+      await command.handler(args, extensionContext(this.host));
+      this.send({ type: "stateSync", state: this.state() });
+    } catch (err) {
+      this.send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  private async setModel(id: string): Promise<void> {
+    this.model = id;
+    if (this.pi && this.modelRegistry && id !== "auto" && !["low", "medium", "high", "ultra"].includes(id)) {
+      const [provider, ...rest] = id.split("/");
+      const found = this.modelRegistry.find(provider ?? "", rest.join("/"));
+      if (found) await this.pi.setModel(found);
+    }
+    this.send({ type: "stateSync", state: this.state() });
+    this.send({
+      type: "notify",
+      message: id === "auto" || ["low", "medium", "high", "ultra"].includes(id)
+        ? `Routing hint ${id}. pi-model-auto picks the cheapest authenticated model that meets that floor.`
+        : `Model set to ${id}`,
+      level: "info",
+    });
+  }
+
+  private toPiTool(tool: RegisteredTool) {
+    return defineTool({
+      name: tool.name,
+      label: tool.label ?? tool.name,
+      description: tool.description,
+      parameters: tool.parameters as never,
+      execute: async (id, params, signal, onUpdate) => {
+        const result = await tool.execute(
+          id,
+          params as Record<string, unknown>,
+          signal,
+          onUpdate,
+          extensionContext(this.host),
+        );
+        return { ...result, details: result.details ?? {} };
+      },
+    });
+  }
+}
+
+function describeModel(model: { provider?: string; id?: string } | undefined): string | undefined {
+  if (!model?.id) return undefined;
+  return model.provider ? `${model.provider}/${model.id}` : model.id;
+}
+
+function looksLikeBrowserWork(text: string): boolean {
+  return /browser|click|inspect|login|tab|page|navigate|takeover/i.test(text);
+}
+
+function normalizeAgentEvent(event: unknown): Record<string, unknown> {
+  const value = event as {
+    type?: string;
+    assistantMessageEvent?: { type?: string; delta?: string };
+    message?: unknown;
+    toolName?: string;
+  };
+  if (value.type === "message_update" && value.assistantMessageEvent?.type === "text_delta") {
+    return { type: "text_delta", text: value.assistantMessageEvent.delta ?? "" };
+  }
+  if (value.type) return { ...value };
+  return { type: "agentEvent", event };
+}

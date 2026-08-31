@@ -9,9 +9,17 @@ A local Pi package drives one visible persistent Chromium profile through bounde
 ## System
 
 ```
-Pi CLI (extension + commands)
-        │  tools / ctx.ui / setActiveTools
-        ▼
+Pi CLI (extension + commands)     Web chat (pi-web-ui-shaped view)
+        │                                    │
+        │  OperatorHost                      │  WS prompt / ui_answer / takeover
+        ▼                                    ▼
+   src/extension.ts                    src/hosts/web (VPS, no Chrome)
+        │                                    │
+        └────────── SessionHandle ───────────┤ RPC + frames
+                                             ▼
+                                    src/hosts/node-agent (desktop)
+                                             │
+                                             ▼
 BrowserSession (run orchestration)
         │
         ├─► BrowserWorker (Playwright persistent Chromium)
@@ -19,7 +27,7 @@ BrowserSession (run orchestration)
         └─► KnowledgeStore (candidates + approved records)
 ```
 
-The worker and stores are Pi-independent. The extension is a thin adapter that registers tools and commands.
+The worker and stores are host-agnostic. The Pi TUI extension is one adapter. The web API is another. Chromium never runs on the VPS. See `docs/web-operator.md`.
 
 ## Runtime layout
 

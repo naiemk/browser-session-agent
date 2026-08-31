@@ -41,3 +41,22 @@ The operator must see the tab. Tests launch headless against fixture HTML so CI 
 ## D10. No credential store, no CAPTCHA solver, no live job-board traffic in tests
 
 Takeover is the MVP answer for logins. Fixture pages cover forms, dialogs, verification, and the JSONLint prompt E2E. Hitting real application sites is a manual operator path, not an automated test. Live jsonlint.com is an optional dry-run flag, not the CI gate.
+
+## D11. Desktop is the browser node; the VPS does not run Chrome
+
+The VPS hosts `ui` + `api` + `gateway` (chat, Pi SDK, TLS). Playwright’s bundled Chromium and the persistent profile stay on the operator desktop. The node agent connects **outbound** to the API so the desktop needs no inbound ports. CDP is localhost-only; the API relays screencast frames. One dedicated profile (D3). If the desktop is asleep, browser tools fail closed.
+
+## D12. Use Pi’s cost router, do not write one
+
+Default model choice on the web host is **Pi Router** from `pi-model-auto`: Low / Medium / High / Ultra, cheapest authenticated model that meets the floor. Budgets are `pi-meter` (soft downshift, hard refuse). No second routing layer in this repo.
+
+Policy:
+
+- Inspect, obvious clicks, form fill, JSONLint-class pages → **low/medium**
+- Ambiguous DOM, recovery after failed expect, “should I take over?” → **high**
+- First-time site / messy SPA / login diagnosis → **ultra**, then downshift
+- Compaction / summarization of long evidence → **low**
+
+## D13. Web UI is a view over a server-side Agent
+
+`@mariozechner/pi-web-ui`’s in-tab `Agent` cannot host Playwright. The VPS runs `createAgentSession()` and streams `agentEvent`s. The browser renders chat (messages, tool cards, model/thinking selectors) plus a live-view panel. `ctx.ui.input/confirm/select` become in-chat cards. Do not replace Pi with Vercel AI SDK `useChat`.

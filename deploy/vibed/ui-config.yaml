@@ -1,0 +1,6 @@
+# Static chat shell. The operator view talks to the API WebSocket.
+name: browser-session-ui
+runtime: static
+root: src/hosts/web/public
+playwright: false
+chromium: false

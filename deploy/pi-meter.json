@@ -1,0 +1,8 @@
+{
+  "budget": { "daily": 5, "monthly": 80, "session": 4 },
+  "hardLimit": { "daily": 12, "monthly": 150 },
+  "downshift": {
+    "claude-opus-4-6": "claude-sonnet-4-6",
+    "claude-sonnet-4-6": "claude-haiku-4-5"
+  }
+}
