@@ -1,6 +1,6 @@
 # MVP-04-T01: Evidence, recovery notes, durable resume
 
-Status: planned  
+Status: done  
 Story: MVP-04  
 Depends: MVP-03-T02
 

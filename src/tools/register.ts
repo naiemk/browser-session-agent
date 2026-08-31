@@ -1,9 +1,9 @@
 import { Type } from "typebox";
-import type { ActionName, Expectation, WaitSpec } from "./domain/types.ts";
-import { AgentError } from "./domain/types.ts";
-import type { ExtensionAPI, ExtensionContext } from "./pi-api.ts";
-import { textResult } from "./pi-api.ts";
-import { BrowserSession, parseStartArgs, type ActionInput } from "./session.ts";
+import type { ActionName, Expectation, WaitSpec } from "../domain/types.ts";
+import { AgentError } from "../domain/types.ts";
+import type { ExtensionAPI, ExtensionContext } from "../pi-api.ts";
+import { textResult } from "../pi-api.ts";
+import { BrowserSession, parseStartArgs, type ActionInput } from "../session.ts";
 
 function stringify(value: unknown): string {
   return JSON.stringify(value, null, 2);

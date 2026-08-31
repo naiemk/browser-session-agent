@@ -1,6 +1,6 @@
 # MVP-05-T01: Clarification and human takeover
 
-Status: planned  
+Status: done  
 Story: MVP-05  
 Depends: MVP-02-T02, MVP-04-T01
 

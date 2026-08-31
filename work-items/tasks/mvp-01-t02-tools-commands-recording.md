@@ -1,6 +1,6 @@
 # MVP-01-T02: Tools, commands, and scoped recording
 
-Status: planned  
+Status: done  
 Story: MVP-01  
 Depends: MVP-01-T01, MVP-02-T01
 

@@ -1,6 +1,6 @@
 # MVP-05: Interactive Clarification and Human Handoff
 
-Status: planned
+Status: in_progress
 
 As a user, I can answer focused questions and unblock a paused browser task.
 

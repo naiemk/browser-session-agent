@@ -1,6 +1,6 @@
 # MVP-01-T01: Pi package scaffold
 
-Status: in_progress  
+Status: done  
 Story: MVP-01
 
 ## Spec

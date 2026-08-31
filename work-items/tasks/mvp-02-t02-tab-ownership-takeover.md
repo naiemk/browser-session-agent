@@ -1,6 +1,6 @@
 # MVP-02-T02: Tab ownership and safe takeover
 
-Status: planned  
+Status: done  
 Story: MVP-02  
 Depends: MVP-02-T01
 

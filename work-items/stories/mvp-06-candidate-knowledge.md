@@ -1,6 +1,6 @@
 # MVP-06: Candidate Knowledge and Safe Reuse
 
-Status: planned
+Status: in_progress
 
 As an operator, I can retain successful strategies and approved answers without opaque self-modification.
 

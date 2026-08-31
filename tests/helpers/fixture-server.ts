@@ -94,8 +94,16 @@ export class FixtureServer {
   }
 
   async stop(): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      this.server?.close((err) => (err ? reject(err) : resolve()));
+    const server = this.server;
+    this.server = null;
+    if (!server) return;
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 1000);
+      server.close(() => {
+        clearTimeout(timer);
+        resolve();
+      });
     });
   }
 }

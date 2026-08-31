@@ -1,6 +1,6 @@
 # MVP-02-T01: Persistent Chromium worker
 
-Status: planned  
+Status: done  
 Story: MVP-02  
 Depends: MVP-01-T01
 

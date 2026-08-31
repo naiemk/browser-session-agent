@@ -1,11 +1,11 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execSync } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { AgentError, type Observation, type WaitSpec, type WorkerInfo } from "../domain/types.ts";
 import { shortId } from "../domain/ids.ts";
 import { dataPaths, ensureDir } from "../store/paths.ts";
-import { readWorkerInfo, writeWorkerInfo } from "../store/worker-info.ts";
+import { readWorkerInfo, writeWorkerInfo, clearWorkerInfo } from "../store/worker-info.ts";
 import { observePage, visibleText } from "./observe.ts";
 
 const TAB_PREFIX = "bsa:";
@@ -16,13 +16,30 @@ export interface WorkerOptions {
   startUrl?: string;
 }
 
-function pidAlive(pid: number): boolean {
+function childPids(): number[] {
   try {
-    process.kill(pid, 0);
-    return true;
+    return execSync(`pgrep -P ${process.pid}`, { encoding: "utf8" })
+      .trim()
+      .split(/\s+/)
+      .map(Number)
+      .filter(Boolean);
   } catch {
-    return false;
+    return [];
   }
+}
+
+function chromePid(browser: Browser | null): number {
+  if (!browser) return 0;
+  const candidate = browser as Browser & {
+    process?: (() => { pid?: number } | null) | { pid?: number };
+  };
+  if (typeof candidate.process === "function") {
+    return candidate.process()?.pid ?? 0;
+  }
+  if (candidate.process && typeof candidate.process === "object") {
+    return candidate.process.pid ?? 0;
+  }
+  return 0;
 }
 
 async function freePort(): Promise<number> {
@@ -37,14 +54,14 @@ async function freePort(): Promise<number> {
   });
 }
 
-async function connectCdp(cdpUrl: string, attempts = 50): Promise<Browser> {
+async function connectCdp(cdpUrl: string, attempts = 15): Promise<Browser> {
   let last: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
       return await chromium.connectOverCDP(cdpUrl);
     } catch (err) {
       last = err;
-      await delay(100);
+      await delay(200);
     }
   }
   throw last instanceof Error ? last : new Error(`CDP connect failed: ${cdpUrl}`);
@@ -55,7 +72,8 @@ export class BrowserWorker {
   private readonly headless: boolean;
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
-  private child: ChildProcess | null = null;
+  private launchedHere = false;
+  private trackedPids: number[] = [];
   private readonly pages = new Map<string, Page>();
   private readonly consoleErrors = new Map<string, string[]>();
   private readonly lastObservation = new Map<string, Observation>();
@@ -74,86 +92,78 @@ export class BrowserWorker {
     if (this.context) return this.info!;
 
     const existing = await readWorkerInfo(this.home);
-    if (existing?.pid && pidAlive(existing.pid)) {
+    if (existing?.cdpUrl) {
       try {
-        await this.attach(existing);
+        await this.attachCdp(existing);
+        this.launchedHere = false;
         return this.info!;
       } catch {
-        // fall through to spawn
+        // relaunch a fresh persistent context
       }
     }
 
-    const paths = dataPaths(this.home);
-    await ensureDir(paths.profileDir);
-    const port = await freePort();
-    const executable = chromium.executablePath();
-    const args = [
-      `--user-data-dir=${paths.profileDir}`,
-      `--remote-debugging-port=${port}`,
-      "--remote-debugging-address=127.0.0.1",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-    ];
-    if (this.headless) args.push("--headless=new");
-    args.push("about:blank");
-
-    this.child = spawn(executable, args, {
-      detached: true,
-      stdio: "ignore",
-    });
-    this.child.unref();
-    const pid = this.child.pid;
-    if (!pid) {
-      throw new AgentError("worker_error", "Failed to spawn Chromium");
+    try {
+      await this.launchManaged();
+      this.launchedHere = true;
+      return this.info!;
+    } catch (err) {
+      if (this.context) {
+        try {
+          await this.context.close();
+        } catch {
+          // ignore
+        }
+      }
+      this.context = null;
+      this.browser = null;
+      throw err;
     }
-
-    const cdpUrl = `http://127.0.0.1:${port}`;
-    const info: WorkerInfo = {
-      pid,
-      cdpUrl,
-      port,
-      profileDir: paths.profileDir,
-      startedAt: new Date().toISOString(),
-    };
-    await this.attach(info);
-    await writeWorkerInfo(this.home, info);
-    return info;
   }
 
   async disconnect(): Promise<void> {
-    if (this.browser) {
+    if (!this.launchedHere && this.browser) {
       try {
         const connection = (
           this.browser as unknown as {
             _connection?: { close: () => Promise<void> };
           }
         )._connection;
-        if (connection) {
-          await connection.close();
-        }
+        if (connection) await connection.close();
       } catch {
-        // CDP disconnect is best-effort; never send Browser.close (that kills Chrome).
+        // drop the CDP client only
       }
     }
-    this.browser = null;
-    this.context = null;
-    this.pages.clear();
-    this.child = null;
+    if (!this.launchedHere) {
+      this.browser = null;
+      this.context = null;
+      this.pages.clear();
+    }
   }
 
   async stop(): Promise<void> {
-    const pid = this.info?.pid ?? (await readWorkerInfo(this.home))?.pid;
-    await this.disconnect();
-    if (pid && pidAlive(pid)) {
+    const pids = [...this.trackedPids, this.info?.pid ?? 0, chromePid(this.browser)].filter(
+      (pid) => pid > 0 && pid !== process.pid,
+    );
+    if (this.context) {
       try {
-        process.kill(pid, "SIGTERM");
+        await Promise.race([this.context.close(), delay(300)]);
+      } catch {
+        // already closed
+      }
+    }
+    for (const pid of new Set(pids)) {
+      try {
+        process.kill(pid, "SIGKILL");
       } catch {
         // already gone
       }
     }
+    this.launchedHere = false;
+    this.browser = null;
+    this.context = null;
+    this.pages.clear();
     this.info = null;
+    await clearWorkerInfo(this.home);
   }
 
   listTabs(): TabSnapshot[] {
@@ -288,32 +298,63 @@ export class BrowserWorker {
     return this.lastObservation.get(tabId)?.controls.find((c) => c.ref === ref)?.inputType;
   }
 
-  private async attach(info: WorkerInfo): Promise<void> {
+  private async launchManaged(): Promise<void> {
+    const paths = dataPaths(this.home);
+    await ensureDir(paths.profileDir);
+    const port = await freePort();
+    this.context = await chromium.launchPersistentContext(paths.profileDir, {
+      headless: this.headless,
+      viewport: { width: 1280, height: 720 },
+      args: [
+        `--remote-debugging-port=${port}`,
+        "--remote-debugging-address=127.0.0.1",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+      ],
+    });
+    this.browser = this.context.browser();
+    this.info = {
+      pid: chromePid(this.browser),
+      cdpUrl: `http://127.0.0.1:${port}`,
+      port,
+      profileDir: paths.profileDir,
+      startedAt: new Date().toISOString(),
+    };
+    await writeWorkerInfo(this.home, this.info);
+    this.trackedPids = childPids();
+    await this.hydratePages();
+  }
+
+  private async attachCdp(info: WorkerInfo): Promise<void> {
     this.browser = await connectCdp(info.cdpUrl);
     this.context = this.browser.contexts()[0] ?? (await this.browser.newContext());
     this.info = info;
+    await this.hydratePages();
+  }
+
+  private async hydratePages(): Promise<void> {
+    const context = this.requireContext();
     this.pages.clear();
-    for (const page of this.context.pages()) {
+    for (const page of context.pages()) {
       await this.track(page);
     }
     if (this.pages.size === 0) {
-      await this.track(await this.context.newPage());
+      await this.track(await context.newPage());
     }
-    this.context.on("page", (page) => {
+    context.on("page", (page) => {
       void this.track(page);
     });
   }
 
   private async track(page: Page): Promise<string> {
-    const existing = await page.evaluate((prefix: string) => {
-      return window.name.startsWith(prefix) ? window.name.slice(prefix.length) : "";
-    }, TAB_PREFIX);
+    const prefix = JSON.stringify(TAB_PREFIX);
+    const existing = (await page.evaluate(
+      `window.name.startsWith(${prefix}) ? window.name.slice(${TAB_PREFIX.length}) : ""`,
+    )) as string;
     const tabId = existing || shortId("tab");
+    const assigned = JSON.stringify(TAB_PREFIX + tabId);
     await page.evaluate(
-      ({ prefix, id }: { prefix: string; id: string }) => {
-        if (!window.name.startsWith(prefix)) window.name = prefix + id;
-      },
-      { prefix: TAB_PREFIX, id: tabId },
+      `if (!window.name.startsWith(${prefix})) window.name = ${assigned}`,
     );
     this.pages.set(tabId, page);
     this.consoleErrors.set(tabId, []);

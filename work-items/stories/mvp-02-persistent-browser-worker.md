@@ -1,6 +1,6 @@
 # MVP-02: Persistent Browser Worker
 
-Status: planned
+Status: in_progress
 
 As an operator, I have a visible Chromium profile that persists across runs.
 

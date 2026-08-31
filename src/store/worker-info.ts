@@ -17,3 +17,11 @@ export async function writeWorkerInfo(root: string, info: WorkerInfo): Promise<v
   const paths = dataPaths(root);
   await writeFile(paths.workerFile, JSON.stringify(info, null, 2));
 }
+
+export async function clearWorkerInfo(root: string): Promise<void> {
+  const file = dataPaths(root).workerFile;
+  if (existsSync(file)) {
+    const { unlink } = await import("node:fs/promises");
+    await unlink(file);
+  }
+}

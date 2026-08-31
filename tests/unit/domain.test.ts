@@ -1,17 +1,18 @@
+import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { evaluateExpectation, recoveryNote } from "../src/domain/verification.ts";
-import { assertCanAct } from "../src/domain/ownership.ts";
-import { AgentError, type Observation, type RunState, type TabRecord } from "../src/domain/types.ts";
-import { diffControls } from "../src/domain/observe-diff.ts";
-import { parseStartArgs } from "../src/session.ts";
-import { KnowledgeStore } from "../src/store/knowledge-store.ts";
-import { RunStore } from "../src/store/run-store.ts";
-import { nowIso } from "../src/domain/ids.ts";
-import { tempHome } from "./helpers/temp-home.ts";
-import { createFakePi, runCommand, runTool } from "./helpers/fake-pi.ts";
-import browserSessionAgent from "../src/extension.ts";
+import { describe, it } from "node:test";
+import { evaluateExpectation, recoveryNote } from "../../src/domain/verification.ts";
+import { assertCanAct } from "../../src/domain/ownership.ts";
+import { AgentError, type Observation, type RunState, type TabRecord } from "../../src/domain/types.ts";
+import { diffControls } from "../../src/domain/observe-diff.ts";
+import { parseStartArgs } from "../../src/session.ts";
+import { KnowledgeStore } from "../../src/store/knowledge-store.ts";
+import { RunStore } from "../../src/store/run-store.ts";
+import { nowIso } from "../../src/domain/ids.ts";
+import { tempHome } from "../helpers/temp-home.ts";
+import { createFakePi, runCommand, runTool } from "../helpers/fake-pi.ts";
+import browserSessionAgent from "../../src/extension.ts";
 
 function observation(partial: Partial<Observation> = {}): Observation {
   return {
@@ -30,7 +31,7 @@ function observation(partial: Partial<Observation> = {}): Observation {
 
 describe("verification", () => {
   it("is inconclusive without expect", () => {
-    expect(evaluateExpectation(undefined, observation(), "").status).toBe("inconclusive");
+    assert.equal(evaluateExpectation(undefined, observation(), "").status, "inconclusive");
   });
 
   it("fails urlIncludes and builds a recovery note", () => {
@@ -39,10 +40,10 @@ describe("verification", () => {
       observation(),
       "Application",
     );
-    expect(verification.status).toBe("failed");
+    assert.equal(verification.status, "failed");
     const note = recoveryNote(verification, observation());
-    expect(note).toContain("/apply");
-    expect(note).toContain("Thanks");
+    assert.match(note, /\/apply/);
+    assert.match(note, /Thanks/);
   });
 
   it("passes when URL, text, and ref match", () => {
@@ -51,7 +52,7 @@ describe("verification", () => {
       observation(),
       "Application form",
     );
-    expect(verification.status).toBe("passed");
+    assert.equal(verification.status, "passed");
   });
 });
 
@@ -78,20 +79,23 @@ describe("ownership", () => {
   });
 
   it("rejects takeover, pause, and foreign tabs", () => {
-    expect(() => assertCanAct(run("awaiting_takeover"), [tab({ locked: false })], "tab_1")).toThrow(
+    assert.throws(
+      () => assertCanAct(run("awaiting_takeover"), [tab({ locked: false })], "tab_1"),
       AgentError,
     );
-    expect(() => assertCanAct(run("paused"), [tab()], "tab_1")).toThrow(AgentError);
-    expect(() =>
-      assertCanAct(run("active"), [tab({ ownerRunId: "run_other" })], "tab_1"),
-    ).toThrow(/not owned/);
-    expect(() => assertCanAct(run("active"), [tab({ locked: false })], "tab_1")).toThrow(
+    assert.throws(() => assertCanAct(run("paused"), [tab()], "tab_1"), AgentError);
+    assert.throws(
+      () => assertCanAct(run("active"), [tab({ ownerRunId: "run_other" })], "tab_1"),
+      /not owned/,
+    );
+    assert.throws(
+      () => assertCanAct(run("active"), [tab({ locked: false })], "tab_1"),
       /exclusive lock/,
     );
   });
 
   it("allows an active owned locked tab", () => {
-    expect(assertCanAct(run("active"), [tab()], "tab_1").tabId).toBe("tab_1");
+    assert.equal(assertCanAct(run("active"), [tab()], "tab_1").tabId, "tab_1");
   });
 });
 
@@ -104,7 +108,7 @@ describe("observe diff", () => {
         { ref: "e2", role: "button", name: "Continue application", tag: "button" },
       ],
     );
-    expect(changes.some((c) => c.includes("added e2"))).toBe(true);
+    assert.ok(changes.some((c) => c.includes("added e2")));
   });
 });
 
@@ -126,7 +130,7 @@ describe("stores", () => {
         attention: [],
       });
       const event = await runs.append("run_1", "observation", { url: "http://x" });
-      expect((await runs.events("run_1"))[0].id).toBe(event.id);
+      assert.equal((await runs.events("run_1"))[0].id, event.id);
 
       const knowledge = new KnowledgeStore(home);
       const fact = await knowledge.propose({
@@ -135,11 +139,11 @@ describe("stores", () => {
         sourceRunId: "run_1",
         evidenceEventIds: [event.id],
       });
-      expect(await knowledge.search("remote location")).toEqual([]);
+      assert.deepEqual(await knowledge.search("remote location"), []);
       await knowledge.setStatus(fact.id, "approved");
       const hits = await knowledge.search("remote location");
-      expect(hits[0]?.id).toBe(fact.id);
-      expect(hits[0]?.evidenceEventIds).toContain(event.id);
+      assert.equal(hits[0]?.id, fact.id);
+      assert.ok(hits[0]?.evidenceEventIds.includes(event.id));
 
       const failed = await knowledge.propose({
         kind: "strategy",
@@ -148,7 +152,10 @@ describe("stores", () => {
         evidenceEventIds: [event.id],
         outcome: "failed",
       });
-      expect((await knowledge.search("spam listing")).some((r) => r.id === failed.id)).toBe(false);
+      assert.equal(
+        (await knowledge.search("spam listing")).some((r) => r.id === failed.id),
+        false,
+      );
 
       const strategy = await knowledge.propose({
         kind: "strategy",
@@ -157,7 +164,7 @@ describe("stores", () => {
         evidenceEventIds: [event.id],
         outcome: "completed",
       });
-      expect((await knowledge.search("fill name email submit"))[0]?.id).toBe(strategy.id);
+      assert.equal((await knowledge.search("fill name email submit"))[0]?.id, strategy.id);
     } finally {
       await cleanup();
     }
@@ -166,34 +173,32 @@ describe("stores", () => {
 
 describe("parseStartArgs", () => {
   it("reads --url and embedded URLs", () => {
-    expect(parseStartArgs("--url https://jobs.example Apply")).toEqual({
+    assert.deepEqual(parseStartArgs("--url https://jobs.example Apply"), {
       url: "https://jobs.example",
       goal: "Apply",
     });
-    expect(parseStartArgs("Apply at https://jobs.example/x")).toMatchObject({
-      url: "https://jobs.example/x",
-    });
+    assert.equal(parseStartArgs("Apply at https://jobs.example/x").url, "https://jobs.example/x");
   });
 });
 
 describe("Pi package and extension contract", () => {
   it("declares a pi extension entry", async () => {
     const pkg = JSON.parse(await readFile(path.join(process.cwd(), "package.json"), "utf8"));
-    expect(pkg.keywords).toContain("pi-package");
-    expect(pkg.pi.extensions).toEqual(["./src/extension.ts"]);
+    assert.ok(pkg.keywords.includes("pi-package"));
+    assert.deepEqual(pkg.pi.extensions, ["./src/extension.ts"]);
   });
 
   it("registers tools and commands and reports status without a run", async () => {
     const pi = createFakePi();
     browserSessionAgent(pi);
-    expect(pi.tools.has("browser_inspect")).toBe(true);
-    expect(pi.commands.has("browser-status")).toBe(true);
-    expect(pi.commands.has("browser-start")).toBe(true);
+    assert.equal(pi.tools.has("browser_inspect"), true);
+    assert.equal(pi.commands.has("browser-status"), true);
+    assert.equal(pi.commands.has("browser-start"), true);
     await runCommand(pi, "browser-status");
-    expect(pi.notifications.at(-1)).toContain("currentRun");
+    assert.match(pi.notifications.at(-1) ?? "", /currentRun/);
     const result = await runTool(pi, "browser_inspect", {});
-    expect(result.isError).toBe(true);
-    expect(result.content[0]).toMatchObject({ type: "text" });
-    expect((result.content[0] as { text: string }).text).toMatch(/run_inactive/);
+    assert.equal(result.isError, true);
+    assert.equal(result.content[0]?.type, "text");
+    assert.match((result.content[0] as { text: string }).text, /run_inactive/);
   });
 });

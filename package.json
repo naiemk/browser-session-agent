@@ -14,8 +14,7 @@
     "skills": ["./skills"]
   },
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "tsx --test --test-concurrency=1 --test-timeout=45000 tests/unit/*.test.ts tests/integration/*.test.ts"
   },
   "engines": {
     "node": ">=22"
@@ -26,7 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
-    "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.0"
   }
 }

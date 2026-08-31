@@ -1,6 +1,6 @@
 # MVP-03-T02: Bounded actions and verification
 
-Status: planned  
+Status: done  
 Story: MVP-03  
 Depends: MVP-03-T01
 

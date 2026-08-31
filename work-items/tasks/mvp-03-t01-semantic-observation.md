@@ -1,6 +1,6 @@
 # MVP-03-T01: Semantic page observation
 
-Status: planned  
+Status: done  
 Story: MVP-03  
 Depends: MVP-02-T01
 

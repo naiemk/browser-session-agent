@@ -1,6 +1,6 @@
 # MVP-04: Evidence and Recovery
 
-Status: planned
+Status: in_progress
 
 As an operator, I can understand what the agent saw, did, and why it stopped.
 

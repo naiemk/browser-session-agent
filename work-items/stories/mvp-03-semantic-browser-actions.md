@@ -1,6 +1,6 @@
 # MVP-03: Semantic Browser Observation and Actions
 
-Status: planned
+Status: in_progress
 
 As Pi, I can understand the current page and take bounded semantic actions.
 

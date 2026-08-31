@@ -1,6 +1,6 @@
 # MVP-06-T01: Candidate knowledge and safe reuse
 
-Status: planned  
+Status: done  
 Story: MVP-06  
 Depends: MVP-04-T01
 
