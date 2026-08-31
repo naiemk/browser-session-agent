@@ -16,6 +16,7 @@ This repository uses Markdown work items as a lightweight, versioned planning bo
 - work-items/epics/: epic summaries, risks, story inventory, and progress.
 - work-items/stories/: one Markdown file per story.
 - work-items/tasks/: one Markdown file per task, created after story discussion.
+  Each task states spec, what is possible, what we will do, tests, and done-when.
 
 ## Status and progress
 

@@ -1,0 +1,32 @@
+{
+  "name": "browser-session-agent",
+  "version": "0.1.0",
+  "description": "Pi-powered persistent browser operator with bounded Playwright tools",
+  "type": "module",
+  "keywords": ["pi-package", "playwright", "browser-agent"],
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "pi": {
+    "extensions": ["./src/extension.ts"],
+    "skills": ["./skills"]
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0",
+    "typebox": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

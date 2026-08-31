@@ -1,0 +1,373 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { createServer } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { AgentError, type Observation, type WaitSpec, type WorkerInfo } from "../domain/types.ts";
+import { shortId } from "../domain/ids.ts";
+import { dataPaths, ensureDir } from "../store/paths.ts";
+import { readWorkerInfo, writeWorkerInfo } from "../store/worker-info.ts";
+import { observePage, visibleText } from "./observe.ts";
+
+const TAB_PREFIX = "bsa:";
+
+export interface WorkerOptions {
+  home: string;
+  headless?: boolean;
+  startUrl?: string;
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close((err) => (err ? reject(err) : resolve(port)));
+    });
+    server.on("error", reject);
+  });
+}
+
+async function connectCdp(cdpUrl: string, attempts = 50): Promise<Browser> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await chromium.connectOverCDP(cdpUrl);
+    } catch (err) {
+      last = err;
+      await delay(100);
+    }
+  }
+  throw last instanceof Error ? last : new Error(`CDP connect failed: ${cdpUrl}`);
+}
+
+export class BrowserWorker {
+  private readonly home: string;
+  private readonly headless: boolean;
+  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
+  private child: ChildProcess | null = null;
+  private readonly pages = new Map<string, Page>();
+  private readonly consoleErrors = new Map<string, string[]>();
+  private readonly lastObservation = new Map<string, Observation>();
+  private info: WorkerInfo | null = null;
+
+  constructor(options: WorkerOptions) {
+    this.home = options.home;
+    this.headless = options.headless ?? false;
+  }
+
+  get workerInfo(): WorkerInfo | null {
+    return this.info;
+  }
+
+  async start(): Promise<WorkerInfo> {
+    if (this.context) return this.info!;
+
+    const existing = await readWorkerInfo(this.home);
+    if (existing?.pid && pidAlive(existing.pid)) {
+      try {
+        await this.attach(existing);
+        return this.info!;
+      } catch {
+        // fall through to spawn
+      }
+    }
+
+    const paths = dataPaths(this.home);
+    await ensureDir(paths.profileDir);
+    const port = await freePort();
+    const executable = chromium.executablePath();
+    const args = [
+      `--user-data-dir=${paths.profileDir}`,
+      `--remote-debugging-port=${port}`,
+      "--remote-debugging-address=127.0.0.1",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+    ];
+    if (this.headless) args.push("--headless=new");
+    args.push("about:blank");
+
+    this.child = spawn(executable, args, {
+      detached: true,
+      stdio: "ignore",
+    });
+    this.child.unref();
+    const pid = this.child.pid;
+    if (!pid) {
+      throw new AgentError("worker_error", "Failed to spawn Chromium");
+    }
+
+    const cdpUrl = `http://127.0.0.1:${port}`;
+    const info: WorkerInfo = {
+      pid,
+      cdpUrl,
+      port,
+      profileDir: paths.profileDir,
+      startedAt: new Date().toISOString(),
+    };
+    await this.attach(info);
+    await writeWorkerInfo(this.home, info);
+    return info;
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.browser) {
+      try {
+        const connection = (
+          this.browser as unknown as {
+            _connection?: { close: () => Promise<void> };
+          }
+        )._connection;
+        if (connection) {
+          await connection.close();
+        }
+      } catch {
+        // CDP disconnect is best-effort; never send Browser.close (that kills Chrome).
+      }
+    }
+    this.browser = null;
+    this.context = null;
+    this.pages.clear();
+    this.child = null;
+  }
+
+  async stop(): Promise<void> {
+    const pid = this.info?.pid ?? (await readWorkerInfo(this.home))?.pid;
+    await this.disconnect();
+    if (pid && pidAlive(pid)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+    this.info = null;
+  }
+
+  listTabs(): TabSnapshot[] {
+    return [...this.pages.entries()].map(([tabId, page]) => ({
+      tabId,
+      url: page.url(),
+      title: page.url() === "about:blank" ? "" : "",
+    }));
+  }
+
+  async describeTabs(): Promise<Array<{ tabId: string; url: string; title: string }>> {
+    const out = [];
+    for (const [tabId, page] of this.pages) {
+      out.push({ tabId, url: page.url(), title: await page.title() });
+    }
+    return out;
+  }
+
+  async inspect(tabId?: string): Promise<Observation> {
+    const page = this.requirePage(tabId);
+    const id = this.idOf(page);
+    const observation = await observePage(
+      page,
+      id,
+      this.lastObservation.get(id),
+      this.consoleErrors.get(id) ?? [],
+    );
+    this.lastObservation.set(id, observation);
+    return observation;
+  }
+
+  async pageText(tabId?: string): Promise<string> {
+    return visibleText(this.requirePage(tabId));
+  }
+
+  async screenshot(tabId: string | undefined, path: string): Promise<void> {
+    await this.requirePage(tabId).screenshot({ path, fullPage: false });
+  }
+
+  async navigate(tabId: string | undefined, url: string): Promise<void> {
+    await this.requirePage(tabId).goto(url, { waitUntil: "domcontentloaded" });
+  }
+
+  async click(tabId: string | undefined, ref: string): Promise<void> {
+    const page = this.requirePage(tabId);
+    await this.inspect(this.idOf(page));
+    const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`);
+    if ((await locator.count()) === 0) {
+      throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
+    }
+    await locator.first().click();
+  }
+
+  async type(tabId: string | undefined, ref: string, text: string): Promise<string | undefined> {
+    const page = this.requirePage(tabId);
+    const observation = await this.inspect(this.idOf(page));
+    const control = observation.controls.find((c) => c.ref === ref);
+    const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`);
+    if ((await locator.count()) === 0) {
+      throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
+    }
+    await locator.first().fill(text);
+    return control?.inputType;
+  }
+
+  async select(tabId: string | undefined, ref: string, value: string): Promise<void> {
+    const page = this.requirePage(tabId);
+    await this.inspect(this.idOf(page));
+    const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`);
+    if ((await locator.count()) === 0) {
+      throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
+    }
+    await locator.first().selectOption(value);
+  }
+
+  async scroll(tabId: string | undefined, ref?: string, dy = 600): Promise<void> {
+    const page = this.requirePage(tabId);
+    if (ref) {
+      await this.inspect(this.idOf(page));
+      const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`);
+      if ((await locator.count()) === 0) {
+        throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
+      }
+      await locator.first().scrollIntoViewIfNeeded();
+      return;
+    }
+    await page.mouse.wheel(0, dy);
+  }
+
+  async wait(tabId: string | undefined, spec: WaitSpec): Promise<void> {
+    const page = this.requirePage(tabId);
+    const timeout = Math.min(spec.timeoutMs ?? 5000, 15_000);
+    switch (spec.kind) {
+      case "load":
+        await page.waitForLoadState("domcontentloaded", { timeout });
+        break;
+      case "url":
+        await page.waitForURL((url) => url.toString().includes(spec.value ?? ""), { timeout });
+        break;
+      case "text":
+        await page.getByText(spec.value ?? "", { exact: false }).first().waitFor({ timeout });
+        break;
+      case "ref":
+        await this.inspect(this.idOf(page));
+        await page.locator(`[data-bsa-ref="${cssEscape(spec.value ?? "")}"]`).first().waitFor({
+          timeout,
+        });
+        break;
+      case "timeout":
+        await delay(timeout);
+        break;
+    }
+  }
+
+  async bringToFront(tabId: string): Promise<void> {
+    await this.requirePage(tabId).bringToFront();
+  }
+
+  async openTab(url?: string): Promise<string> {
+    const context = this.requireContext();
+    const page = await context.newPage();
+    const tabId = await this.track(page);
+    if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
+    return tabId;
+  }
+
+  firstTabId(): string | undefined {
+    return this.pages.keys().next().value;
+  }
+
+  controlInputType(tabId: string, ref: string): string | undefined {
+    return this.lastObservation.get(tabId)?.controls.find((c) => c.ref === ref)?.inputType;
+  }
+
+  private async attach(info: WorkerInfo): Promise<void> {
+    this.browser = await connectCdp(info.cdpUrl);
+    this.context = this.browser.contexts()[0] ?? (await this.browser.newContext());
+    this.info = info;
+    this.pages.clear();
+    for (const page of this.context.pages()) {
+      await this.track(page);
+    }
+    if (this.pages.size === 0) {
+      await this.track(await this.context.newPage());
+    }
+    this.context.on("page", (page) => {
+      void this.track(page);
+    });
+  }
+
+  private async track(page: Page): Promise<string> {
+    const existing = await page.evaluate((prefix: string) => {
+      return window.name.startsWith(prefix) ? window.name.slice(prefix.length) : "";
+    }, TAB_PREFIX);
+    const tabId = existing || shortId("tab");
+    await page.evaluate(
+      ({ prefix, id }: { prefix: string; id: string }) => {
+        if (!window.name.startsWith(prefix)) window.name = prefix + id;
+      },
+      { prefix: TAB_PREFIX, id: tabId },
+    );
+    this.pages.set(tabId, page);
+    this.consoleErrors.set(tabId, []);
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
+        const list = this.consoleErrors.get(tabId) ?? [];
+        list.push(msg.text());
+        this.consoleErrors.set(tabId, list.slice(-20));
+      }
+    });
+    page.on("pageerror", (err) => {
+      const list = this.consoleErrors.get(tabId) ?? [];
+      list.push(err.message);
+      this.consoleErrors.set(tabId, list.slice(-20));
+    });
+    page.on("close", () => {
+      this.pages.delete(tabId);
+    });
+    return tabId;
+  }
+
+  private requireContext(): BrowserContext {
+    if (!this.context) {
+      throw new AgentError("worker_error", "Browser worker is not started");
+    }
+    return this.context;
+  }
+
+  private requirePage(tabId?: string): Page {
+    const id = tabId ?? this.firstTabId();
+    if (!id) {
+      throw new AgentError("worker_error", "No browser tabs");
+    }
+    const page = this.pages.get(id);
+    if (!page) {
+      throw new AgentError("unknown_tab", `Unknown tab ${id}`, { tabId: id });
+    }
+    return page;
+  }
+
+  private idOf(page: Page): string {
+    for (const [id, candidate] of this.pages) {
+      if (candidate === page) return id;
+    }
+    throw new AgentError("unknown_tab", "Page is not tracked");
+  }
+}
+
+export interface TabSnapshot {
+  tabId: string;
+  url: string;
+  title: string;
+}
+
+function cssEscape(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}

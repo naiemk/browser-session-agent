@@ -141,3 +141,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Browser session agent runtime
+.browser-session-agent/
+test-results/
+playwright-report/
