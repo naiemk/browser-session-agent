@@ -40,4 +40,4 @@ The operator must see the tab. Tests launch headless against fixture HTML so CI 
 
 ## D10. No credential store, no CAPTCHA solver, no live job-board traffic in tests
 
-Takeover is the MVP answer for logins. Fixture pages cover forms, dialogs, and verification. Hitting real application sites is a manual operator path, not an automated test.
+Takeover is the MVP answer for logins. Fixture pages cover forms, dialogs, verification, and the JSONLint prompt E2E. Hitting real application sites is a manual operator path, not an automated test. Live jsonlint.com is an optional dry-run flag, not the CI gate.

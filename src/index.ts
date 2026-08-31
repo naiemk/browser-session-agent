@@ -11,4 +11,5 @@ export type {
   Expectation,
   KnowledgeRecord,
 } from "./domain/types.ts";
-export { default as browserSessionAgent } from "./extension.ts";
+export { runBrowserPrompt } from "./operator/run-prompt.ts";
+export { interpretPrompt } from "./operator/prompt.ts";

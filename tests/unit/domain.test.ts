@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import { evaluateExpectation, recoveryNote } from "../../src/domain/verification.ts";
 import { assertCanAct } from "../../src/domain/ownership.ts";
 import { AgentError, type Observation, type RunState, type TabRecord } from "../../src/domain/types.ts";
-import { diffControls } from "../../src/domain/observe-diff.ts";
+import { diffControls, isEditorControl, truncateControls } from "../../src/domain/observe-diff.ts";
 import { parseStartArgs } from "../../src/session.ts";
 import { KnowledgeStore } from "../../src/store/knowledge-store.ts";
 import { RunStore } from "../../src/store/run-store.ts";
@@ -109,6 +109,32 @@ describe("observe diff", () => {
       ],
     );
     assert.ok(changes.some((c) => c.includes("added e2")));
+  });
+
+  it("keeps editors when truncating a crowded snapshot", () => {
+    const editor = {
+      ref: "e90",
+      role: "textbox",
+      name: "JSON editor",
+      tag: "textarea",
+      inputType: "textarea",
+    };
+    const controls = [
+      { ref: "e1", role: "link", name: "JSONLint", tag: "a" },
+      ...Array.from({ length: 85 }, (_, i) => ({
+        ref: `b${i}`,
+        role: "link",
+        name: `nav ${i}`,
+        tag: "a",
+      })),
+      editor,
+    ];
+    const truncated = truncateControls(controls);
+    assert.equal(truncated.truncated, true);
+    assert.equal(truncated.controls.length, 80);
+    assert.ok(truncated.controls.some((c) => c.ref === "e90"));
+    assert.equal(isEditorControl(editor), true);
+    assert.equal(isEditorControl({ ref: "e1", role: "link", name: "JSONLint", tag: "a" }), false);
   });
 });
 

@@ -74,7 +74,9 @@ export class FixtureServer {
                       ? "error.html"
                       : url.pathname === "/dynamic"
                         ? "dynamic.html"
-                        : "";
+                        : url.pathname === "/jsonlint"
+                          ? "jsonlint.html"
+                          : "";
         if (!file) {
           send(res, 404, "<h1>Not found</h1>");
           return;

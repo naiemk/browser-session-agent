@@ -6,10 +6,11 @@ Tests prove the stories’ observable criteria without a live Pi TUI or real job
 
 | Layer | Runner | What it covers |
 | --- | --- | --- |
-| Unit | vitest | observation compacting, verification, ownership locks, recovery notes, run/knowledge stores |
-| Integration | vitest + Playwright headless | worker launch/reconnect, actions against fixture pages, evidence files, resume cursor |
-| Extension contract | vitest with a fake `ExtensionAPI` | tool/command registration, tool-swap on start/stop, ask/takeover/resume wiring |
-| Manual | headed Pi session | login takeover on a real site (not gated in CI) |
+| Unit | tsx / node:test | observation compacting, verification, ownership, stores, prompt interpretation |
+| Integration | tsx + Playwright headless | worker, actions, evidence, handoff, knowledge |
+| Extension contract | fake `ExtensionAPI` | tool/command registration, tool-swap, recording |
+| Prompt E2E (CI) | `runBrowserPrompt` + Playwright | One prompt opens JSONLint, validates, prettifies, copies JSON back |
+| Manual | headed Pi session | login takeover on a real site |
 
 ## Fixture app
 
@@ -21,6 +22,7 @@ Tests prove the stories’ observable criteria without a live Pi TUI or real job
 - `/dialog` — blocking `role=dialog`
 - `/error` — visible alert + console error
 - `/dynamic` — click reveals a new control (snapshot diff)
+- `/jsonlint` — JSON editor, Validate JSON, Prettify (prompt E2E)
 
 ## Required cases (mapped to tasks)
 
@@ -61,6 +63,12 @@ Tests prove the stories’ observable criteria without a live Pi TUI or real job
 - Fake Pi API receives the documented tool and command names.
 - `startRun` calls `setActiveTools` with only browser tools; `stopRun` restores the previous list.
 - Tool execute paths pass `runId` into the session and append a recorded event.
+
+### Prompt E2E (CI gate)
+
+- A single prompt creates unformatted JSON, opens `/jsonlint`, validates, prettifies, and copies formatted JSON back.
+- The test never hardcodes control refs; it only supplies the prompt.
+- `npm test` includes this case. GitHub Actions runs `npm test` after installing Chromium.
 
 ## Non-goals for CI
 

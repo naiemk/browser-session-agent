@@ -33,9 +33,9 @@ A CLI user can give Pi a browser goal, complete a human takeover when needed, an
 | [MVP-03-T02](../tasks/mvp-03-t02-bounded-actions-verification.md) | MVP-03 | done |
 | [MVP-04-T01](../tasks/mvp-04-t01-evidence-recovery-resume.md) | MVP-04 | done |
 | [MVP-05-T01](../tasks/mvp-05-t01-clarification-handoff.md) | MVP-05 | done |
-| [MVP-06-T01](../tasks/mvp-06-t01-candidate-knowledge.md) | MVP-06 | done |
+| [MVP-E2E-T01](../tasks/mvp-e2e-t01-prompt-jsonlint.md) | MVP-01 / MVP-03 | done |
 
-Progress is 9/9 tasks implemented with passing automated tests. Headed Pi login takeover is a manual operator check.
+Progress is 10/10 tasks implemented with passing automated tests. The prompt-driven JSONLint E2E is the CI gate. Headed Pi login takeover is a manual operator check.
 
 ## Spec pointers
 

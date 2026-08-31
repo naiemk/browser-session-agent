@@ -2,6 +2,16 @@ import type { Control, Observation } from "./types.ts";
 
 const MAX_CONTROLS = 80;
 
+export function isEditorControl(control: Control): boolean {
+  return (
+    control.tag === "textarea" ||
+    control.role === "textbox" ||
+    control.role === "searchbox" ||
+    control.inputType === "textarea" ||
+    control.inputType === "contenteditable"
+  );
+}
+
 export function truncateControls(controls: Control[]): {
   controls: Control[];
   truncated: boolean;
@@ -9,7 +19,10 @@ export function truncateControls(controls: Control[]): {
   if (controls.length <= MAX_CONTROLS) {
     return { controls, truncated: false };
   }
-  return { controls: controls.slice(0, MAX_CONTROLS), truncated: true };
+  const editors = controls.filter(isEditorControl);
+  const rest = controls.filter((c) => !isEditorControl(c));
+  const budget = Math.max(0, MAX_CONTROLS - editors.length);
+  return { controls: [...editors, ...rest.slice(0, budget)], truncated: true };
 }
 
 export function diffControls(previous: Control[] | undefined, next: Control[]): string[] {

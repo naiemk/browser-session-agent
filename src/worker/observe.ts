@@ -39,33 +39,50 @@ const COLLECT_SCRIPT = `(() => {
     return rect.width > 0 && rect.height > 0;
   };
 
-  const nodes = [...document.querySelectorAll(selector)].filter(isVisible);
+  const isEditorLike = (el) =>
+    el.tagName.toLowerCase() === "textarea" || el.isContentEditable === true;
+
+  const nodes = [...document.querySelectorAll(selector)].filter(
+    (el) => isVisible(el) || isEditorLike(el),
+  );
   const controls = nodes.map((el, index) => {
     const ref = "e" + (index + 1);
     el.setAttribute("data-bsa-ref", ref);
     const input = el;
+    const tag = el.tagName.toLowerCase();
     const label = el.closest("label");
     const labelText = (label && label.textContent ? label.textContent : "")
       .trim()
       .replace(/\\s+/g, " ")
       .slice(0, 80);
-    const role = el.getAttribute("role") || input.type || el.tagName.toLowerCase();
+    let role = el.getAttribute("role") || "";
+    let inputType = input.type || undefined;
+    if (el.isContentEditable) {
+      role = role || "textbox";
+      inputType = inputType || "contenteditable";
+    } else if (tag === "textarea") {
+      role = role || "textbox";
+      inputType = "textarea";
+    } else if (!role) {
+      role = input.type || tag;
+    }
     const name =
       el.getAttribute("aria-label") ||
       labelText ||
       el.getAttribute("name") ||
       el.getAttribute("placeholder") ||
       (el.textContent || "").trim().slice(0, 80) ||
-      input.type ||
-      el.tagName.toLowerCase();
-    const inputType = input.type || undefined;
-    const rawValue = input.value;
+      inputType ||
+      tag;
+    const rawValue = el.isContentEditable
+      ? (el.innerText || el.textContent || "")
+      : input.value;
     const value = inputType === "password" ? (rawValue ? "***" : "") : rawValue || undefined;
     return {
       ref,
       role,
       name,
-      tag: el.tagName.toLowerCase(),
+      tag,
       value,
       disabled: el.disabled || undefined,
       checked: input.checked || undefined,

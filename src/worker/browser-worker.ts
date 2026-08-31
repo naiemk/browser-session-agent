@@ -225,7 +225,14 @@ export class BrowserWorker {
     if ((await locator.count()) === 0) {
       throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
     }
-    await locator.first().fill(text);
+    const target = locator.first();
+    try {
+      await target.fill(text);
+    } catch {
+      await target.click();
+      await page.keyboard.press("Control+A");
+      await page.keyboard.insertText(text);
+    }
     return control?.inputType;
   }
 

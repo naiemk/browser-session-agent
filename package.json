@@ -14,7 +14,9 @@
     "skills": ["./skills"]
   },
   "scripts": {
-    "test": "tsx --test --test-concurrency=1 --test-timeout=45000 tests/unit/*.test.ts tests/integration/*.test.ts"
+    "test": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/unit/*.test.ts tests/integration/*.test.ts tests/e2e/*.test.ts",
+    "test:e2e": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/e2e/*.test.ts",
+    "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts"
   },
   "engines": {
     "node": ">=22"

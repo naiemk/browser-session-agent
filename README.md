@@ -25,7 +25,9 @@ pi -e ./src/extension.ts
 ## Development
 
 ```bash
-npm test
+npm test          # unit, integration, and prompt E2E (CI gate)
+npm run e2e:jsonlint          # same JSONLint prompt against the local fixture
+npm run e2e:jsonlint -- --live  # optional dry run against jsonlint.com
 ```
 
-Headed operator runs use `~/.browser-session-agent/profile`. Tests use a temp directory and headless Chromium.
+Headed operator runs use `~/.browser-session-agent/profile`. Tests use a temp directory and headless Chromium. GitHub Actions workflow `.github/workflows/ci.yml` installs Playwright Chromium and runs `npm test`.
