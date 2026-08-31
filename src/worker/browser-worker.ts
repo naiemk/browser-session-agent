@@ -226,10 +226,32 @@ export class BrowserWorker {
       throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
     }
     const target = locator.first();
-    try {
+    const useFill = control?.tag === "textarea" || control?.tag === "input";
+    if (useFill) {
       await target.fill(text);
-    } catch {
-      await target.click();
+      return control?.inputType;
+    }
+
+    await target.scrollIntoViewIfNeeded();
+    const box = await target.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height * 0.4, 120));
+    } else {
+      await target.click({ force: true, timeout: 3_000 });
+    }
+    let applied = false;
+    for (let i = 0; i < 8 && !applied; i++) {
+      applied = (await page.evaluate(
+        `(() => {
+          const api = window.monaco && window.monaco.editor && window.monaco.editor.getEditors && window.monaco.editor.getEditors()[0];
+          if (!api) return false;
+          api.setValue(${JSON.stringify(text)});
+          return true;
+        })()`,
+      )) as boolean;
+      if (!applied) await delay(200);
+    }
+    if (!applied) {
       await page.keyboard.press("Control+A");
       await page.keyboard.insertText(text);
     }

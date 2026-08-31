@@ -1,4 +1,6 @@
 #!/usr/bin/env npx tsx
+import { copyFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { runBrowserPrompt } from "../src/operator/run-prompt.ts";
 import { FixtureServer } from "../tests/helpers/fixture-server.ts";
 import { tempHome } from "../tests/helpers/temp-home.ts";
@@ -22,6 +24,11 @@ Open: ${target}
 
   console.error(`Prompt target: ${target}`);
   const result = await runBrowserPrompt(prompt, { home, headless: true });
+  const artifactDir = process.env.BSA_ARTIFACT_DIR;
+  if (result.ok && result.screenshotPath && artifactDir && existsSync(result.screenshotPath)) {
+    const name = live ? "jsonlint_live_prettified.png" : "jsonlint_prompt_prettified.png";
+    await copyFile(result.screenshotPath, `${artifactDir}/${name}`);
+  }
   await server?.stop().catch(() => undefined);
   await cleanup().catch(() => undefined);
 

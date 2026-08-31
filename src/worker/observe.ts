@@ -40,7 +40,9 @@ const COLLECT_SCRIPT = `(() => {
   };
 
   const isEditorLike = (el) =>
-    el.tagName.toLowerCase() === "textarea" || el.isContentEditable === true;
+    el.tagName.toLowerCase() === "textarea" ||
+    el.isContentEditable === true ||
+    el.getAttribute("role") === "textbox";
 
   const nodes = [...document.querySelectorAll(selector)].filter(
     (el) => isVisible(el) || isEditorLike(el),
@@ -74,9 +76,24 @@ const COLLECT_SCRIPT = `(() => {
       (el.textContent || "").trim().slice(0, 80) ||
       inputType ||
       tag;
-    const rawValue = el.isContentEditable
-      ? (el.innerText || el.textContent || "")
-      : input.value;
+    const rawValue = (() => {
+      if (inputType === "password") return input.value;
+      const own = (el.innerText || el.textContent || input.value || "").trim();
+      const looksJson = (s) => s.startsWith("{") || s.startsWith("[");
+      if (el.isContentEditable || role === "textbox") {
+        if (own && looksJson(own)) return own;
+        const api = window.monaco && window.monaco.editor && window.monaco.editor.getEditors && window.monaco.editor.getEditors()[0];
+        if (api) {
+          const fromApi = (api.getValue() || "").trim();
+          if (fromApi) return fromApi;
+        }
+        const monaco = el.closest(".monaco-editor") || document.querySelector(".monaco-editor");
+        const lines = monaco && monaco.querySelector(".view-lines");
+        const fromMonaco = lines ? (lines.innerText || "").trim() : "";
+        if (fromMonaco) return fromMonaco;
+      }
+      return own || input.value;
+    })();
     const value = inputType === "password" ? (rawValue ? "***" : "") : rawValue || undefined;
     return {
       ref,

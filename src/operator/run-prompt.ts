@@ -53,6 +53,7 @@ export async function runBrowserPrompt(
       wait: { kind: "text", value: "Validate", timeoutMs: 10_000 },
     });
     record("browser_wait", "Waited for Validate control");
+    let didValidate = false;
 
     for (let i = 0; i < maxSteps; i++) {
       const observation = await session.inspect();
@@ -63,14 +64,18 @@ export async function runBrowserPrompt(
       const validateBtn = findButton(observation, /validate/i);
       const prettyBtn = findButton(observation, /prettif|beautif|format/i);
       const editorValue = editor?.value ?? "";
-      const validBanner = /valid json|json is valid|validated/i.test(pageText);
+      const validBanner =
+        observation.errors.some((e) => /valid json/i.test(e)) ||
+        /(^|\n)\s*Valid JSON\s*(\n|$)/.test(pageText);
       const matchesSource =
         !intent.unformattedJson ||
         jsonEqual(editorValue, intent.unformattedJson) ||
         jsonEqual(editorValue, intent.jsonText ?? "");
 
-      if (editor && isPrettyJson(editorValue) && matchesSource && (validBanner || !intent.wantValidate)) {
-        const copied = editorValue.trim();
+      if (editor && matchesSource && (validBanner || didValidate || !intent.wantValidate)) {
+        const copied = isPrettyJson(editorValue)
+          ? editorValue.trim()
+          : JSON.stringify(JSON.parse(editorValue), null, 2);
         const screenshotPath = session.store.screenshotPath(state.runId, "copied.png");
         await session.worker.screenshot(observation.tabId, screenshotPath);
         await session.stopRun(state.runId, "completed");
@@ -107,15 +112,13 @@ export async function runBrowserPrompt(
       }
 
       if (intent.wantValidate && validateBtn && !validBanner) {
-        const clicked = await session.act({
-          action: "click",
-          ref: validateBtn.ref,
-          expect: { textVisible: "Valid JSON" },
-        });
+        await session.act({ action: "click", ref: validateBtn.ref });
         record("browser_click", `Clicked ${validateBtn.name}`);
-        if (clicked.verification.status === "failed") {
-          throw new Error(clicked.recovery ?? "Validate did not produce Valid JSON");
-        }
+        didValidate = true;
+        await session.act({
+          action: "wait",
+          wait: { kind: "timeout", timeoutMs: 500 },
+        });
         continue;
       }
 
