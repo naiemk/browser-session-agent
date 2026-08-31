@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Apply</title>
+  </head>
+  <body>
+    <h1>Application</h1>
+    <p role="alert">{{error}}</p>
+    <form method="post" action="/apply">
+      <label>Full name <input name="fullName" /></label>
+      <label>Email <input name="email" type="email" /></label>
+      <label>
+        Location
+        <select name="location">
+          <option value="remote">Remote</option>
+          <option value="nyc">NYC</option>
+        </select>
+      </label>
+      <button type="submit">Submit application</button>
+    </form>
+  </body>
+</html>

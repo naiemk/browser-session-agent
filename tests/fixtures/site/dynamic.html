@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Dynamic page</title>
+  </head>
+  <body>
+    <h1>Dynamic</h1>
+    <button id="reveal" type="button">Reveal</button>
+    <script>
+      document.getElementById("reveal").addEventListener("click", () => {
+        const next = document.createElement("button");
+        next.textContent = "Continue application";
+        next.id = "continue";
+        document.body.appendChild(next);
+      });
+    </script>
+  </body>
+</html>

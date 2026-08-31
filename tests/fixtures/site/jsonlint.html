@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>JSONLint</title>
+  </head>
+  <body>
+    <h1>JSONLint - The JSON Validator</h1>
+    <p>To format and validate your JSON, paste it below:</p>
+    <label>
+      JSON editor
+      <textarea id="json-editor" name="json" aria-label="JSON editor" rows="16" cols="80"></textarea>
+    </label>
+    <p>
+      <button type="button" id="validate">Validate JSON</button>
+      <button type="button" id="prettify">Prettify</button>
+    </p>
+    <p role="alert" id="status"></p>
+    <script>
+      const editor = document.getElementById("json-editor");
+      const status = document.getElementById("status");
+
+      function parseEditor() {
+        return JSON.parse(editor.value);
+      }
+
+      document.getElementById("validate").addEventListener("click", () => {
+        try {
+          const value = parseEditor();
+          editor.value = JSON.stringify(value, null, 2);
+          status.textContent = "Valid JSON";
+        } catch (err) {
+          status.textContent = "Invalid JSON: " + err.message;
+        }
+      });
+
+      document.getElementById("prettify").addEventListener("click", () => {
+        try {
+          editor.value = JSON.stringify(parseEditor(), null, 2);
+          if (!status.textContent) status.textContent = "Formatted JSON";
+        } catch (err) {
+          status.textContent = "Invalid JSON: " + err.message;
+        }
+      });
+    </script>
+  </body>
+</html>
