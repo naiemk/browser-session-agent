@@ -40,7 +40,12 @@ const COMMANDS = [
 ];
 
 function send(message) {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+    return true;
+  }
+  addMessage("system", "Chat is not connected. Refresh the page.", "error");
+  return false;
 }
 
 function addMessage(role, text, extraClass = "") {
@@ -75,8 +80,17 @@ async function me() {
 
 function connectChat() {
   socket = new WebSocket(`${proto}://${location.host}/chat`);
-  socket.addEventListener("open", () => send({ type: "hello", token: powerToken || undefined }));
+  socket.addEventListener("open", () => {
+    socket.send(JSON.stringify({ type: "hello", token: powerToken || undefined }));
+  });
   socket.addEventListener("message", onServerMessage);
+  socket.addEventListener("close", () => {
+    addMessage("system", "Chat disconnected. Reconnecting…", "error");
+    setTimeout(connectChat, 1500);
+  });
+  socket.addEventListener("error", () => {
+    addMessage("system", "Chat socket error. Check the connection and refresh if this persists.", "error");
+  });
 }
 
 function onServerMessage(event) {

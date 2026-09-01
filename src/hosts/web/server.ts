@@ -147,11 +147,24 @@ async function acceptChat(
   let runtime: OperatorRuntime | null = null;
   let unsub: (() => void) | undefined;
   let authed = false;
+  let starting = false;
+  const pending: ChatClientMessage[] = [];
 
   const bind = async (hub: NodeHub, next: OperatorRuntime) => {
     runtime = next;
     unsub?.();
     unsub = hub.subscribe((message) => send(message));
+  };
+
+  const deliver = (message: ChatClientMessage) => {
+    if (!runtime) return;
+    void runtime.handleClient(message).catch((err) => {
+      send({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+        code: "chat_handler_failed",
+      });
+    });
   };
 
   ws.on("message", (raw) => {
@@ -162,12 +175,18 @@ async function acceptChat(
       if (token && tokensEqual(token, provided)) {
         authed = true;
         void bind(registry.operator, primary);
-        void primary.handleClient(message);
+        deliver(message);
         return;
       }
       const account = accounts.accountForSession(cookieSession);
       if (account) {
         authed = true;
+        starting = true;
+        send({
+          type: "notify",
+          message: "Starting the agent…",
+          level: "info",
+        });
         const hub = registry.hubFor(account.id);
         const consumer = new OperatorRuntime(hub, (m) => send(m), {
           ...options,
@@ -178,19 +197,36 @@ async function acceptChat(
         void (async () => {
           await consumer.start();
           await bind(hub, consumer);
-          await consumer.handleClient(message);
-        })();
+          starting = false;
+          deliver(message);
+          while (pending.length) deliver(pending.shift()!);
+        })().catch((err) => {
+          starting = false;
+          send({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+            code: "agent_start_failed",
+          });
+        });
         return;
       }
       send({ type: "error", message: "unauthorized", code: "unauthorized" });
       ws.close(4401, "unauthorized");
       return;
     }
-    if (!authed || !runtime) {
+    if (!authed) {
       send({ type: "error", message: "unauthorized", code: "unauthorized" });
       return;
     }
-    void runtime.handleClient(message);
+    if (!runtime) {
+      if (starting) {
+        pending.push(message);
+        return;
+      }
+      send({ type: "error", message: "unauthorized", code: "unauthorized" });
+      return;
+    }
+    deliver(message);
   });
 
   ws.on("close", () => {
