@@ -69,6 +69,10 @@ Non-developers get a Windows/Mac installer and a website. Pairing uses a one-tim
 
 Live-view frames are for humans. The model uses `browser_inspect` refs and bounded actions (D5). One agent step is seconds (inspect + LLM + act), not a realtime video loop.
 
+## D17. Harness accepts actions; the model does not
+
+An act is accepted only after Playwright succeeds and a postcondition (read-back or snapshot delta / expect) passes. No-op clicks are failures. Speed comes from fewer LLM turns (batched fill, reuse act’s observation), not from skipping the harness.
+
 ## D13. Web UI is a view over a server-side Agent
 
 `@mariozechner/pi-web-ui`’s in-tab `Agent` cannot host Playwright. The VPS runs `createAgentSession()` and streams `agentEvent`s. The browser renders chat (messages, tool cards, model/thinking selectors) plus a live-view panel. `ctx.ui.input/confirm/select` become in-chat cards. Do not replace Pi with Vercel AI SDK `useChat`.
