@@ -40,10 +40,10 @@ CI builds Docker images. The desktop node is a Playwright container; the VPS API
 # one-machine trial
 cp .env.example .env
 docker compose -f deploy/docker/compose.local.yml up --build
-# http://127.0.0.1:8080/?token=dev
+# http://127.0.0.1:8080/ — register, then Pair this computer
 
-# desktop only, talking to a remote API
-scripts/run-desktop-node.sh wss://api.example.com/node "$BSA_TOKEN"
+# desktop helper talking to the hosted API
+BSA_PAIR_CODE=<code> scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node
 ```
 
-Without Docker: `npm run start:api` on the VPS and `npm run start:node` on the desk. See `docs/web-operator.md`.
+Without Docker: `npm run start:api` on the VPS and `npm run start:node` on the desk. Pre-V1 apply: `docs/pre-v1-runbook.md`. Operator notes: `docs/web-operator.md`.

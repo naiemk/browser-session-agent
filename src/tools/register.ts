@@ -48,7 +48,7 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
         const verification = (result as { verification?: { status?: string } } | undefined)?.verification;
         const failed =
           verification?.status === "failed" || (result as { ok?: boolean } | undefined)?.ok === false;
-        await session.recordTool(name, params, { ok: !failed, verification }, failed);
+        await session.recordTool(name, params, { ok: !failed, verification }, failed).catch(() => undefined);
         return textResult(stringify(result), { result }, failed);
       } catch (err) {
         const error =
@@ -58,7 +58,7 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
           params,
           { ok: false, code: error.code, message: error.message },
           true,
-        );
+        ).catch(() => undefined);
         return textResult(`${error.code}: ${error.message}`, { error }, true);
       }
     };

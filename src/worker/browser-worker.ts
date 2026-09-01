@@ -231,12 +231,33 @@ export class BrowserWorker {
 
   async click(tabId: string | undefined, ref: string): Promise<void> {
     const page = this.requirePage(tabId);
-    await this.inspect(this.idOf(page));
-    const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`);
-    if ((await locator.count()) === 0) {
+    const first = await this.inspect(this.idOf(page));
+    const named = first.controls.find((c) => c.ref === ref);
+    if (!named) {
       throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
     }
-    await locator.first().click({ timeout: 5_000, force: true });
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        if (named.role === "option" && named.name) {
+          const option = page.getByRole("option", { name: named.name, exact: true }).first();
+          await option.waitFor({ state: "attached", timeout: 2_000 });
+          await option.click({ timeout: 5_000, force: true });
+          return;
+        }
+        if (attempt > 0) await this.inspect(this.idOf(page));
+        const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`).first();
+        await locator.waitFor({ state: "attached", timeout: 2_000 });
+        await locator.click({ timeout: 5_000, force: true });
+        return;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/detached|not attached|not visible|Element is not/i.test(msg)) throw err;
+        await delay(80);
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
 
   async type(tabId: string | undefined, ref: string, text: string): Promise<string | undefined> {

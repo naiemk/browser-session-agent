@@ -23,12 +23,14 @@ export class OperatorRuntime {
     commands: Map<string, import("../../pi-api.ts").RegisteredCommand>;
   };
   readonly handle: RpcSessionHandle;
-  private pi: Awaited<ReturnType<typeof createAgentSession>>["session"] | null = null;
+  private pi: PiLike | null = null;
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
   private readonly send: (message: ChatServerMessage) => void;
   private readonly hub: NodeHub;
   private readonly options: OperatorRuntimeOptions;
+  piReady = false;
+  piReason: string | null = null;
   sessionId = `sess_${Date.now().toString(36)}`;
   model = "auto";
   thinking = "medium";
@@ -80,11 +82,29 @@ export class OperatorRuntime {
 
   async start(): Promise<void> {
     if (process.env.BSA_NO_PI === "1") {
+      this.piReady = false;
+      this.piReason = "BSA_NO_PI";
+      this.send({ type: "models", models: this.models });
+      this.send({ type: "stateSync", state: this.state() });
+      return;
+    }
+    if (process.env.BSA_FAKE_PI === "1") {
+      this.pi = this.createFakePi();
+      this.piReady = true;
+      this.piReason = null;
+      this.model = "fake/scripted";
+      this.models = [
+        ...this.models,
+        { id: "fake/scripted", label: "fake/scripted (CI double)" },
+      ];
       this.send({ type: "models", models: this.models });
       this.send({ type: "stateSync", state: this.state() });
       return;
     }
     try {
+      if (process.env.BSA_PI_FAIL === "1") {
+        throw new Error("BSA_PI_FAIL");
+      }
       const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
       const authStorage = AuthStorage.create();
       this.modelRegistry = ModelRegistry.create(authStorage);
@@ -114,7 +134,9 @@ export class OperatorRuntime {
         noTools: "builtin",
         thinkingLevel: "medium",
       });
-      this.pi = result.session;
+      this.pi = result.session as PiLike;
+      this.piReady = true;
+      this.piReason = null;
       this.model = describeModel(result.session.model) ?? this.model;
       this.thinking = String(result.session.thinkingLevel ?? this.thinking);
       this.unsubscribePi = result.session.subscribe((event) => {
@@ -134,14 +156,20 @@ export class OperatorRuntime {
       ];
     } catch (err) {
       this.pi = null;
-      this.send({
-        type: "notify",
-        message: `Pi session unavailable (${err instanceof Error ? err.message : String(err)}). Slash commands still work.`,
-        level: "warning",
-      });
+      this.piReady = false;
+      this.piReason = err instanceof Error ? err.message : String(err);
+      this.sendPiUnavailable();
     }
     this.send({ type: "models", models: this.models });
     this.send({ type: "stateSync", state: this.state() });
+  }
+
+  private sendPiUnavailable(): void {
+    this.send({
+      type: "notify",
+      message: `Pi agent is not running (${this.piReason ?? "unavailable"}). Chat cannot answer until LLM keys are configured on the API. Slash commands and pairing still work.`,
+      level: "warning",
+    });
   }
 
   async handleClient(message: ChatClientMessage): Promise<void> {
@@ -157,6 +185,7 @@ export class OperatorRuntime {
           reason: this.hub.connected ? undefined : "browser node disconnected",
         });
         if (this.hub.connected) this.hub.startScreencast();
+        if (!this.piReady && process.env.BSA_NO_PI !== "1") this.sendPiUnavailable();
         return;
       case "prompt":
         await this.prompt(message.text);
@@ -221,11 +250,20 @@ export class OperatorRuntime {
       });
     }
     if (!this.pi) {
+      if (process.env.BSA_NO_PI === "1") {
+        this.send({
+          type: "agentEvent",
+          event: { type: "text_delta", text: stubReply(trimmed) },
+        });
+        this.send({ type: "agentEvent", event: { type: "turn_end" } });
+        return;
+      }
+      this.sendPiUnavailable();
       this.send({
-        type: "agentEvent",
-        event: { type: "text_delta", text: stubReply(trimmed) },
+        type: "error",
+        message: `Pi agent is not running (${this.piReason ?? "unavailable"}). Configure LLM keys on the API.`,
+        code: "pi_unavailable",
       });
-      this.send({ type: "agentEvent", event: { type: "turn_end" } });
       return;
     }
     await this.pi.prompt(trimmed);
@@ -251,12 +289,69 @@ export class OperatorRuntime {
     }
   }
 
+  private createFakePi(): PiLike {
+    return {
+      model: { provider: "fake", id: "scripted" },
+      thinkingLevel: "medium",
+      subscribe: () => () => undefined,
+      abort: () => undefined,
+      dispose: () => undefined,
+      setThinkingLevel: () => undefined,
+      setModel: async () => undefined,
+      prompt: async (text: string) => {
+        const tools = [...this.api.tools.keys()];
+        this.send({
+          type: "agentEvent",
+          event: { type: "text_delta", text: `Pi: ${text}` },
+        });
+        if (looksLikeBrowserWork(text)) {
+          const inspect = this.api.tools.get("browser_inspect");
+          this.send({
+            type: "agentEvent",
+            event: { type: "tool_call", toolName: "browser_inspect", tools },
+          });
+          if (inspect) {
+            try {
+              const result = await inspect.execute(
+                "fake-pi",
+                { runId: this.handle.currentRunId ?? undefined },
+                undefined,
+                undefined,
+                extensionContext(this.host),
+              );
+              this.send({
+                type: "agentEvent",
+                event: {
+                  type: "tool_result",
+                  toolName: "browser_inspect",
+                  isError: Boolean(result.isError),
+                  text: result.content.map((part) => ("text" in part ? part.text : "")).join(""),
+                },
+              });
+            } catch (err) {
+              this.send({
+                type: "agentEvent",
+                event: {
+                  type: "tool_result",
+                  toolName: "browser_inspect",
+                  isError: true,
+                  text: err instanceof Error ? err.message : String(err),
+                },
+              });
+            }
+          }
+        }
+        this.send({ type: "agentEvent", event: { type: "turn_end" } });
+      },
+    };
+  }
+
   private async setModel(id: string): Promise<void> {
     this.model = id;
     if (this.pi && this.modelRegistry && id !== "auto" && !["low", "medium", "high", "ultra"].includes(id)) {
       const [provider, ...rest] = id.split("/");
       const found = this.modelRegistry.find(provider ?? "", rest.join("/"));
-      if (found) await this.pi.setModel(found);
+      if (found) await this.pi.setModel?.(found);
     }
     this.send({ type: "stateSync", state: this.state() });
     this.send({
@@ -286,6 +381,17 @@ export class OperatorRuntime {
       },
     });
   }
+}
+
+interface PiLike {
+  prompt: (text: string) => Promise<void>;
+  abort: () => Promise<void> | void;
+  dispose: () => void;
+  setThinkingLevel: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
+  setModel?: (model: unknown) => Promise<void> | void;
+  subscribe?: (listener: (event: unknown) => void) => () => void;
+  model?: { provider?: string; id?: string };
+  thinkingLevel?: string;
 }
 
 function describeModel(model: { provider?: string; id?: string } | undefined): string | undefined {

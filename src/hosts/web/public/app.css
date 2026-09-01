@@ -60,6 +60,17 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280p
 .pill.on { background: #243524; color: var(--ok); }
 .pill.off { background: #3a2424; color: var(--err); }
 .hidden { display: none; }
+.pair-panel {
+  display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;
+  padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); background: var(--card);
+}
+.pair-panel.hidden { display: none; }
+.pair-panel p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.pair-panel code {
+  font-size: 1.05rem; letter-spacing: 0.04em; color: var(--accent);
+  background: var(--bg); padding: 0.2rem 0.5rem; border-radius: 6px;
+}
+.pair-hint { flex: 1 1 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--ink); }
 .auth {
   position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
   background: rgba(12, 10, 8, 0.86);

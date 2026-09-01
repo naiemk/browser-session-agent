@@ -19,12 +19,40 @@ export function sessionIdFromRequest(req: IncomingMessage): string | undefined {
   return parseCookies(req.headers.cookie)[SESSION_COOKIE];
 }
 
-export function setSessionCookie(res: ServerResponse, sessionId: string, maxAgeSec = 60 * 60 * 24 * 30): void {
-  res.setHeader("set-cookie", `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`);
+export function requestIsHttps(req: IncomingMessage | undefined): boolean {
+  if (process.env.BSA_COOKIE_SECURE === "1") return true;
+  if (!req) return false;
+  const forwarded = String(req.headers["x-forwarded-proto"] ?? "")
+    .split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  if (forwarded === "https") return true;
+  return Boolean((req.socket as { encrypted?: boolean } | undefined)?.encrypted);
 }
 
-export function clearSessionCookie(res: ServerResponse): void {
-  res.setHeader("set-cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+function cookieHeader(value: string, req: IncomingMessage | undefined, maxAgeSec: number): string {
+  const parts = [
+    `${SESSION_COOKIE}=${value}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAgeSec}`,
+  ];
+  if (requestIsHttps(req)) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export function setSessionCookie(
+  res: ServerResponse,
+  sessionId: string,
+  req?: IncomingMessage,
+  maxAgeSec = 60 * 60 * 24 * 30,
+): void {
+  res.setHeader("set-cookie", cookieHeader(encodeURIComponent(sessionId), req, maxAgeSec));
+}
+
+export function clearSessionCookie(res: ServerResponse, req?: IncomingMessage): void {
+  res.setHeader("set-cookie", cookieHeader("", req, 0));
 }
 
 export async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
