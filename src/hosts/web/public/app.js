@@ -1,9 +1,10 @@
 const params = new URLSearchParams(location.search);
-const token = params.get("token") || localStorage.getItem("bsa_token") || "";
-if (params.get("token")) localStorage.setItem("bsa_token", params.get("token"));
+const powerToken = params.get("token") || "";
 
 const proto = location.protocol === "https:" ? "wss" : "ws";
-const socket = new WebSocket(`${proto}://${location.host}/chat`);
+let socket;
+let takeover = false;
+let assistantBuf = "";
 
 const messagesEl = document.getElementById("messages");
 const cardsEl = document.getElementById("cards");
@@ -16,6 +17,11 @@ const takeoverPill = document.getElementById("takeover-pill");
 const liveEl = document.getElementById("live");
 const frameEl = document.getElementById("frame");
 const liveHint = document.getElementById("live-hint");
+const authEl = document.getElementById("auth");
+const authForm = document.getElementById("auth-form");
+const authError = document.getElementById("auth-error");
+const authEmail = document.getElementById("auth-email");
+const authPassword = document.getElementById("auth-password");
 
 const COMMANDS = [
   ["browser-start", "Start a run"],
@@ -29,11 +35,8 @@ const COMMANDS = [
   ["browser-approve", "Approve"],
 ];
 
-let takeover = false;
-let assistantBuf = "";
-
 function send(message) {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
 function addMessage(role, text, extraClass = "") {
@@ -46,7 +49,7 @@ function addMessage(role, text, extraClass = "") {
 }
 
 function setNode(connected, reason) {
-  nodePill.textContent = connected ? "node online" : reason || "node offline";
+  nodePill.textContent = connected ? "Connected" : reason || "helper offline";
   nodePill.className = `pill ${connected ? "on" : "off"}`;
 }
 
@@ -56,36 +59,23 @@ function setTakeover(on) {
   liveHint.textContent = on ? "Input enabled — complete the step, then /browser-resume" : "Read-only until takeover";
 }
 
-COMMANDS.forEach(([name, label]) => {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = `/${name}`;
-  button.title = label;
-  button.addEventListener("click", async () => {
-    if (name === "browser-start") {
-      const goal = prompt("Goal for this browser run?");
-      if (!goal) return;
-      const url = prompt("Optional start URL") || "";
-      send({ type: "command", name, args: url ? `--url ${url} ${goal}` : goal });
-      addMessage("user", `/${name} ${url ? `--url ${url} ` : ""}${goal}`);
-      return;
-    }
-    if (name === "browser-approve") {
-      const id = prompt("Knowledge id to approve?");
-      if (!id) return;
-      send({ type: "command", name, args: id });
-      addMessage("user", `/${name} ${id}`);
-      return;
-    }
-    send({ type: "command", name, args: "" });
-    addMessage("user", `/${name}`);
-  });
-  commandsEl.appendChild(button);
-});
+function showAuthError(text) {
+  authError.hidden = !text;
+  authError.textContent = text || "";
+}
 
-socket.addEventListener("open", () => send({ type: "hello", token }));
+async function me() {
+  const res = await fetch("/me", { credentials: "same-origin" });
+  return res.ok;
+}
 
-socket.addEventListener("message", (event) => {
+function connectChat() {
+  socket = new WebSocket(`${proto}://${location.host}/chat`);
+  socket.addEventListener("open", () => send({ type: "hello", token: powerToken || undefined }));
+  socket.addEventListener("message", onServerMessage);
+}
+
+function onServerMessage(event) {
   const msg = JSON.parse(event.data);
   if (msg.type === "hello_ok") return;
   if (msg.type === "models") {
@@ -108,7 +98,7 @@ socket.addEventListener("message", (event) => {
   if (msg.type === "nodeStatus") {
     setNode(msg.connected, msg.reason);
     setTakeover(msg.takeover);
-    if (!msg.connected) addMessage("system", msg.reason || "Browser node disconnected");
+    if (!msg.connected) addMessage("system", msg.reason || "Helper disconnected");
     return;
   }
   if (msg.type === "notify") {
@@ -139,8 +129,68 @@ socket.addEventListener("message", (event) => {
     }
     if (ev.type === "agent_end" || ev.type === "turn_end") assistantBuf = "";
     if (ev.toolName) addMessage("tool", `${ev.toolName}`);
+    if (ev.verification) {
+      addMessage("tool", `harness ${ev.verification.status}${ev.recovery ? `: ${ev.recovery}` : ""}`);
+    }
     if (ev.type === "node_event" && ev.message) addMessage("system", ev.message);
+    if (ev.result?.verification) {
+      const v = ev.result.verification;
+      addMessage("tool", `harness ${v.status}${ev.result.recovery ? `: ${ev.result.recovery}` : ""}`);
+    }
   }
+}
+
+async function authRequest(path) {
+  showAuthError("");
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: authEmail.value, password: authPassword.value }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    showAuthError(body.error || res.statusText);
+    return false;
+  }
+  authEl.classList.add("hidden");
+  connectChat();
+  return true;
+}
+
+authForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void authRequest("/auth/login");
+});
+document.getElementById("auth-register").addEventListener("click", () => {
+  void authRequest("/auth/register");
+});
+
+COMMANDS.forEach(([name, label]) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = `/${name}`;
+  button.title = label;
+  button.addEventListener("click", async () => {
+    if (name === "browser-start") {
+      const goal = prompt("Goal for this browser run?");
+      if (!goal) return;
+      const url = prompt("Optional start URL") || "";
+      send({ type: "command", name, args: url ? `--url ${url} ${goal}` : goal });
+      addMessage("user", `/${name} ${url ? `--url ${url} ` : ""}${goal}`);
+      return;
+    }
+    if (name === "browser-approve") {
+      const id = prompt("Knowledge id to approve?");
+      if (!id) return;
+      send({ type: "command", name, args: id });
+      addMessage("user", `/${name} ${id}`);
+      return;
+    }
+    send({ type: "command", name, args: "" });
+    addMessage("user", `/${name}`);
+  });
+  commandsEl.appendChild(button);
 });
 
 document.getElementById("composer").addEventListener("submit", (event) => {
@@ -254,3 +304,17 @@ window.addEventListener("keyup", (event) => {
   if (!takeover) return;
   sendInput({ kind: "key", action: "up", key: event.key });
 });
+
+void (async () => {
+  if (powerToken) {
+    authEl.classList.add("hidden");
+    connectChat();
+    return;
+  }
+  if (await me()) {
+    authEl.classList.add("hidden");
+    connectChat();
+    return;
+  }
+  authEl.classList.remove("hidden");
+})();

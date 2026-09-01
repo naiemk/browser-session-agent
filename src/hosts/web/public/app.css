@@ -60,6 +60,20 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280p
 .pill.on { background: #243524; color: var(--ok); }
 .pill.off { background: #3a2424; color: var(--err); }
 .hidden { display: none; }
+.auth {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+  background: rgba(12, 10, 8, 0.86);
+}
+.auth.hidden { display: none; }
+.auth-card {
+  width: min(24rem, calc(100% - 2rem));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;
+}
+.auth-card h1 { margin: 0; font-size: 1.2rem; }
+.auth-card label { flex-direction: column; align-items: stretch; gap: 0.25rem; }
+.auth-card .row { display: flex; gap: 0.5rem; }
+.auth-error { color: var(--err); margin: 0; font-size: 0.9rem; }
 @media (max-width: 860px) {
   main { grid-template-columns: 1fr; grid-template-rows: 1fr 40vh; }
   .chat-pane { border-right: 0; border-bottom: 1px solid var(--line); }

@@ -8,6 +8,7 @@ import { applyTakeoverInput, dispatchSessionRpc } from "../shared/rpc-dispatch.t
 export interface NodeAgentOptions {
   apiUrl: string;
   token?: string;
+  deviceToken?: string;
   home?: string;
   cwd?: string;
   headless?: boolean;
@@ -19,6 +20,7 @@ export class NodeAgent {
   readonly session: BrowserSession;
   private readonly apiUrl: string;
   private readonly token?: string;
+  private readonly deviceToken?: string;
   private readonly hostname: string;
   private readonly reconnectMs: number;
   private socket: WebSocket | null = null;
@@ -31,6 +33,7 @@ export class NodeAgent {
   constructor(options: NodeAgentOptions) {
     this.apiUrl = options.apiUrl;
     this.token = options.token;
+    this.deviceToken = options.deviceToken;
     this.hostname = options.hostname ?? osHostname();
     this.reconnectMs = options.reconnectMs ?? 1000;
     this.session = new BrowserSession({
@@ -65,7 +68,12 @@ export class NodeAgent {
 
     ws.on("open", () => {
       this.attempt = 0;
-      this.send({ type: "hello", token: this.token, hostname: this.hostname });
+      this.send({
+        type: "hello",
+        token: this.token,
+        deviceToken: this.deviceToken,
+        hostname: this.hostname,
+      });
     });
 
     ws.on("message", (raw) => {
