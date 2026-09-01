@@ -21,7 +21,9 @@ const api = await startOperatorApi({
 });
 
 console.error(`browser-session-api listening on http://${host}:${api.port}`);
-console.error("Desktop node: browser-session-node --api ws://<this-host>/node --token <BSA_TOKEN>");
+console.error("Pair a desktop from the signed-in UI, then:");
+console.error("  BSA_PAIR_CODE=<code> scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node");
+console.error("BSA_TOKEN is a power-user escape for /chat and /node, not the consumer pair path.");
 console.error("This process does not launch Chromium.");
 
 const shutdown = async () => {

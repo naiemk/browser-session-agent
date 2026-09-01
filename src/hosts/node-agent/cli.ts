@@ -21,7 +21,8 @@ function httpOriginFromNodeUrl(api: string): string {
 
 const api = arg("api", process.env.BSA_API_URL);
 if (!api) {
-  console.error("Usage: browser-session-node --api wss://api.example.com/node");
+  console.error("Usage: browser-session-node --api wss://agent.trustless-commerce.com/node");
+  console.error("Pair with BSA_PAIR_CODE=… or a stored device token under BSA_HOME.");
   process.exit(1);
 }
 

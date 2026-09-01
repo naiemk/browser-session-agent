@@ -174,7 +174,7 @@ Pairing and account E2E do not need new HTML.
 
 Pre-V1 is a personal production cut of V1: real Pi agent, TLS at `agent.trustless-commerce.com`, Docker Playwright helper, no billing, no OS installer. Product page: `docs/pre-v1.md`. Epic: `work-items/epics/pre-v1.md`.
 
-Automated tests stay local (in-process API, helper child, fixtures, file assertions). They do not require live LLM keys, the production host, or Docker-in-Docker unless a task explicitly packs compose contracts. Keep `BSA_NO_PI=1` in `npm test` except PRE-01 cases that prove Pi wiring without calling a vendor.
+Automated tests stay local (in-process API, helper child, fixtures, file assertions). They do not require live LLM keys, the production host, or Docker-in-Docker unless a task explicitly packs compose contracts. Keep `BSA_NO_PI=1` in `npm test` except PRE-01 cases that prove Pi wiring without calling a vendor. Unset `BSA_NO_PI` plus a failed Pi start must **not** emit `"I heard you"`; `/healthz` reports `pi: false`.
 
 ## Layers (added)
 
@@ -194,6 +194,7 @@ Automated tests stay local (in-process API, helper child, fixtures, file asserti
 
 - Pi starts when `BSA_NO_PI` is unset; browser tools including `run_plan`/`fill` are registered. `tests/e2e/pre-v1-01-pi-wired.test.ts`
 - A prompt uses browser tools when a helper is connected (scripted/fake Pi — not the stub reply). `tests/e2e/pre-v1-01-agent-tools.test.ts`
+- Failed Pi start (no vendor keys / `BSA_PI_FAIL`) keeps the process up, `/healthz` has `pi: false`, chat does not stub `"I heard you"`. `tests/e2e/pre-v1-01-pi-fail-loud.test.ts`
 
 ### Personal access (PRE-02)
 
@@ -202,7 +203,7 @@ Automated tests stay local (in-process API, helper child, fixtures, file asserti
 
 ### TLS origin (PRE-03)
 
-- Gateway/vibed configs proxy `/auth` `/me` `/pair` `/devices` `/chat` `/node` `/healthz` to the API. `tests/e2e/pre-v1-03-gateway-routes.test.ts`
+- Gateway/vibed configs proxy `/auth` `/me` `/pair` `/devices` `/chat` `/node` `/healthz` to the API. `X-Forwarded-Proto` is not blindly `$scheme`. `tests/e2e/pre-v1-03-gateway-routes.test.ts`
 - Session cookie is `Secure` when the request is HTTPS. `tests/e2e/pre-v1-03-tls-cookie.test.ts`
 
 ### Docker helper (PRE-04)
@@ -211,12 +212,12 @@ Automated tests stay local (in-process API, helper child, fixtures, file asserti
 
 ### Chat UI (PRE-05)
 
-- Same-origin sign-in; URL has no `token=`. `tests/e2e/pre-v1-05-chat-ui.test.ts`
+- Same-origin sign-in; URL has no `token=`. Signed-in UI issues a pair code from `/pair/issue`. `tests/e2e/pre-v1-05-chat-ui.test.ts`
 - UI/chat payload shows harness verification and plan progress. `tests/e2e/pre-v1-05-harness-plan-cards.test.ts`
 
 ### VPS pack (PRE-06)
 
-- vibed-infra host is `agent.trustless-commerce.com`; API image/config has no Chromium. `tests/e2e/pre-v1-06-vibed-pack.test.ts`
+- vibed-infra host is `agent.trustless-commerce.com`; GHCR images, `/data`, LLM key names, no `BSA_NO_PI`, cookie Secure / proto pass-through; API image/config has no Chromium. `tests/e2e/pre-v1-06-vibed-pack.test.ts`
 
 ### Onboarding gate (PRE-E2E)
 

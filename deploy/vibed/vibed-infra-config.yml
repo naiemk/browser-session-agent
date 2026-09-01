@@ -6,16 +6,26 @@ sites:
   - name: ui
     role: ui
     root: /srv/browser-session/ui
+    image: ghcr.io/naiemk/browser-session-ui:latest
   - name: api
     role: api
-    image: browser-session-api
+    image: ghcr.io/naiemk/browser-session-api:latest
     port: 8787
+    volumes:
+      - /var/lib/browser-session:/data
     env:
       BSA_TOKEN: ${BSA_TOKEN}
       PORT: "8787"
       BSA_HOST: agent.trustless-commerce.com
+      BSA_HOME: /data
       BSA_AGENT_DIR: /data/pi-agent
       BSA_SESSION_DIR: /data/sessions
+      BSA_COOKIE_SECURE: "1"
+      BSA_REGISTER_OPEN: ${BSA_REGISTER_OPEN:-1}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY}
       # LLM keys belong here. No PLAYWRIGHT / CHROME vars. No BSA_NO_PI.
   - name: gateway
     role: gateway

@@ -46,6 +46,7 @@ Desktop Docker node  →  wss://agent.trustless-commerce.com/node  (device token
 
 - **Origin:** `https://agent.trustless-commerce.com`
 - **VPS:** [`deploy/vibed/`](../deploy/vibed/) — `BSA_HOST=agent.trustless-commerce.com`
+- **Apply + pair runbook:** [`docs/pre-v1-runbook.md`](pre-v1-runbook.md)
 - **Gateway** must proxy `/auth`, `/me`, `/pair`, `/devices`, `/chat`, `/node`, `/healthz` to the API; `/` is the static UI
 - **Session cookie** `bsa_session`: `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS
 - **API image** has no Playwright/Chromium ([`deploy/docker/Dockerfile.api`](../deploy/docker/Dockerfile.api))

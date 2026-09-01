@@ -24,9 +24,14 @@ export function cookieFromResponse(res: Response): string {
 }
 
 export async function startV1Api(
-  options: { token?: string; requirePaid?: boolean; fakePi?: boolean } = {},
+  options: { token?: string; requirePaid?: boolean; fakePi?: boolean; failPi?: boolean } = {},
 ): Promise<V1World> {
-  if (options.fakePi) {
+  delete process.env.BSA_PI_FAIL;
+  if (options.failPi) {
+    delete process.env.BSA_NO_PI;
+    delete process.env.BSA_FAKE_PI;
+    process.env.BSA_PI_FAIL = "1";
+  } else if (options.fakePi) {
     delete process.env.BSA_NO_PI;
     process.env.BSA_FAKE_PI = "1";
   } else {
@@ -63,6 +68,7 @@ export async function closeV1(world: V1World): Promise<void> {
   await world.api.close().catch(() => undefined);
   await world.fixture?.stop().catch(() => undefined);
   await world.cleanupHome().catch(() => undefined);
+  delete process.env.BSA_PI_FAIL;
 }
 
 export async function register(

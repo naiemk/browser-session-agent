@@ -9,12 +9,16 @@ services:
     environment:
       BSA_TOKEN: ${BSA_TOKEN:?set BSA_TOKEN}
       PORT: "8787"
+      BSA_HOME: /data
       BSA_AGENT_DIR: /data/pi-agent
       BSA_SESSION_DIR: /data/sessions
+      BSA_REGISTER_OPEN: ${BSA_REGISTER_OPEN:-1}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
+      # HTTP :8080 stand-in: do not set BSA_COOKIE_SECURE=1 here.
+      # TLS vibed pack sets BSA_COOKIE_SECURE=1. Never set BSA_NO_PI.
     volumes:
       - api-data:/data
     expose:
