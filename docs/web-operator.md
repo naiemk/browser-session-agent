@@ -18,10 +18,11 @@ desktop node agent  →  BrowserWorker  →  dedicated Playwright Chromium
 
 CLI on that same desktop can still attach to the same `worker.json` CDP endpoint. Do not run two Chromiums.
 
-## Auth (v1)
+## Auth (Pre-V1 / V1)
 
-- Shared secret: `BSA_TOKEN` on chat `/chat` and node `/node` hello (or `Authorization: Bearer`).
-- Optional HTTP basic for the static UI: `BSA_BASIC_USER` / `BSA_BASIC_PASS`.
+Product path: register or sign in at the same origin (session cookie `bsa_session`). Pair the desktop from **Pair this computer** (`POST /pair/issue`). The helper uses a **device token**, not `BSA_TOKEN`. Do not put `?token=` in the consumer URL.
+
+Power-user escape: `BSA_TOKEN` on chat `/chat` and node `/node` hello (or `Authorization: Bearer`). Optional HTTP basic for the static UI: `BSA_BASIC_USER` / `BSA_BASIC_PASS`.
 
 ## Easy path: Docker (CI builds the images)
 
@@ -36,19 +37,20 @@ The node image is meant to run **on your desk**, not on the VPS. Chromium stays 
 ### One-machine trial
 
 ```bash
-cp .env.example .env   # set BSA_TOKEN
+cp .env.example .env   # set BSA_TOKEN for the power-user escape if you want it
 docker compose -f deploy/docker/compose.local.yml up --build
-# http://127.0.0.1:8080/?token=$BSA_TOKEN
+# http://127.0.0.1:8080/ — register in the UI, then Pair this computer
 ```
 
 ### Desktop node only (API already on a VPS)
 
 ```bash
-export BSA_API_URL=wss://api.example.com/node
-export BSA_TOKEN=…
-scripts/run-desktop-node.sh
+# After Pair this computer in the signed-in UI:
+BSA_PAIR_CODE=<code> scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node
 # or: docker compose -f deploy/docker/compose.node.yml up -d
 ```
+
+`BSA_TOKEN` is optional. After the first pair, the helper reconnects from `{BSA_HOME}/credentials/device.json`.
 
 Default in Docker is **headless**. Takeover is the live-view panel (input only while `awaiting_takeover`). For a real window on Linux, set `BSA_HEADLESS=0` and mount X11 (see `compose.node.yml`).
 
@@ -57,15 +59,15 @@ First pull of the node image is large (Playwright’s Chromium). After CI has pu
 ## Run locally without Docker
 
 ```bash
-# VPS-shaped API (no Chrome)
-BSA_TOKEN=dev BSA_NO_PI=1 npm run start:api
+# VPS-shaped API (no Chrome). BSA_NO_PI stubs chat for local protocol work only.
+BSA_NO_PI=1 npm run start:api
 
-# Desktop node (headed Chromium by default)
+# Desktop node (headed Chromium by default) — pair from the UI, or power-user:
 npx playwright install chromium
-BSA_TOKEN=dev npm run start:node -- --api ws://127.0.0.1:8787/node
+BSA_PAIR_CODE=<code> npm run start:node -- --api ws://127.0.0.1:8787/node
 ```
 
-Open `http://127.0.0.1:8787/?token=dev`.
+Open `http://127.0.0.1:8787/`, create an account, then **Pair this computer**. Do not use `?token=` for the consumer path. `BSA_TOKEN=dev` remains a power-user escape (`/?token=dev`).
 
 ## Live view and takeover
 
@@ -99,4 +101,4 @@ Package **`ui` + `api` + `gateway`**. Do **not** install a `nodes` role or Playw
 
 Configs live in `deploy/vibed/`. Prefer Docker on the desktop (`scripts/run-desktop-node.sh`). The npm/systemd installer is `scripts/install-desktop-node.sh` if you do not want a container.
 
-Pre-V1 production host is `agent.trustless-commerce.com` (see `docs/pre-v1.md`). The gateway must also proxy account and pairing HTTP (`/auth`, `/me`, `/pair`, `/devices`) to the API, not only `/chat` and `/node`.
+Pre-V1 production host is `agent.trustless-commerce.com`. Apply steps: [`docs/pre-v1-runbook.md`](pre-v1-runbook.md). The gateway must also proxy account and pairing HTTP (`/auth`, `/me`, `/pair`, `/devices`) to the API, not only `/chat` and `/node`.

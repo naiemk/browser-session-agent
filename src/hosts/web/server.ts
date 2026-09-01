@@ -50,7 +50,7 @@ export async function startOperatorApi(options: OperatorApiOptions = {}): Promis
   await primary.start();
 
   const http = createServer((req, res) => {
-    void handleHttp(req, res, registry, accounts, token);
+    void handleHttp(req, res, registry, accounts, primary, token);
   });
   const wss = new WebSocketServer({ noServer: true });
 
@@ -207,12 +207,19 @@ async function handleHttp(
   res: ServerResponse,
   registry: HubRegistry,
   accounts: AccountStore,
+  primary: OperatorRuntime,
   token?: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
   try {
     if (url.pathname === "/healthz") {
-      json(res, 200, { ok: true, nodeConnected: registry.connected, protocol: PROTOCOL_VERSION });
+      json(res, 200, {
+        ok: true,
+        pi: primary.piReady,
+        reason: primary.piReady ? undefined : (primary.piReason ?? "unavailable"),
+        nodeConnected: registry.connected,
+        protocol: PROTOCOL_VERSION,
+      });
       return;
     }
 

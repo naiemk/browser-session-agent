@@ -22,6 +22,10 @@ const authForm = document.getElementById("auth-form");
 const authError = document.getElementById("auth-error");
 const authEmail = document.getElementById("auth-email");
 const authPassword = document.getElementById("auth-password");
+const pairBtn = document.getElementById("pair-btn");
+const pairPanel = document.getElementById("pair-panel");
+const pairCodeEl = document.getElementById("pair-code");
+const pairHintEl = document.getElementById("pair-hint");
 
 const COMMANDS = [
   ["browser-start", "Start a run"],
@@ -204,6 +208,40 @@ authForm.addEventListener("submit", (event) => {
 });
 document.getElementById("auth-register").addEventListener("click", () => {
   void authRequest("/auth/register");
+});
+
+function pairCommand(code) {
+  const nodeUrl = `${proto}://${location.host}/node`;
+  return `BSA_PAIR_CODE=${code} scripts/run-desktop-node.sh ${nodeUrl}`;
+}
+
+pairBtn.addEventListener("click", async () => {
+  pairPanel.classList.add("hidden");
+  const res = await fetch("/pair/issue", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.code) {
+    addMessage("system", body.error || "Could not issue a pair code", "error");
+    return;
+  }
+  pairCodeEl.textContent = body.code;
+  pairHintEl.textContent = pairCommand(body.code);
+  pairPanel.classList.remove("hidden");
+});
+
+document.getElementById("pair-copy").addEventListener("click", async () => {
+  const text = pairHintEl.textContent || "";
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    addMessage("system", "Pair command copied.");
+  } catch {
+    addMessage("system", text);
+  }
 });
 
 COMMANDS.forEach(([name, label]) => {

@@ -48,8 +48,15 @@
               <option value="xhigh">xhigh</option>
             </select>
           </label>
+          <button type="button" id="pair-btn">Pair this computer</button>
         </div>
       </header>
+      <div id="pair-panel" class="pair-panel hidden">
+        <p>One-time pair code (expires soon):</p>
+        <code id="pair-code"></code>
+        <p id="pair-hint" class="pair-hint"></p>
+        <button type="button" id="pair-copy">Copy command</button>
+      </div>
       <main>
         <section class="chat-pane">
           <div id="commands" class="commands"></div>

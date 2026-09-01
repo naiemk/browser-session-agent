@@ -60,4 +60,30 @@ describe("PRE-05-T01 UI on same origin (no ?token=)", () => {
       await browser.close();
     }
   });
+
+  it("issues a pair code from the signed-in UI without ?token=", async () => {
+    const world = await startV1Api({ requirePaid: false });
+    worlds.push(world);
+    const user = await uniqueUser();
+    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    try {
+      const page = await browser.newPage();
+      await page.goto(world.origin, { waitUntil: "domcontentloaded" });
+      await page.locator("#auth-email").fill(user.email);
+      await page.locator("#auth-password").fill(user.password);
+      await page.locator("#auth-register").click();
+      await page.locator("#auth").waitFor({ state: "hidden", timeout: 10_000 });
+      await page.getByRole("button", { name: "Pair this computer" }).click();
+      await page.locator("#pair-panel:not(.hidden)").waitFor({ timeout: 10_000 });
+      const code = (await page.locator("#pair-code").innerText()).trim();
+      assert.match(code, /\S/);
+      const hint = await page.locator("#pair-hint").innerText();
+      assert.match(hint, new RegExp(`BSA_PAIR_CODE=${code}`));
+      assert.match(hint, /scripts\/run-desktop-node\.sh/);
+      assert.doesNotMatch(hint, /\?token=/);
+      assert.equal(new URL(page.url()).search.includes("token="), false);
+    } finally {
+      await browser.close();
+    }
+  });
 });
