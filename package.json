@@ -3,30 +3,50 @@
   "version": "0.1.0",
   "description": "Pi-powered persistent browser operator with bounded Playwright tools",
   "type": "module",
-  "keywords": ["pi-package", "playwright", "browser-agent"],
+  "keywords": [
+    "pi-package",
+    "playwright",
+    "browser-agent"
+  ],
   "license": "MIT",
   "main": "./src/index.ts",
+  "bin": {
+    "browser-session-api": "./bin/browser-session-api.mjs",
+    "browser-session-node": "./bin/browser-session-node.mjs"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
   "pi": {
-    "extensions": ["./src/extension.ts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./src/extension.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "scripts": {
     "test": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/unit/*.test.ts tests/integration/*.test.ts tests/e2e/*.test.ts",
     "test:e2e": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/e2e/*.test.ts",
-    "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts"
+    "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts",
+    "start:api": "tsx src/hosts/web/cli.ts",
+    "start:node": "tsx src/hosts/node-agent/cli.ts"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.2",
+    "@mariozechner/pi-web-ui": "^0.73.1",
+    "pi-meter": "^0.1.1",
+    "pi-model-auto": "^0.2.2",
     "playwright": "^1.55.0",
-    "typebox": "^1.0.0"
+    "typebox": "^1.0.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.23.13",
     "typescript": "^5.9.0"
   }

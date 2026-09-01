@@ -3,7 +3,8 @@ import type { ActionName, Expectation, WaitSpec } from "../domain/types.ts";
 import { AgentError } from "../domain/types.ts";
 import type { ExtensionAPI, ExtensionContext } from "../pi-api.ts";
 import { textResult } from "../pi-api.ts";
-import { BrowserSession, parseStartArgs, type ActionInput } from "../session.ts";
+import { parseStartArgs, type ActionInput } from "../session.ts";
+import type { SessionHandle } from "../host/session-handle.ts";
 
 function stringify(value: unknown): string {
   return JSON.stringify(value, null, 2);
@@ -30,7 +31,7 @@ function expectParam() {
   );
 }
 
-export function registerBrowserTools(pi: ExtensionAPI, session: BrowserSession): void {
+export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): void {
   const wrap = (
     name: string,
     execute: (params: Record<string, unknown>, ctx: ExtensionContext) => Promise<unknown>,
@@ -275,7 +276,7 @@ export function registerBrowserTools(pi: ExtensionAPI, session: BrowserSession):
   });
 }
 
-export function registerBrowserCommands(pi: ExtensionAPI, session: BrowserSession): void {
+export function registerBrowserCommands(pi: ExtensionAPI, session: SessionHandle): void {
   const notify = (ctx: ExtensionContext, message: string) => {
     ctx.ui.notify(message, "info");
   };

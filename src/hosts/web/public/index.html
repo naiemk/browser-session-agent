@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Browser session operator</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="top">
+        <div class="brand">
+          <strong>Browser operator</strong>
+          <span id="node-pill" class="pill off">node offline</span>
+          <span id="takeover-pill" class="pill hidden">takeover</span>
+        </div>
+        <div class="controls">
+          <label>
+            Model
+            <select id="model"></select>
+          </label>
+          <label>
+            Thinking
+            <select id="thinking">
+              <option value="off">off</option>
+              <option value="minimal">minimal</option>
+              <option value="low">low</option>
+              <option value="medium" selected>medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+            </select>
+          </label>
+        </div>
+      </header>
+      <main>
+        <section class="chat-pane">
+          <div id="commands" class="commands"></div>
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <div id="cards" class="cards"></div>
+          <form id="composer" class="composer">
+            <textarea id="input" rows="2" placeholder="Message the operator, or /browser-start …"></textarea>
+            <div class="composer-actions">
+              <button type="button" id="abort">Abort</button>
+              <button type="submit">Send</button>
+            </div>
+          </form>
+        </section>
+        <aside class="live-pane">
+          <div class="live-head">
+            <span>Live view</span>
+            <small id="live-hint">Read-only until takeover</small>
+          </div>
+          <div id="live" class="live">
+            <img id="frame" alt="Desktop Chromium screencast" />
+            <p id="live-empty">Waiting for the desktop node…</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

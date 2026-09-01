@@ -1,0 +1,16 @@
+# API site on the VPS. LLM HTTP only — no Playwright, no Chromium image.
+name: browser-session-api
+runtime: node22
+command: ["node", "--import", "tsx", "src/hosts/web/cli.ts"]
+port: 8787
+health: /healthz
+env:
+  - BSA_TOKEN
+  - ANTHROPIC_API_KEY
+  - OPENAI_API_KEY
+  - OPENROUTER_API_KEY
+  - AI_GATEWAY_API_KEY
+volumes:
+  - ~/.pi/agent:/root/.pi/agent
+playwright: false
+chromium: false

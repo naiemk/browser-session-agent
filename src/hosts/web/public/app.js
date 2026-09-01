@@ -1,0 +1,256 @@
+const params = new URLSearchParams(location.search);
+const token = params.get("token") || localStorage.getItem("bsa_token") || "";
+if (params.get("token")) localStorage.setItem("bsa_token", params.get("token"));
+
+const proto = location.protocol === "https:" ? "wss" : "ws";
+const socket = new WebSocket(`${proto}://${location.host}/chat`);
+
+const messagesEl = document.getElementById("messages");
+const cardsEl = document.getElementById("cards");
+const commandsEl = document.getElementById("commands");
+const inputEl = document.getElementById("input");
+const modelEl = document.getElementById("model");
+const thinkingEl = document.getElementById("thinking");
+const nodePill = document.getElementById("node-pill");
+const takeoverPill = document.getElementById("takeover-pill");
+const liveEl = document.getElementById("live");
+const frameEl = document.getElementById("frame");
+const liveHint = document.getElementById("live-hint");
+
+const COMMANDS = [
+  ["browser-start", "Start a run"],
+  ["browser-status", "Status"],
+  ["browser-runs", "Runs"],
+  ["browser-pause", "Pause"],
+  ["browser-resume", "Resume"],
+  ["browser-takeover", "Takeover"],
+  ["browser-stop", "Stop"],
+  ["browser-knowledge", "Knowledge"],
+  ["browser-approve", "Approve"],
+];
+
+let takeover = false;
+let assistantBuf = "";
+
+function send(message) {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+function addMessage(role, text, extraClass = "") {
+  const el = document.createElement("div");
+  el.className = `msg ${role} ${extraClass}`.trim();
+  el.textContent = text;
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return el;
+}
+
+function setNode(connected, reason) {
+  nodePill.textContent = connected ? "node online" : reason || "node offline";
+  nodePill.className = `pill ${connected ? "on" : "off"}`;
+}
+
+function setTakeover(on) {
+  takeover = on;
+  takeoverPill.classList.toggle("hidden", !on);
+  liveHint.textContent = on ? "Input enabled — complete the step, then /browser-resume" : "Read-only until takeover";
+}
+
+COMMANDS.forEach(([name, label]) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = `/${name}`;
+  button.title = label;
+  button.addEventListener("click", async () => {
+    if (name === "browser-start") {
+      const goal = prompt("Goal for this browser run?");
+      if (!goal) return;
+      const url = prompt("Optional start URL") || "";
+      send({ type: "command", name, args: url ? `--url ${url} ${goal}` : goal });
+      addMessage("user", `/${name} ${url ? `--url ${url} ` : ""}${goal}`);
+      return;
+    }
+    if (name === "browser-approve") {
+      const id = prompt("Knowledge id to approve?");
+      if (!id) return;
+      send({ type: "command", name, args: id });
+      addMessage("user", `/${name} ${id}`);
+      return;
+    }
+    send({ type: "command", name, args: "" });
+    addMessage("user", `/${name}`);
+  });
+  commandsEl.appendChild(button);
+});
+
+socket.addEventListener("open", () => send({ type: "hello", token }));
+
+socket.addEventListener("message", (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === "hello_ok") return;
+  if (msg.type === "models") {
+    modelEl.innerHTML = "";
+    for (const model of msg.models) {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.label;
+      modelEl.appendChild(option);
+    }
+    return;
+  }
+  if (msg.type === "stateSync") {
+    if (msg.state.model) modelEl.value = msg.state.model;
+    if (msg.state.thinking) thinkingEl.value = msg.state.thinking;
+    setNode(msg.state.nodeConnected);
+    setTakeover(msg.state.takeover);
+    return;
+  }
+  if (msg.type === "nodeStatus") {
+    setNode(msg.connected, msg.reason);
+    setTakeover(msg.takeover);
+    if (!msg.connected) addMessage("system", msg.reason || "Browser node disconnected");
+    return;
+  }
+  if (msg.type === "notify") {
+    addMessage("system", msg.message);
+    return;
+  }
+  if (msg.type === "error") {
+    addMessage("system", msg.message, "error");
+    return;
+  }
+  if (msg.type === "ui_request") {
+    renderCard(msg);
+    return;
+  }
+  if (msg.type === "frame") {
+    frameEl.src = `data:image/jpeg;base64,${msg.jpeg}`;
+    liveEl.classList.add("has-frame");
+    return;
+  }
+  if (msg.type === "agentEvent") {
+    const ev = msg.event || {};
+    if (ev.type === "text_delta") {
+      assistantBuf += ev.text || "";
+      const last = messagesEl.querySelector(".msg.assistant:last-child");
+      if (last) last.textContent = assistantBuf;
+      else addMessage("assistant", assistantBuf);
+      return;
+    }
+    if (ev.type === "agent_end" || ev.type === "turn_end") assistantBuf = "";
+    if (ev.toolName) addMessage("tool", `${ev.toolName}`);
+    if (ev.type === "node_event" && ev.message) addMessage("system", ev.message);
+  }
+});
+
+document.getElementById("composer").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const text = inputEl.value.trim();
+  if (!text) return;
+  addMessage("user", text);
+  send({ type: "prompt", text });
+  inputEl.value = "";
+  assistantBuf = "";
+});
+
+document.getElementById("abort").addEventListener("click", () => send({ type: "abort" }));
+modelEl.addEventListener("change", () => send({ type: "setModel", model: modelEl.value }));
+thinkingEl.addEventListener("change", () => send({ type: "setThinking", level: thinkingEl.value }));
+
+inputEl.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    document.getElementById("composer").requestSubmit();
+  }
+});
+
+function renderCard(request) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.dataset.requestId = request.requestId;
+  const title = document.createElement("h3");
+  title.textContent = request.title || request.kind;
+  card.appendChild(title);
+  if (request.message) {
+    const p = document.createElement("p");
+    p.textContent = request.message;
+    card.appendChild(p);
+  }
+  const row = document.createElement("div");
+  row.className = "row";
+  const finish = (value) => {
+    send({ type: "ui_answer", requestId: request.requestId, value });
+    addMessage("user", String(value));
+    card.remove();
+  };
+  if (request.kind === "confirm") {
+    for (const [label, value] of [["Yes", true], ["No", false]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", () => finish(value));
+      row.appendChild(button);
+    }
+  } else if (request.kind === "select") {
+    for (const option of request.options || []) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = option;
+      button.addEventListener("click", () => finish(option));
+      row.appendChild(button);
+    }
+  } else {
+    const field = document.createElement("input");
+    field.placeholder = request.placeholder || request.message || "";
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.textContent = "Answer";
+    submit.addEventListener("click", () => finish(field.value));
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") finish(field.value);
+    });
+    row.append(field, submit);
+  }
+  card.appendChild(row);
+  cardsEl.appendChild(card);
+}
+
+function point(event) {
+  const rect = frameEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: (event.clientX - rect.left) / rect.width,
+    y: (event.clientY - rect.top) / rect.height,
+  };
+}
+
+function sendInput(event) {
+  if (!takeover) return;
+  send({ type: "takeover_input", event });
+}
+
+frameEl.addEventListener("mousemove", (event) => {
+  const p = point(event);
+  if (p) sendInput({ kind: "mouse", action: "move", x: p.x, y: p.y });
+});
+frameEl.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+  const p = point(event);
+  if (p) sendInput({ kind: "mouse", action: "down", x: p.x, y: p.y, button: event.button });
+});
+frameEl.addEventListener("mouseup", (event) => {
+  const p = point(event);
+  if (p) sendInput({ kind: "mouse", action: "up", x: p.x, y: p.y, button: event.button });
+});
+frameEl.addEventListener("wheel", (event) => {
+  const p = point(event);
+  if (p) sendInput({ kind: "mouse", action: "wheel", x: p.x, y: p.y, deltaY: event.deltaY });
+}, { passive: true });
+window.addEventListener("keydown", (event) => {
+  if (!takeover || event.target !== document.body && event.target !== frameEl) return;
+  sendInput({ kind: "key", action: "down", key: event.key, text: event.key.length === 1 ? event.key : undefined });
+});
+window.addEventListener("keyup", (event) => {
+  if (!takeover) return;
+  sendInput({ kind: "key", action: "up", key: event.key });
+});

@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
 import { AgentError, type Observation, type WaitSpec, type WorkerInfo } from "../domain/types.ts";
 import { shortId } from "../domain/ids.ts";
 import { dataPaths, ensureDir } from "../store/paths.ts";
@@ -15,6 +15,18 @@ export interface WorkerOptions {
   headless?: boolean;
   startUrl?: string;
 }
+
+/** Pointer/key events from the remote live view. x/y are 0–1 or CSS pixels. */
+export type WorkerInputEvent =
+  | {
+      kind: "mouse";
+      action: "move" | "down" | "up" | "wheel";
+      x: number;
+      y: number;
+      button?: number;
+      deltaY?: number;
+    }
+  | { kind: "key"; action: "down" | "up"; key: string; text?: string; modifiers?: number };
 
 function childPids(): number[] {
   try {
@@ -78,6 +90,7 @@ export class BrowserWorker {
   private readonly consoleErrors = new Map<string, string[]>();
   private readonly lastObservation = new Map<string, Observation>();
   private info: WorkerInfo | null = null;
+  private screencast: { client: CDPSession; tabId: string } | null = null;
 
   constructor(options: WorkerOptions) {
     this.home = options.home;
@@ -107,9 +120,10 @@ export class BrowserWorker {
       this.launchedHere = true;
       return this.info!;
     } catch (err) {
-      if (this.context) {
+      const launched = this.context as BrowserContext | null;
+      if (launched) {
         try {
-          await this.context.close();
+          await launched.close();
         } catch {
           // ignore
         }
@@ -141,6 +155,7 @@ export class BrowserWorker {
   }
 
   async stop(): Promise<void> {
+    await this.stopScreencast().catch(() => undefined);
     const pids = [...this.trackedPids, this.info?.pid ?? 0, chromePid(this.browser)].filter(
       (pid) => pid > 0 && pid !== process.pid,
     );
@@ -201,6 +216,13 @@ export class BrowserWorker {
 
   async screenshot(tabId: string | undefined, path: string): Promise<void> {
     await this.requirePage(tabId).screenshot({ path, fullPage: false });
+  }
+
+  async screenshotJpeg(tabId?: string): Promise<{ jpeg: string; tabId: string }> {
+    const page = this.requirePage(tabId);
+    const id = this.idOf(page);
+    const buf = await page.screenshot({ type: "jpeg", quality: 50 });
+    return { jpeg: buf.toString("base64"), tabId: id };
   }
 
   async navigate(tabId: string | undefined, url: string): Promise<void> {
@@ -325,6 +347,81 @@ export class BrowserWorker {
 
   controlInputType(tabId: string, ref: string): string | undefined {
     return this.lastObservation.get(tabId)?.controls.find((c) => c.ref === ref)?.inputType;
+  }
+
+  async startScreencast(
+    onFrame: (jpeg: string, tabId: string) => void,
+    tabId?: string,
+  ): Promise<string> {
+    await this.stopScreencast();
+    const page = this.requirePage(tabId);
+    const id = this.idOf(page);
+    const client = await page.context().newCDPSession(page);
+    await client.send("Page.startScreencast", {
+      format: "jpeg",
+      quality: 45,
+      maxWidth: 1280,
+      maxHeight: 720,
+      everyNthFrame: 2,
+    });
+    client.on("Page.screencastFrame", (event: { data: string; sessionId: number }) => {
+      onFrame(event.data, id);
+      void client.send("Page.screencastFrameAck", { sessionId: event.sessionId }).catch(() => undefined);
+    });
+    this.screencast = { client, tabId: id };
+    return id;
+  }
+
+  async stopScreencast(): Promise<void> {
+    const current = this.screencast;
+    this.screencast = null;
+    if (!current) return;
+    try {
+      await current.client.send("Page.stopScreencast");
+    } catch {
+      // already stopped
+    }
+    try {
+      await current.client.detach();
+    } catch {
+      // already detached
+    }
+  }
+
+  async applyInput(event: WorkerInputEvent, tabId?: string): Promise<void> {
+    const page = this.requirePage(tabId ?? this.screencast?.tabId);
+    const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    if (event.kind === "mouse") {
+      const x = event.x <= 1 ? event.x * viewport.width : event.x;
+      const y = event.y <= 1 ? event.y * viewport.height : event.y;
+      const button = event.button === 2 ? "right" : event.button === 1 ? "middle" : "left";
+      if (event.action === "move") {
+        await page.mouse.move(x, y);
+        return;
+      }
+      if (event.action === "down") {
+        await page.mouse.move(x, y);
+        await page.mouse.down({ button });
+        return;
+      }
+      if (event.action === "up") {
+        await page.mouse.move(x, y);
+        await page.mouse.up({ button });
+        return;
+      }
+      await page.mouse.move(x, y);
+      await page.mouse.wheel(0, event.deltaY ?? 120);
+      return;
+    }
+    if (event.action === "down") {
+      if (event.text) {
+        await page.keyboard.insertText(event.text);
+        return;
+      }
+      await page.keyboard.down(event.key);
+      return;
+    }
+    await page.keyboard.up(event.key);
   }
 
   private async launchManaged(): Promise<void> {

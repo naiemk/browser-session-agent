@@ -1,0 +1,32 @@
+# VPS packager: ui + api + gateway only.
+# Do not add a nodes role. Chromium runs on the operator desktop.
+version: 1
+sites:
+  - name: ui
+    role: ui
+    root: /srv/browser-session/ui
+  - name: api
+    role: api
+    image: browser-session-api
+    port: 8787
+    env:
+      BSA_TOKEN: ${BSA_TOKEN}
+      PORT: "8787"
+      # LLM keys belong here. No PLAYWRIGHT / CHROME vars.
+  - name: gateway
+    role: gateway
+    tls: true
+    routes:
+      - host: ${BSA_HOST}
+        paths:
+          - prefix: /chat
+            upstream: api
+            websocket: true
+          - prefix: /node
+            upstream: api
+            websocket: true
+          - prefix: /healthz
+            upstream: api
+          - prefix: /
+            upstream: ui
+nodes: []
