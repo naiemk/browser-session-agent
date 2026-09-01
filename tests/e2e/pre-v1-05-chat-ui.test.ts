@@ -3,10 +3,10 @@ import { afterEach, describe, it } from "node:test";
 import { chromium } from "playwright";
 import {
   closeV1,
+  connectHelper,
+  exchangePair,
   issuePairCode,
-  spawnHelper,
   startV1Api,
-  stopChild,
   uniqueUser,
   withFixture,
   type V1World,
@@ -24,7 +24,6 @@ describe("PRE-05-T01 UI on same origin (no ?token=)", () => {
     worlds.push(world);
     const user = await uniqueUser();
     const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-    let child: ReturnType<typeof spawnHelper> | undefined;
     try {
       const page = await browser.newPage();
       await page.goto(world.origin, { waitUntil: "domcontentloaded" });
@@ -32,21 +31,22 @@ describe("PRE-05-T01 UI on same origin (no ?token=)", () => {
       await page.locator("#auth-email").fill(user.email);
       await page.locator("#auth-password").fill(user.password);
       await page.locator("#auth-register").click();
+      await page.locator("#auth").waitFor({ state: "hidden", timeout: 10_000 });
       await page.locator("#composer").waitFor();
       assert.equal(new URL(page.url()).search.includes("token="), false);
 
       const session = (await page.context().cookies()).find((c) => c.name === "bsa_session");
       assert.ok(session);
-      const code = await issuePairCode(world.origin, `bsa_session=${session.value}`);
-      child = spawnHelper(world.api.port, world.home, { BSA_PAIR_CODE: code });
+      const cookie = `bsa_session=${session.value}`;
+      const { deviceToken } = await exchangePair(world.origin, await issuePairCode(world.origin, cookie));
+      connectHelper(world, deviceToken);
       await page.locator("#node-pill").filter({ hasText: "Connected" }).waitFor({ timeout: 20_000 });
 
-      page.on("dialog", (dialog) => {
-        const message = dialog.message();
-        if (/goal/i.test(message)) void dialog.accept("apply");
-        else void dialog.accept(`${world.fixtureOrigin}/apply`);
-      });
-      await page.getByRole("button", { name: "/browser-start" }).click();
+      await page.locator("#input").fill(
+        `/browser-start --url ${world.fixtureOrigin}/apply apply`,
+      );
+      await page.locator("#composer button[type=submit]").click();
+      await page.locator(".msg.system").filter({ hasText: /Started/ }).waitFor({ timeout: 20_000 });
       await page.locator("#live.has-frame").waitFor({ timeout: 20_000 });
       const src = await page.locator("#frame").getAttribute("src");
       assert.ok(src?.startsWith("data:image/jpeg"));
@@ -54,10 +54,9 @@ describe("PRE-05-T01 UI on same origin (no ?token=)", () => {
       await page.getByRole("button", { name: "/browser-takeover" }).click();
       await page.locator("#takeover-pill:not(.hidden)").waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "/browser-resume" }).click();
-      await page.locator("#takeover-pill.hidden").waitFor({ timeout: 10_000 });
+      await page.locator("#takeover-pill").waitFor({ state: "hidden", timeout: 10_000 });
       assert.equal(new URL(page.url()).search.includes("token="), false);
     } finally {
-      if (child) await stopChild(child);
       await browser.close();
     }
   });

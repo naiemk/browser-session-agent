@@ -284,22 +284,34 @@ export class OperatorRuntime {
             event: { type: "tool_call", toolName: "browser_inspect", tools },
           });
           if (inspect) {
-            const result = await inspect.execute(
-              "fake-pi",
-              {},
-              undefined,
-              undefined,
-              extensionContext(this.host),
-            );
-            this.send({
-              type: "agentEvent",
-              event: {
-                type: "tool_result",
-                toolName: "browser_inspect",
-                isError: Boolean(result.isError),
-                text: result.content.map((part) => ("text" in part ? part.text : "")).join(""),
-              },
-            });
+            try {
+              const result = await inspect.execute(
+                "fake-pi",
+                { runId: this.handle.currentRunId ?? undefined },
+                undefined,
+                undefined,
+                extensionContext(this.host),
+              );
+              this.send({
+                type: "agentEvent",
+                event: {
+                  type: "tool_result",
+                  toolName: "browser_inspect",
+                  isError: Boolean(result.isError),
+                  text: result.content.map((part) => ("text" in part ? part.text : "")).join(""),
+                },
+              });
+            } catch (err) {
+              this.send({
+                type: "agentEvent",
+                event: {
+                  type: "tool_result",
+                  toolName: "browser_inspect",
+                  isError: true,
+                  text: err instanceof Error ? err.message : String(err),
+                },
+              });
+            }
           }
         }
         this.send({ type: "agentEvent", event: { type: "turn_end" } });

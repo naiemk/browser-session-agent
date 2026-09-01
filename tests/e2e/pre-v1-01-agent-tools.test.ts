@@ -28,6 +28,7 @@ describe("PRE-01-T02 prompt uses browser tools when helper connected", () => {
         args: `--url ${world.fixtureOrigin}/apply inspect the page`,
       });
       await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Started"), 15_000);
+      assert.equal(hub.connected, true);
 
       const from = chat.inbox.length;
       chat.send({ type: "prompt", text: "inspect the page" });
