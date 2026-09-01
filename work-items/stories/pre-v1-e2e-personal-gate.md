@@ -1,6 +1,6 @@
 # PRE-E2E: Personal Production Gate
 
-Status: planned
+Status: done
 
 As the product, Pre-V1 exit criteria are one CI-runnable path without a live LLM, plus config contracts and a stable combobox scroll path.
 

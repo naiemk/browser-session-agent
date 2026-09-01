@@ -3,7 +3,7 @@ id: PRE-06-T01
 title: vibed-infra host + no Chromium on API
 story: PRE-06
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-06-T01 — vibed-infra host + no Chromium on API

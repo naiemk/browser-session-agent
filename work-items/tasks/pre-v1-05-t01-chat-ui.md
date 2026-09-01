@@ -3,7 +3,7 @@ id: PRE-05-T01
 title: UI on same origin (no ?token=)
 story: PRE-05
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-05-T01 — UI on same origin (no `?token=`)

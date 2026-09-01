@@ -3,7 +3,7 @@ id: PRE-02-T02
 title: Registration lock
 story: PRE-02
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-02-T02 — Registration lock

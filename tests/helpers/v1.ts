@@ -23,14 +23,23 @@ export function cookieFromResponse(res: Response): string {
   return raw.split(";")[0] ?? "";
 }
 
-export async function startV1Api(options: { token?: string } = {}): Promise<V1World> {
-  process.env.BSA_NO_PI = "1";
+export async function startV1Api(
+  options: { token?: string; requirePaid?: boolean; fakePi?: boolean } = {},
+): Promise<V1World> {
+  if (options.fakePi) {
+    delete process.env.BSA_NO_PI;
+    process.env.BSA_FAKE_PI = "1";
+  } else {
+    process.env.BSA_NO_PI = "1";
+    delete process.env.BSA_FAKE_PI;
+  }
   process.env.BSA_ALLOW_MARK_PAID = "1";
   const { home, cleanup } = await tempHome();
   const api = await startOperatorApi({
     host: "127.0.0.1",
     token: options.token,
     agentDir: home,
+    requirePaid: options.requirePaid ?? true,
   });
   return {
     api,
@@ -205,6 +214,21 @@ export async function connectPaidConsumer(world: V1World) {
   const user = await uniqueUser();
   const { cookie, account } = await register(world.origin, user.email, user.password);
   await markPaid(world.origin, cookie);
+  const { deviceToken } = await exchangePair(world.origin, await issuePairCode(world.origin, cookie));
+  connectHelper(world, deviceToken);
+  const chat = await chatClient(world.api.port, cookie);
+  await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
+  return {
+    cookie,
+    account,
+    chat,
+    hub: world.api.registry.hubFor(account.id),
+  };
+}
+
+export async function connectUnpaidConsumer(world: V1World) {
+  const user = await uniqueUser();
+  const { cookie, account } = await register(world.origin, user.email, user.password);
   const { deviceToken } = await exchangePair(world.origin, await issuePairCode(world.origin, cookie));
   connectHelper(world, deviceToken);
   const chat = await chatClient(world.api.port, cookie);

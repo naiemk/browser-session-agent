@@ -3,7 +3,7 @@ id: PRE-01-T01
 title: Pi starts when BSA_NO_PI unset
 story: PRE-01
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-01-T01 — Pi starts when `BSA_NO_PI` unset

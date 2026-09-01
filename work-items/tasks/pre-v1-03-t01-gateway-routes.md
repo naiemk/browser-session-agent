@@ -3,7 +3,7 @@ id: PRE-03-T01
 title: Gateway API prefixes
 story: PRE-03
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-03-T01 — Gateway API prefixes

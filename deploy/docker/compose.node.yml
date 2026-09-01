@@ -1,4 +1,5 @@
 # Desktop: one Playwright Chromium in Docker, outbound WS to the API.
+# Pair with BSA_PAIR_CODE (or a stored device token under BSA_HOME). BSA_TOKEN is optional.
 name: bsa-node
 services:
   node:
@@ -7,8 +8,9 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.node
     environment:
-      BSA_API_URL: ${BSA_API_URL:?set BSA_API_URL e.g. wss://api.example.com/node}
-      BSA_TOKEN: ${BSA_TOKEN:?set BSA_TOKEN}
+      BSA_API_URL: ${BSA_API_URL:?set BSA_API_URL e.g. wss://agent.trustless-commerce.com/node}
+      BSA_PAIR_CODE: ${BSA_PAIR_CODE:-}
+      BSA_TOKEN: ${BSA_TOKEN:-}
       BSA_HOME: /data
       BSA_HEADLESS: ${BSA_HEADLESS:-1}
       DISPLAY: ${DISPLAY:-}

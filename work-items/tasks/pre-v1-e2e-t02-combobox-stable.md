@@ -3,7 +3,7 @@ id: PRE-E2E-T02
 title: Combobox scroll-only stable
 story: PRE-E2E
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-E2E-T02 — Combobox scroll-only stable

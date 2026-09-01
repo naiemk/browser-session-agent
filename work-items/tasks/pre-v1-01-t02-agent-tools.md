@@ -3,7 +3,7 @@ id: PRE-01-T02
 title: Prompt uses browser tools when helper connected
 story: PRE-01
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-01-T02 — Prompt uses browser tools when helper connected

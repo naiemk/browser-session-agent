@@ -3,7 +3,7 @@ id: PRE-03-T02
 title: Secure cookie on HTTPS
 story: PRE-03
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-03-T02 — Secure cookie on HTTPS

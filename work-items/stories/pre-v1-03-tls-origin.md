@@ -1,6 +1,6 @@
 # PRE-03: TLS Origin agent.trustless-commerce.com
 
-Status: planned
+Status: done
 
 As a user, I open https://agent.trustless-commerce.com, sign in with a secure cookie, and chat and pair over TLS.
 

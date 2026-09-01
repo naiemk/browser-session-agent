@@ -3,7 +3,7 @@ id: PRE-E2E-T01
 title: Unpaid onboarding gate
 story: PRE-E2E
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-E2E-T01 — Unpaid onboarding gate

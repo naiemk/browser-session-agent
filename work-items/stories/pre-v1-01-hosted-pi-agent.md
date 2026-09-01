@@ -1,6 +1,6 @@
 # PRE-01: Hosted Pi Agent
 
-Status: planned
+Status: done
 
 As the operator, when I send a goal in chat on the hosted site, Pi (not a stub) inspects and acts through the helper using the same tools as V1.
 

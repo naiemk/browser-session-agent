@@ -1,6 +1,6 @@
 # PRE-02: Personal Access Without Billing
 
-Status: planned
+Status: done
 
 As the only user, I register or sign in and start browser runs with no payment step. The public host is not an open signup.
 

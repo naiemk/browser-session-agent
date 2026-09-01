@@ -3,7 +3,7 @@ id: PRE-02-T01
 title: Unpaid start-run allowed
 story: PRE-02
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-02-T01 — Unpaid start-run allowed

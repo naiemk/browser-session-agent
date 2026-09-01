@@ -1,6 +1,6 @@
 # PRE-06: VPS Pack (vibed-infra)
 
-Status: planned
+Status: done
 
 As the operator, I apply the vibed-infra pack on the VPS and get TLS UI + API + gateway for `agent.trustless-commerce.com`, with LLM keys and persisted data, and no Chromium on that box.
 

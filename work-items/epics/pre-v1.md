@@ -1,6 +1,6 @@
 # Epic: Pre-V1 Personal Production
 
-Status: planned (0% — work items only; no Pre-V1 tasks implemented)
+Status: done (100% — all 12 tasks have implementations and passing E2Es)
 
 ## Outcome
 
@@ -32,20 +32,20 @@ This is the product boundary in `docs/pre-v1.md`: V1 minus billing and OS packag
 
 | Task | Story | Status |
 | --- | --- | --- |
-| [PRE-01-T01](../tasks/pre-v1-01-t01-pi-wired.md) | PRE-01 | planned |
-| [PRE-01-T02](../tasks/pre-v1-01-t02-agent-tools.md) | PRE-01 | planned |
-| [PRE-02-T01](../tasks/pre-v1-02-t01-unpaid-start.md) | PRE-02 | planned |
-| [PRE-02-T02](../tasks/pre-v1-02-t02-register-lock.md) | PRE-02 | planned |
-| [PRE-03-T01](../tasks/pre-v1-03-t01-gateway-routes.md) | PRE-03 | planned |
-| [PRE-03-T02](../tasks/pre-v1-03-t02-tls-cookie.md) | PRE-03 | planned |
-| [PRE-04-T01](../tasks/pre-v1-04-t01-docker-helper.md) | PRE-04 | planned |
-| [PRE-05-T01](../tasks/pre-v1-05-t01-chat-ui.md) | PRE-05 | planned |
-| [PRE-05-T02](../tasks/pre-v1-05-t02-harness-plan-cards.md) | PRE-05 | planned |
-| [PRE-06-T01](../tasks/pre-v1-06-t01-vibed-pack.md) | PRE-06 | planned |
-| [PRE-E2E-T01](../tasks/pre-v1-e2e-t01-onboarding.md) | PRE-E2E | planned |
-| [PRE-E2E-T02](../tasks/pre-v1-e2e-t02-combobox-stable.md) | PRE-E2E | planned |
+| [PRE-01-T01](../tasks/pre-v1-01-t01-pi-wired.md) | PRE-01 | done |
+| [PRE-01-T02](../tasks/pre-v1-01-t02-agent-tools.md) | PRE-01 | done |
+| [PRE-02-T01](../tasks/pre-v1-02-t01-unpaid-start.md) | PRE-02 | done |
+| [PRE-02-T02](../tasks/pre-v1-02-t02-register-lock.md) | PRE-02 | done |
+| [PRE-03-T01](../tasks/pre-v1-03-t01-gateway-routes.md) | PRE-03 | done |
+| [PRE-03-T02](../tasks/pre-v1-03-t02-tls-cookie.md) | PRE-03 | done |
+| [PRE-04-T01](../tasks/pre-v1-04-t01-docker-helper.md) | PRE-04 | done |
+| [PRE-05-T01](../tasks/pre-v1-05-t01-chat-ui.md) | PRE-05 | done |
+| [PRE-05-T02](../tasks/pre-v1-05-t02-harness-plan-cards.md) | PRE-05 | done |
+| [PRE-06-T01](../tasks/pre-v1-06-t01-vibed-pack.md) | PRE-06 | done |
+| [PRE-E2E-T01](../tasks/pre-v1-e2e-t01-onboarding.md) | PRE-E2E | done |
+| [PRE-E2E-T02](../tasks/pre-v1-e2e-t02-combobox-stable.md) | PRE-E2E | done |
 
-Progress is 0/12 tasks. The unpaid onboarding E2E is the Pre-V1 CI gate once implemented. Live host smoke is manual.
+Progress is 12/12 tasks. `tests/e2e/pre-v1-e2e-onboarding.test.ts` is the Pre-V1 CI gate. Live host smoke is manual.
 
 ## Spec pointers
 

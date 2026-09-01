@@ -1,6 +1,6 @@
 # PRE-04: Docker Playwright Helper
 
-Status: planned
+Status: done
 
 As the operator, I pull the node image, pair this machine, see **Connected**, and survive restart without `BSA_TOKEN` and without a Win/Mac installer.
 

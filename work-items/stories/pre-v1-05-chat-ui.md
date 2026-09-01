@@ -1,6 +1,6 @@
 # PRE-05: Chat UI Is the Product
 
-Status: planned
+Status: done
 
 As the operator, the chat shell on the real origin is how I use the agent: sign in, Connected, live view, takeover, harness and plan actuals. The URL never has `token=`.
 

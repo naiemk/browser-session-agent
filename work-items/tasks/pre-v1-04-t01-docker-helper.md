@@ -3,7 +3,7 @@ id: PRE-04-T01
 title: Docker node pair without BSA_TOKEN
 story: PRE-04
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-04-T01 — Docker node pair without `BSA_TOKEN`

@@ -3,7 +3,7 @@ id: PRE-05-T02
 title: Harness + plan cards
 story: PRE-05
 epic: pre-v1
-status: planned
+status: done
 ---
 
 # PRE-05-T02 — Harness + plan cards
