@@ -1,6 +1,6 @@
 # Architecture — MVP Browser Operations Agent
 
-This is the working spec for the MVP. V1 capabilities (supervisor graph, parallel subagents, email) are out of scope.
+This is the working spec for the MVP core. Product V1 (hosted web + Windows/Mac helper, seamless pairing) is `docs/v1.md`. Supervisor graph / parallel subagents are V2.
 
 ## Outcome
 
