@@ -161,6 +161,8 @@ export const BROWSER_TOOL_NAMES = [
   "browser_select",
   "browser_scroll",
   "browser_wait",
+  "browser_run_plan",
+  "browser_fill",
   "browser_ask_user",
   "browser_takeover",
   "browser_resume",

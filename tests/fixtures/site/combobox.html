@@ -1,5 +1,189 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head><title>Country</title></head>
-  <body><p>placeholder — replaced in V1-06</p></body>
+  <head>
+    <meta charset="utf-8" />
+    <title>Country</title>
+    <style>
+      #list {
+        display: none;
+        max-height: 96px;
+        overflow: auto;
+        border: 1px solid #333;
+        width: 280px;
+        position: relative;
+      }
+      [role="option"] {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 32px;
+        line-height: 32px;
+        padding: 0 8px;
+        box-sizing: border-box;
+      }
+      [role="option"]:hover {
+        background: #eef;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Country</h1>
+    <label>
+      Country
+      <input
+        id="country"
+        role="combobox"
+        aria-label="Country"
+        aria-autocomplete="list"
+        aria-expanded="false"
+        aria-controls="list"
+        autocomplete="off"
+      />
+    </label>
+    <div id="list" role="listbox" aria-label="Suggestions"></div>
+    <p>Committed: <span id="committed"></span></p>
+    <script>
+      const ITEM_H = 32;
+      const VISIBLE = 3;
+      const mode = new URLSearchParams(location.search).get("mode") || "united-states-first";
+      const fillers = [
+        "Albania",
+        "Belgium",
+        "Canada",
+        "Denmark",
+        "Egypt",
+        "France",
+        "Germany",
+        "Hungary",
+        "Iceland",
+        "Japan",
+        "Kenya",
+        "Lithuania",
+        "Mexico",
+        "Norway",
+        "Oman",
+      ];
+      const lists = {
+        "united-states-first": ["United States", "United States of America", "Canada", "Mexico", "USA", ...fillers],
+        "usa-only": [...fillers, "USA", "Zambia"],
+        "scroll-only": [...fillers, "United States of America", "United States"],
+        none: [...fillers, "Zambia"],
+      };
+      const all = lists[mode] || lists["united-states-first"];
+      const country = document.getElementById("country");
+      const list = document.getElementById("list");
+      const committedEl = document.getElementById("committed");
+      let filter = "";
+      let committed = "";
+      let applying = false;
+      let lastStart = -1;
+      list.style.height = ITEM_H * VISIBLE + "px";
+      const scrollDesc =
+        Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop") ||
+        Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+
+      function filtered() {
+        if (mode === "none") return all;
+        if (filter) {
+          if (mode === "scroll-only") {
+            lastStart = -1;
+            return [];
+          }
+          const hits = all.filter((o) => o.toLowerCase().includes(filter.toLowerCase()));
+          if (mode === "usa-only") return hits.filter((o) => o === "USA");
+          return hits;
+        }
+        return all;
+      }
+
+      function render() {
+        const items = filtered();
+        const top = scrollDesc.get.call(list);
+        const start = Math.floor(top / ITEM_H);
+        if (start === lastStart && list.querySelector('[role="option"]')) return;
+        lastStart = start;
+        const inner = document.createElement("div");
+        inner.style.height = Math.max(items.length * ITEM_H, ITEM_H) + "px";
+        inner.style.position = "relative";
+        items.slice(start, start + VISIBLE + 1).forEach((name, i) => {
+          const opt = document.createElement("div");
+          opt.setAttribute("role", "option");
+          opt.textContent = name;
+          opt.style.top = (start + i) * ITEM_H + "px";
+          opt.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            select(name);
+          });
+          inner.appendChild(opt);
+        });
+        list.innerHTML = "";
+        list.appendChild(inner);
+        scrollDesc.set.call(list, top);
+      }
+
+      function openList() {
+        lastStart = -1;
+        list.style.display = "block";
+        country.setAttribute("aria-expanded", "true");
+        render();
+      }
+
+      function closeList() {
+        applying = true;
+        list.style.display = "none";
+        country.setAttribute("aria-expanded", "false");
+        country.value = committed;
+        filter = "";
+        applying = false;
+      }
+
+      function select(name) {
+        applying = true;
+        committed = name;
+        committedEl.textContent = name;
+        country.value = name;
+        filter = "";
+        list.style.display = "none";
+        country.setAttribute("aria-expanded", "false");
+        applying = false;
+      }
+
+      country.addEventListener("focus", openList);
+      country.addEventListener("click", openList);
+      country.addEventListener("input", () => {
+        filter = country.value;
+        list.scrollTop = 0;
+        openList();
+      });
+      const valueDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      Object.defineProperty(country, "value", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return valueDesc.get.call(this);
+        },
+        set(next) {
+          valueDesc.set.call(this, next);
+          if (applying) return;
+          filter = String(next ?? "");
+          if (document.activeElement === country || list.style.display === "block") {
+            list.scrollTop = 0;
+            openList();
+          }
+        },
+      });
+      list.addEventListener("scroll", render);
+      Object.defineProperty(list, "scrollTop", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return scrollDesc.get.call(this);
+        },
+        set(next) {
+          scrollDesc.set.call(this, next);
+          render();
+        },
+      });
+    </script>
+  </body>
 </html>

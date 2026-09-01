@@ -8,7 +8,7 @@ import { PLAN_LIMITS, type PlanRuntime, type PlanWorld, type Step, type StepResu
 type Mode = "united-states-first" | "usa-only" | "scroll-only" | "none";
 
 class CountryComboboxRuntime implements PlanRuntime {
-  url = "https://jobs.example.test/apply";
+  url = "https://jobs.example.test/combobox";
   title = "Apply";
   open = false;
   filter = "";

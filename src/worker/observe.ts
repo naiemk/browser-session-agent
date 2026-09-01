@@ -22,7 +22,10 @@ const COLLECT_SCRIPT = `(() => {
     '[role="link"]',
     '[role="textbox"]',
     '[role="checkbox"]',
-    '[role="radio"]',
+    '[role="option"]',
+    '[role="listbox"]',
+    '[role="combobox"]',
+    '[role="listitem"]',
     '[contenteditable="true"]',
   ].join(",");
 

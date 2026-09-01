@@ -154,7 +154,7 @@ export class NodeHub implements RpcTransport {
       if (!pending) return;
       this.pending.delete(message.id);
       if (message.ok) pending.resolve(message.result);
-      else pending.reject(new Error(message.error ?? "RPC failed"));
+      else pending.reject(new AgentError(message.code ?? "rpc_error", message.error ?? "RPC failed"));
       return;
     }
     if (message.type === "frame") {

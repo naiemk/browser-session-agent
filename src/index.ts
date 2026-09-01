@@ -15,6 +15,7 @@ export {
   interpretPagePlan,
   validatePagePlan,
   selectCountryUnitedStates,
+  PlaywrightPlanRuntime,
   PLAN_LIMITS,
 } from "./plan/index.ts";
 export type { PagePlan, PlanResult, PlanRuntime, ProgressEvent } from "./plan/index.ts";

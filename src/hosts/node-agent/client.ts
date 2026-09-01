@@ -1,5 +1,6 @@
 import { hostname as osHostname } from "node:os";
 import WebSocket from "ws";
+import { AgentError } from "../../domain/types.ts";
 import { BrowserSession } from "../../session.ts";
 import type { ApiToNode, NodeToApi } from "../shared/protocol.ts";
 import { parseJsonMessage } from "../shared/protocol.ts";
@@ -41,6 +42,9 @@ export class NodeAgent {
       cwd: options.cwd,
       headless: options.headless,
     });
+    this.session.onPlanProgress = (event) => {
+      this.send({ type: "node_event", event: { ...event } });
+    };
   }
 
   start(): void {
@@ -156,6 +160,7 @@ export class NodeAgent {
           id: message.id,
           ok: false,
           error: err instanceof Error ? err.message : String(err),
+          code: err instanceof AgentError ? err.code : undefined,
         });
       }
     }

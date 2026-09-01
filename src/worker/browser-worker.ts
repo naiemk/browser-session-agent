@@ -236,7 +236,7 @@ export class BrowserWorker {
     if ((await locator.count()) === 0) {
       throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
     }
-    await locator.first().click();
+    await locator.first().click({ timeout: 5_000, force: true });
   }
 
   async type(tabId: string | undefined, ref: string, text: string): Promise<string | undefined> {
@@ -297,6 +297,25 @@ export class BrowserWorker {
       const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`);
       if ((await locator.count()) === 0) {
         throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
+      }
+      if (dy) {
+        await page.evaluate(
+          `(() => {
+            const el = document.querySelector('[data-bsa-ref="${cssEscape(ref)}"]');
+            if (!el) return;
+            const delta = ${Number(dy)};
+            const canScroll = (node) =>
+              node.scrollHeight > node.clientHeight + 2 || node.scrollWidth > node.clientWidth + 2;
+            let target = el;
+            if (!canScroll(target)) {
+              let parent = target.parentElement;
+              while (parent && !canScroll(parent)) parent = parent.parentElement;
+              if (parent) target = parent;
+            }
+            target.scrollTop += delta;
+          })()`,
+        );
+        return;
       }
       await locator.first().scrollIntoViewIfNeeded();
       return;

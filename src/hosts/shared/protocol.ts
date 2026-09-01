@@ -40,7 +40,7 @@ export type TakeoverInput =
 
 export type NodeToApi =
   | { type: "hello"; token?: string; deviceToken?: string; hostname?: string }
-  | { type: "rpc_result"; id: string; ok: boolean; result?: unknown; error?: string }
+  | { type: "rpc_result"; id: string; ok: boolean; result?: unknown; error?: string; code?: string }
   | { type: "frame"; jpeg: string; tabId?: string }
   | { type: "node_event"; event: Record<string, unknown> };
 

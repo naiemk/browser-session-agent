@@ -12,6 +12,10 @@ export async function dispatchSessionRpc(
       return session.inspect(args[0] as string | undefined, args[1] as string | undefined);
     case "act":
       return session.act(args[0] as Parameters<BrowserSession["act"]>[0]);
+    case "runPlan":
+      return session.runPlan(args[0], args[1] as string | undefined);
+    case "fill":
+      return session.fill(args[0] as Parameters<BrowserSession["fill"]>[0]);
     case "askUser":
       return session.askUser(
         String(args[0] ?? ""),
