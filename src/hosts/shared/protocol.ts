@@ -21,7 +21,7 @@ export type ChatServerMessage =
   | { type: "frame"; jpeg: string; tabId?: string }
   | { type: "nodeStatus"; connected: boolean; takeover: boolean; reason?: string }
   | { type: "models"; models: Array<{ id: string; label: string }> }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 export interface OperatorState {
   sessionId: string;
@@ -39,8 +39,8 @@ export type TakeoverInput =
   | { kind: "key"; action: "down" | "up"; key: string; text?: string; modifiers?: number };
 
 export type NodeToApi =
-  | { type: "hello"; token?: string; hostname?: string }
-  | { type: "rpc_result"; id: string; ok: boolean; result?: unknown; error?: string }
+  | { type: "hello"; token?: string; deviceToken?: string; hostname?: string }
+  | { type: "rpc_result"; id: string; ok: boolean; result?: unknown; error?: string; code?: string }
   | { type: "frame"; jpeg: string; tabId?: string }
   | { type: "node_event"; event: Record<string, unknown> };
 

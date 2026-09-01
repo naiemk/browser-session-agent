@@ -1,6 +1,6 @@
 # V1-06-T04: browser_fill sugar
 
-Status: planned  
+Status: done  
 Story: V1-06  
 Depends: V1-06-T03, V1-05-T02
 

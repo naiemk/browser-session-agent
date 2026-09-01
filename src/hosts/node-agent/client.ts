@@ -1,5 +1,6 @@
 import { hostname as osHostname } from "node:os";
 import WebSocket from "ws";
+import { AgentError } from "../../domain/types.ts";
 import { BrowserSession } from "../../session.ts";
 import type { ApiToNode, NodeToApi } from "../shared/protocol.ts";
 import { parseJsonMessage } from "../shared/protocol.ts";
@@ -8,6 +9,7 @@ import { applyTakeoverInput, dispatchSessionRpc } from "../shared/rpc-dispatch.t
 export interface NodeAgentOptions {
   apiUrl: string;
   token?: string;
+  deviceToken?: string;
   home?: string;
   cwd?: string;
   headless?: boolean;
@@ -19,6 +21,7 @@ export class NodeAgent {
   readonly session: BrowserSession;
   private readonly apiUrl: string;
   private readonly token?: string;
+  private readonly deviceToken?: string;
   private readonly hostname: string;
   private readonly reconnectMs: number;
   private socket: WebSocket | null = null;
@@ -31,6 +34,7 @@ export class NodeAgent {
   constructor(options: NodeAgentOptions) {
     this.apiUrl = options.apiUrl;
     this.token = options.token;
+    this.deviceToken = options.deviceToken;
     this.hostname = options.hostname ?? osHostname();
     this.reconnectMs = options.reconnectMs ?? 1000;
     this.session = new BrowserSession({
@@ -38,6 +42,9 @@ export class NodeAgent {
       cwd: options.cwd,
       headless: options.headless,
     });
+    this.session.onPlanProgress = (event) => {
+      this.send({ type: "node_event", event: { ...event } });
+    };
   }
 
   start(): void {
@@ -65,7 +72,12 @@ export class NodeAgent {
 
     ws.on("open", () => {
       this.attempt = 0;
-      this.send({ type: "hello", token: this.token, hostname: this.hostname });
+      this.send({
+        type: "hello",
+        token: this.token,
+        deviceToken: this.deviceToken,
+        hostname: this.hostname,
+      });
     });
 
     ws.on("message", (raw) => {
@@ -148,6 +160,7 @@ export class NodeAgent {
           id: message.id,
           ok: false,
           error: err instanceof Error ? err.message : String(err),
+          code: err instanceof AgentError ? err.code : undefined,
         });
       }
     }

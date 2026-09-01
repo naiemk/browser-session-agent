@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fill form</title>
+  </head>
+  <body>
+    <h1>Profile</h1>
+    <p role="alert">{{error}}</p>
+    <form method="post" action="/fill">
+      <label>Full name <input name="fullName" /></label>
+      <label>Email <input name="email" type="email" /></label>
+      <label>City <input name="city" id="city" /></label>
+      <button type="submit">Save profile</button>
+    </form>
+    <script>
+      const city = document.getElementById("city");
+      city.addEventListener("input", () => {
+        city.value = "";
+      });
+    </script>
+  </body>
+</html>

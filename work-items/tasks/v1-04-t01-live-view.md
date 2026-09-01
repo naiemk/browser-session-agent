@@ -1,6 +1,6 @@
 # V1-04-T01: Live view
 
-Status: planned  
+Status: done  
 Story: V1-04  
 Depends: V1-03-T01
 

@@ -18,3 +18,5 @@ jobs:
       - run: npx playwright install chromium --with-deps
       - name: Unit, integration, and prompt E2E
         run: npm test
+      - name: Pack unsigned helper layout
+        run: npm run helper:pack

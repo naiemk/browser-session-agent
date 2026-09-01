@@ -6,11 +6,14 @@ import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
 import type { ChatClientMessage, ChatServerMessage, OperatorState } from "../shared/protocol.ts";
 import { resolveCostExtensions } from "./pi-packages.ts";
 import type { NodeHub } from "./hub.ts";
+import { AgentError } from "../../domain/types.ts";
 
 export interface OperatorRuntimeOptions {
   cwd?: string;
   agentDir?: string;
   sessionDir?: string;
+  requirePaid?: boolean;
+  paid?: boolean | (() => boolean);
 }
 
 export class OperatorRuntime {
@@ -42,6 +45,13 @@ export class OperatorRuntime {
     this.send = send;
     this.options = options;
     this.handle = new RpcSessionHandle(hub);
+    const startRun = this.handle.startRun.bind(this.handle);
+    this.handle.startRun = async (goal: string, startUrl?: string) => {
+      if (this.options.requirePaid && !this.isPaid()) {
+        throw new AgentError("payment_required", "Pay to start a browser run.");
+      }
+      return startRun(goal, startUrl);
+    };
     this.api = createExtensionApi(this.host);
     bindBrowserExtension(this.api, this.handle);
     this.host.listeners = {
@@ -61,6 +71,11 @@ export class OperatorRuntime {
       takeover: this.hub.takeover,
       currentRunId: this.handle.currentRunId,
     };
+  }
+
+  private isPaid(): boolean {
+    const paid = this.options.paid;
+    return typeof paid === "function" ? paid() : Boolean(paid);
   }
 
   async start(): Promise<void> {
@@ -167,7 +182,12 @@ export class OperatorRuntime {
         try {
           this.hub.forwardTakeoverInput(message.event);
         } catch (err) {
-          this.send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+          const error = err instanceof AgentError ? err : undefined;
+          this.send({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+            code: error?.code,
+          });
         }
         return;
       case "newSession":
@@ -202,9 +222,10 @@ export class OperatorRuntime {
     }
     if (!this.pi) {
       this.send({
-        type: "error",
-        message: "No authenticated Pi model. Configure ~/.pi/agent/models.json or provider API keys. Slash commands still work.",
+        type: "agentEvent",
+        event: { type: "text_delta", text: stubReply(trimmed) },
       });
+      this.send({ type: "agentEvent", event: { type: "turn_end" } });
       return;
     }
     await this.pi.prompt(trimmed);
@@ -221,7 +242,12 @@ export class OperatorRuntime {
       await command.handler(args, extensionContext(this.host));
       this.send({ type: "stateSync", state: this.state() });
     } catch (err) {
-      this.send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      const error = err instanceof AgentError ? err : undefined;
+      this.send({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+        code: error?.code,
+      });
     }
   }
 
@@ -265,6 +291,10 @@ export class OperatorRuntime {
 function describeModel(model: { provider?: string; id?: string } | undefined): string | undefined {
   if (!model?.id) return undefined;
   return model.provider ? `${model.provider}/${model.id}` : model.id;
+}
+
+function stubReply(text: string): string {
+  return `I heard you: ${text}`;
 }
 
 function looksLikeBrowserWork(text: string): boolean {

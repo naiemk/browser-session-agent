@@ -1,6 +1,6 @@
 # V1-08-T01: Unpaid gate
 
-Status: planned  
+Status: done  
 Story: V1-08  
 Depends: V1-01-T02, V1-02-T01
 

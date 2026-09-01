@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.browser-session-agent.helper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Browser Session Agent.app/Contents/MacOS/browser-session-node</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BSA_HOME</key>
+    <string>~/Library/Application Support/browser-session-agent</string>
+  </dict>
+</dict>
+</plist>

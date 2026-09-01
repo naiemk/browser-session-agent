@@ -7,6 +7,24 @@
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
+    <div id="auth" class="auth hidden">
+      <form id="auth-form" class="auth-card">
+        <h1>Sign in</h1>
+        <p id="auth-error" class="auth-error" hidden></p>
+        <label>
+          Email
+          <input id="auth-email" type="email" autocomplete="username" required />
+        </label>
+        <label>
+          Password
+          <input id="auth-password" type="password" autocomplete="current-password" required />
+        </label>
+        <div class="row">
+          <button type="submit" id="auth-login">Sign in</button>
+          <button type="button" id="auth-register">Create account</button>
+        </div>
+      </form>
+    </div>
     <div id="app">
       <header class="top">
         <div class="brand">

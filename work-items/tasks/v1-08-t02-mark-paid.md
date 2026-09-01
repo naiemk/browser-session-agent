@@ -1,6 +1,6 @@
 # V1-08-T02: Mark paid
 
-Status: planned  
+Status: done  
 Story: V1-08  
 Depends: V1-08-T01, V1-03-T01
 

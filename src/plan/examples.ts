@@ -11,7 +11,7 @@ const country: Target = { by: "label", label: "Country" };
  */
 export const selectCountryUnitedStates: PagePlan = {
   context: {
-    hint: { urlIncludes: "/apply" },
+    hint: { urlIncludes: "/combobox" },
     understanding:
       "Application form. Country is a searchable combobox, not a native <select>. Options appear after type or scroll.",
   },

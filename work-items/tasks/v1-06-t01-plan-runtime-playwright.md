@@ -1,6 +1,6 @@
 # V1-06-T01: PlanRuntime on Playwright
 
-Status: planned  
+Status: done  
 Story: V1-06  
 Depends: V1-05-T02
 

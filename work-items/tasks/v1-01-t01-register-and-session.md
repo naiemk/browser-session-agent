@@ -1,6 +1,6 @@
 # V1-01-T01: Register and session
 
-Status: planned  
+Status: done  
 Story: V1-01
 
 ## Spec

@@ -1,6 +1,6 @@
 # V1-04-T02: Takeover and resume
 
-Status: planned  
+Status: done  
 Story: V1-04  
 Depends: V1-04-T01
 

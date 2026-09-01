@@ -1,6 +1,6 @@
 # V1-07-T03: CI unsigned artifacts
 
-Status: planned  
+Status: done  
 Story: V1-07  
 Depends: V1-07-T02
 

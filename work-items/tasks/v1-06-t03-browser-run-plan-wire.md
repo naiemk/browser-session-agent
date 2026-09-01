@@ -1,6 +1,6 @@
 # V1-06-T03: browser_run_plan on the wire
 
-Status: planned  
+Status: done  
 Story: V1-06  
 Depends: V1-06-T01, V1-03-T01
 

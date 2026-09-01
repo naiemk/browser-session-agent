@@ -12,12 +12,16 @@ import {
 } from "./domain/types.ts";
 import { nowIso, shortId } from "./domain/ids.ts";
 import { assertCanAct } from "./domain/ownership.ts";
-import { evaluateExpectation, recoveryNote } from "./domain/verification.ts";
+import { evaluateActVerification, recoveryNote } from "./domain/verification.ts";
 import { redactParams } from "./domain/text.ts";
 import { RunStore } from "./store/run-store.ts";
 import { KnowledgeStore } from "./store/knowledge-store.ts";
 import { resolveHome } from "./store/paths.ts";
 import { BrowserWorker } from "./worker/browser-worker.ts";
+import { interpretPagePlan } from "./plan/interpret.ts";
+import { PlaywrightPlanRuntime } from "./plan/playwright-runtime.ts";
+import { validatePagePlan } from "./plan/validate.ts";
+import type { PlanResult, ProgressEvent } from "./plan/types.ts";
 
 export interface SessionOptions {
   home?: string;
@@ -47,6 +51,29 @@ export interface ActionResult {
   screenshotPath?: string;
 }
 
+export interface FillField {
+  ref?: string;
+  label?: string;
+  placeholder?: string;
+  text: string;
+}
+
+export interface FillInput {
+  runId?: string;
+  tabId?: string;
+  fields: FillField[];
+  submit?: { ref?: string; label?: string };
+  expect?: Expectation;
+}
+
+export interface FillResult {
+  ok: boolean;
+  failedField?: string;
+  results: Array<{ field: string; verification: Verification; recovery?: string }>;
+  submitted: boolean;
+  observation: Observation;
+}
+
 export class BrowserSession {
   readonly home: string;
   readonly store: RunStore;
@@ -55,6 +82,7 @@ export class BrowserSession {
   readonly askUserFn: SessionOptions["askUser"];
   currentRunId: string | null = null;
   previousActiveTools: string[] | null = null;
+  onPlanProgress?: (event: ProgressEvent) => void;
   private readonly tabs = new Map<string, TabRecord>();
 
   constructor(options: SessionOptions = {}) {
@@ -166,6 +194,10 @@ export class BrowserSession {
     assertCanAct(state, records, tabId);
 
     try {
+      const before =
+        input.action === "click" || input.action === "type" || input.action === "select"
+          ? await this.worker.inspect(tabId)
+          : undefined;
       let inputType: string | undefined;
       switch (input.action) {
         case "navigate":
@@ -198,7 +230,7 @@ export class BrowserSession {
 
       const observation = await this.worker.inspect(tabId);
       const pageText = await this.worker.pageText(tabId);
-      const verification = evaluateExpectation(input.expect, observation, pageText);
+      const verification = evaluateActVerification(input, before, observation, pageText);
       const actionEvent = await this.store.append(
         state.runId,
         "action",
@@ -251,6 +283,88 @@ export class BrowserSession {
       );
       throw error;
     }
+  }
+
+  async runPlan(plan: unknown, runId?: string): Promise<PlanResult> {
+    await this.requireState(runId ?? this.requireRunId());
+    const validated = validatePagePlan(plan);
+    const runtime = new PlaywrightPlanRuntime(this);
+    return interpretPagePlan(validated, runtime, {
+      onProgress: (event) => this.onPlanProgress?.(event),
+    });
+  }
+
+  async fill(input: FillInput): Promise<FillResult> {
+    const runtime = new PlaywrightPlanRuntime(this);
+    await runtime.inspect();
+    const results: FillResult["results"] = [];
+    for (const field of input.fields) {
+      const fieldName = field.label ?? field.placeholder ?? field.ref ?? "field";
+      const ref =
+        field.ref ??
+        (field.label ? runtime.resolve({ by: "label", label: field.label }) : null) ??
+        (field.placeholder ? runtime.resolve({ by: "placeholder", text: field.placeholder }) : null);
+      if (!ref) {
+        const observation = await this.inspect(input.runId, input.tabId);
+        return {
+          ok: false,
+          failedField: fieldName,
+          results,
+          submitted: false,
+          observation,
+        };
+      }
+      const acted = await this.act({
+        runId: input.runId,
+        tabId: input.tabId,
+        action: "type",
+        ref,
+        text: field.text,
+        expect: input.expect && results.length === input.fields.length - 1 && !input.submit ? input.expect : undefined,
+      });
+      results.push({ field: fieldName, verification: acted.verification, recovery: acted.recovery });
+      if (acted.verification.status === "failed") {
+        return {
+          ok: false,
+          failedField: fieldName,
+          results,
+          submitted: false,
+          observation: acted.observation,
+        };
+      }
+      await runtime.inspect();
+    }
+
+    if (input.submit) {
+      await runtime.inspect();
+      const submitRef =
+        input.submit.ref ??
+        (input.submit.label ? runtime.resolve({ by: "label", label: input.submit.label }) : null);
+      if (!submitRef) {
+        const observation = await this.inspect(input.runId, input.tabId);
+        return { ok: false, failedField: "submit", results, submitted: false, observation };
+      }
+      const clicked = await this.act({
+        runId: input.runId,
+        tabId: input.tabId,
+        action: "click",
+        ref: submitRef,
+        expect: input.expect,
+      });
+      if (clicked.verification.status === "failed") {
+        return {
+          ok: false,
+          failedField: "submit",
+          results,
+          submitted: false,
+          observation: clicked.observation,
+        };
+      }
+      return { ok: true, results, submitted: true, observation: clicked.observation };
+    }
+
+    const observation = await this.inspect(input.runId, input.tabId);
+    return { ok: true, results, submitted: false, observation };
   }
 
   async askUser(

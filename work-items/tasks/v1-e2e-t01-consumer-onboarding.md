@@ -1,6 +1,6 @@
 # V1-E2E-T01: Consumer onboarding gate
 
-Status: planned  
+Status: done  
 Story: V1-E2E  
 Depends: V1-01-T03, V1-02-T04, V1-04-T02, V1-06-T03, V1-08-T02
 

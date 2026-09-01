@@ -1,6 +1,6 @@
 # V1-08: Billing Hook
 
-Status: planned
+Status: done
 
 As the product, unpaid users can chat but cannot burn helper/browser minutes; a paid mark unlocks runs.
 

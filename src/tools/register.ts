@@ -45,8 +45,11 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
     ) => {
       try {
         const result = await execute(params, ctx);
-        await session.recordTool(name, params, { ok: true });
-        return textResult(stringify(result), { result });
+        const verification = (result as { verification?: { status?: string } } | undefined)?.verification;
+        const failed =
+          verification?.status === "failed" || (result as { ok?: boolean } | undefined)?.ok === false;
+        await session.recordTool(name, params, { ok: !failed, verification }, failed);
+        return textResult(stringify(result), { result }, failed);
       } catch (err) {
         const error =
           err instanceof AgentError ? err : new AgentError("tool_error", String(err));
@@ -187,6 +190,62 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
     promptSnippet: "Wait for a named browser condition.",
     promptGuidelines: ["Use browser_wait instead of looping inspect calls."],
     execute: wrap("browser_wait", (params) => act(params, "wait")),
+  });
+
+  pi.registerTool({
+    name: "browser_run_plan",
+    label: "Run page plan",
+    description: "Run a closed page-plan DSL against the current page. Not Playwright JavaScript.",
+    parameters: Type.Object({
+      plan: Type.Object({}, { additionalProperties: true }),
+      runId: runParam(),
+    }),
+    promptSnippet: "Submit one page plan (context + ordered attempts) instead of one gesture per tool call.",
+    promptGuidelines: [
+      "Use browser_run_plan for comboboxes, branching label tries, and multi-step forms.",
+      "Never send Playwright JavaScript or evaluate/script ops.",
+    ],
+    execute: wrap("browser_run_plan", async (params) =>
+      session.runPlan(params.plan, params.runId as string | undefined),
+    ),
+  });
+
+  pi.registerTool({
+    name: "browser_fill",
+    label: "Fill fields",
+    description: "Type multiple labeled fields in one call with harness read-back. Stops on the first rejected field.",
+    parameters: Type.Object({
+      fields: Type.Array(
+        Type.Object({
+          ref: Type.Optional(Type.String()),
+          label: Type.Optional(Type.String()),
+          placeholder: Type.Optional(Type.String()),
+          text: Type.String(),
+        }),
+      ),
+      submit: Type.Optional(
+        Type.Object({
+          ref: Type.Optional(Type.String()),
+          label: Type.Optional(Type.String()),
+        }),
+      ),
+      runId: runParam(),
+      tabId: tabParam(),
+      expect: expectParam(),
+    }),
+    promptSnippet: "Fill a form in one call; each field is harness-checked.",
+    promptGuidelines: [
+      "Use browser_fill for mechanical multi-field forms. Prefer labels over stale refs.",
+    ],
+    execute: wrap("browser_fill", async (params) =>
+      session.fill({
+        fields: params.fields as Array<{ ref?: string; label?: string; placeholder?: string; text: string }>,
+        submit: params.submit as { ref?: string; label?: string } | undefined,
+        runId: params.runId as string | undefined,
+        tabId: params.tabId as string | undefined,
+        expect: params.expect as Expectation | undefined,
+      }),
+    ),
   });
 
   pi.registerTool({

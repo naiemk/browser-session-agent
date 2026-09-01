@@ -1,6 +1,6 @@
 # V1-03: Drive My Browser From Chat
 
-Status: planned
+Status: done
 
 As a connected user, I start a goal in chat and the hosted agent inspects and acts on the helper’s Chromium.
 

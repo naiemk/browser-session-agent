@@ -46,6 +46,15 @@ export class FixtureServer {
           send(res, 200, await page("login.html", { error: "Email and password required" }));
           return;
         }
+        if (req.method === "POST" && url.pathname === "/fill") {
+          const body = await readBody(req);
+          if (!body.get("fullName") || !body.get("email")) {
+            send(res, 200, await page("fill.html", { error: "Name and email are required" }));
+            return;
+          }
+          send(res, 200, await page("success.html", { name: body.get("fullName") ?? "" }));
+          return;
+        }
         if (req.method === "POST" && url.pathname === "/apply") {
           const body = await readBody(req);
           if (!body.get("fullName") || !body.get("email")) {
@@ -74,8 +83,16 @@ export class FixtureServer {
                       ? "error.html"
                       : url.pathname === "/dynamic"
                         ? "dynamic.html"
-                        : url.pathname === "/jsonlint"
-                          ? "jsonlint.html"
+                      : url.pathname === "/jsonlint"
+                        ? "jsonlint.html"
+                        : url.pathname === "/dead-click"
+                          ? "dead-click.html"
+                          : url.pathname === "/combobox"
+                            ? "combobox.html"
+                            : url.pathname === "/plan-labeled"
+                              ? "plan-labeled.html"
+                              : url.pathname === "/fill"
+                                ? "fill.html"
                           : "";
         if (!file) {
           send(res, 404, "<h1>Not found</h1>");

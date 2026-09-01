@@ -1,6 +1,6 @@
 # V1-07-T01: Helper binary pairing
 
-Status: planned  
+Status: done  
 Story: V1-07  
 Depends: V1-02-T01
 

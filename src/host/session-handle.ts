@@ -1,5 +1,5 @@
 import { BROWSER_TOOL_NAMES, type KnowledgeRecord, type Observation, type RunState } from "../domain/types.ts";
-import type { ActionInput, ActionResult } from "../session.ts";
+import type { ActionInput, ActionResult, FillInput, FillResult } from "../session.ts";
 import type { BrowserSession } from "../session.ts";
 
 /** Methods the tool/command adapters need. Local BrowserSession and the desktop RPC proxy both satisfy this. */
@@ -7,6 +7,8 @@ export type SessionHandle = Pick<
   BrowserSession,
   | "inspect"
   | "act"
+  | "runPlan"
+  | "fill"
   | "askUser"
   | "takeover"
   | "resume"
@@ -61,6 +63,14 @@ export class RpcSessionHandle implements SessionHandle {
 
   act(input: ActionInput): Promise<ActionResult> {
     return this.rpc.call("act", [input]);
+  }
+
+  runPlan(plan: unknown, runId?: string): Promise<import("../plan/types.ts").PlanResult> {
+    return this.rpc.call("runPlan", [plan, runId]);
+  }
+
+  fill(input: FillInput): Promise<FillResult> {
+    return this.rpc.call("fill", [input]);
   }
 
   askUser(question: string, runId?: string, providedAnswer?: string): Promise<string | undefined> {

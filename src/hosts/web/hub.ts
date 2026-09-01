@@ -7,12 +7,29 @@ import { parseJsonMessage } from "../shared/protocol.ts";
 
 export type HubListener = (message: ChatServerMessage) => void;
 
+export interface NodeHubOptions {
+  failCode?: string;
+}
+
 export class NodeHub implements RpcTransport {
   private socket: WebSocket | null = null;
   private pending = new Map<string, { resolve: (value: unknown) => void; reject: (err: Error) => void }>();
   private listeners = new Set<HubListener>();
   takeover = false;
   hostname?: string;
+  private readonly failCode: string;
+
+  constructor(options: NodeHubOptions = {}) {
+    this.failCode = options.failCode ?? "node_disconnected";
+  }
+
+  disconnectedError(message?: string): AgentError {
+    return new AgentError(
+      this.failCode,
+      message ??
+        "Browser node disconnected. Chat still works; browser tools fail until the desktop reconnects.",
+    );
+  }
 
   get connected(): boolean {
     return this.socket !== null && this.socket.readyState === this.socket.OPEN;
@@ -37,7 +54,7 @@ export class NodeHub implements RpcTransport {
     }
     this.socket = ws;
     this.hostname = hostname;
-    this.rejectAll(new AgentError("node_disconnected", "Browser node replaced"));
+    this.rejectAll(this.disconnectedError("Browser node replaced"));
     this.broadcast({ type: "nodeStatus", connected: true, takeover: this.takeover });
 
     ws.on("message", (raw) => {
@@ -51,12 +68,7 @@ export class NodeHub implements RpcTransport {
       if (this.socket === ws) {
         this.socket = null;
         this.takeover = false;
-        this.rejectAll(
-          new AgentError(
-            "node_disconnected",
-            "Browser node disconnected. Chat still works; browser tools fail until the desktop reconnects.",
-          ),
-        );
+        this.rejectAll(this.disconnectedError());
         this.broadcast({
           type: "nodeStatus",
           connected: false,
@@ -74,20 +86,14 @@ export class NodeHub implements RpcTransport {
 
   send(message: ApiToNode): void {
     if (!this.connected || !this.socket) {
-      throw new AgentError(
-        "node_disconnected",
-        "Browser node disconnected. Chat still works; browser tools fail until the desktop reconnects.",
-      );
+      throw this.disconnectedError();
     }
     this.socket.send(JSON.stringify(message));
   }
 
   async call<T>(method: string, args: unknown[]): Promise<T> {
     if (!this.connected) {
-      throw new AgentError(
-        "node_disconnected",
-        "Browser node disconnected. Chat still works; browser tools fail until the desktop reconnects.",
-      );
+      throw this.disconnectedError();
     }
     const id = randomUUID();
     const result = new Promise<T>((resolve, reject) => {
@@ -102,6 +108,12 @@ export class NodeHub implements RpcTransport {
       if (method === "takeover") this.takeover = true;
       if (method === "resume" || method === "stopRun" || method === "startRun") this.takeover = false;
       this.broadcast({ type: "nodeStatus", connected: true, takeover: this.takeover });
+      if (method === "act" || method === "runPlan" || method === "fill") {
+        this.broadcast({
+          type: "agentEvent",
+          event: { type: "act_result", method, result: value },
+        });
+      }
       if (method === "startRun" || method === "resume" || method === "takeover" || method === "inspect") {
         this.startScreencast();
       }
@@ -142,7 +154,7 @@ export class NodeHub implements RpcTransport {
       if (!pending) return;
       this.pending.delete(message.id);
       if (message.ok) pending.resolve(message.result);
-      else pending.reject(new Error(message.error ?? "RPC failed"));
+      else pending.reject(new AgentError(message.code ?? "rpc_error", message.error ?? "RPC failed"));
       return;
     }
     if (message.type === "frame") {

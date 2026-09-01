@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Notes</title>
+  </head>
+  <body>
+    <h1>Labeled notes</h1>
+    <label>Notes <input id="notes" name="notes" /></label>
+    <button type="button" id="inject">Inject prefix</button>
+    <script>
+      document.getElementById("inject").addEventListener("click", () => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Prefix control";
+        document.body.insertBefore(button, document.body.firstChild);
+      });
+    </script>
+  </body>
+</html>
