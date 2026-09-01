@@ -1,5 +1,7 @@
 # Web chat + desktop node
 
+Consumer V1 (accounts, Windows/Mac helper, no token paste) is specified in `docs/v1.md`. This page is the operator/deploy view of the same core.
+
 The product stays one `BrowserSession` / `BrowserWorker` / evidence store. Two hosts sit on that core:
 
 | Host | Where | Role |

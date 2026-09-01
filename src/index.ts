@@ -11,6 +11,13 @@ export type {
   Expectation,
   KnowledgeRecord,
 } from "./domain/types.ts";
+export {
+  interpretPagePlan,
+  validatePagePlan,
+  selectCountryUnitedStates,
+  PLAN_LIMITS,
+} from "./plan/index.ts";
+export type { PagePlan, PlanResult, PlanRuntime, ProgressEvent } from "./plan/index.ts";
 export { runBrowserPrompt } from "./operator/run-prompt.ts";
 export { interpretPrompt } from "./operator/prompt.ts";
 export { bindBrowserExtension, OPERATOR_PROMPT } from "./host/bind-extension.ts";

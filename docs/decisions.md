@@ -61,6 +61,22 @@ Policy:
 
 Operators should not install Playwright on the host. CI publishes `browser-session-node` (Playwright base + our agent) to GHCR. The container runs on the desktop with `BSA_HOME` bind-mounted. Default is headless; the web live view is the takeover surface. Headed X11 is optional. The VPS images never include Chromium.
 
+## D15. Consumer V1 is hosted agent + OS helper, not Docker
+
+Non-developers get a Windows/Mac installer and a website. Pairing uses a one-time `bsa://` (or localhost) code exchanged for a keychain device token — no copy-paste of `BSA_TOKEN`. Docker remains a power-user image (D14), not onboarding. The helper is a connector, not a second Electron browser.
+
+## D16. The agent steers from semantic snapshots, not JPEGs
+
+Live-view frames are for humans. The model uses `browser_inspect` refs and bounded actions (D5). One agent step is seconds (inspect + LLM + act), not a realtime video loop.
+
+## D17. Harness accepts actions; the model does not
+
+An act is accepted only after Playwright succeeds and a postcondition (read-back or snapshot delta / expect) passes. No-op clicks are failures. Speed comes from fewer LLM turns (batched fill, reuse act’s observation), not from skipping the harness.
+
+## D18. Page plans, not one LLM call per gesture
+
+The model understands a page once and writes a bounded path program (ordered attempts + predicates). A local interpreter runs it against Playwright and reports progress/actuals. Re-invoke the model on a new page, a finished plan, or an uncovered failure — not after every click. The DSL is closed (existing verbs + `scroll_until` / `click_first`). No model-authored Playwright JS (D2). Targets prefer accessible name over snapshot refs because refs go stale. Each step still passes the harness (D17).
+
 ## D13. Web UI is a view over a server-side Agent
 
 `@mariozechner/pi-web-ui`’s in-tab `Agent` cannot host Playwright. The VPS runs `createAgentSession()` and streams `agentEvent`s. The browser renders chat (messages, tool cards, model/thinking selectors) plus a live-view panel. `ctx.ui.input/confirm/select` become in-chat cards. Do not replace Pi with Vercel AI SDK `useChat`.
