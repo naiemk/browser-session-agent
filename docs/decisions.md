@@ -73,6 +73,10 @@ Live-view frames are for humans. The model uses `browser_inspect` refs and bound
 
 An act is accepted only after Playwright succeeds and a postcondition (read-back or snapshot delta / expect) passes. No-op clicks are failures. Speed comes from fewer LLM turns (batched fill, reuse act’s observation), not from skipping the harness.
 
+## D18. Page plans, not one LLM call per gesture
+
+The model understands a page once and writes a bounded path program (ordered attempts + predicates). A local interpreter runs it against Playwright and reports progress/actuals. Re-invoke the model on a new page, a finished plan, or an uncovered failure — not after every click. The DSL is closed (existing verbs + `scroll_until` / `click_first`). No model-authored Playwright JS (D2). Targets prefer accessible name over snapshot refs because refs go stale. Each step still passes the harness (D17).
+
 ## D13. Web UI is a view over a server-side Agent
 
 `@mariozechner/pi-web-ui`’s in-tab `Agent` cannot host Playwright. The VPS runs `createAgentSession()` and streams `agentEvent`s. The browser renders chat (messages, tool cards, model/thinking selectors) plus a live-view panel. `ctx.ui.input/confirm/select` become in-chat cards. Do not replace Pi with Vercel AI SDK `useChat`.

@@ -22,6 +22,7 @@ Pi CLI (extension + commands)     Web chat (pi-web-ui-shaped view)
                                              ▼
 BrowserSession (run orchestration)
         │
+        ├─► Page plan interpreter (`src/plan/`) — branching scripts, one LLM call per page
         ├─► BrowserWorker (Playwright persistent Chromium)
         ├─► RunStore (JSONL events, screenshots, state.json)
         └─► KnowledgeStore (candidates + approved records)
