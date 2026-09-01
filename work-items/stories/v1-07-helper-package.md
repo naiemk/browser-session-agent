@@ -1,6 +1,6 @@
 # V1-07: Helper I Can Double-Click
 
-Status: planned
+Status: done
 
 As a non-developer, I install a helper on Windows or Mac (no terminal, no Docker). Linux CI proves the same binary behavior and installer contracts.
 

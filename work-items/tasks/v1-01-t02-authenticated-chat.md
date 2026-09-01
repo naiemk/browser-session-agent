@@ -1,6 +1,6 @@
 # V1-01-T02: Authenticated chat
 
-Status: planned  
+Status: done  
 Story: V1-01  
 Depends: V1-01-T01
 

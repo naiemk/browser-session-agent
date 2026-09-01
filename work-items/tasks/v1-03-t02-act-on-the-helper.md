@@ -1,6 +1,6 @@
 # V1-03-T02: Act on the helper
 
-Status: planned  
+Status: done  
 Story: V1-03  
 Depends: V1-03-T01
 

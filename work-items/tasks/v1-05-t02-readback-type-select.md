@@ -1,6 +1,6 @@
 # V1-05-T02: Read-back for type and select
 
-Status: planned  
+Status: done  
 Story: V1-05  
 Depends: V1-05-T01
 

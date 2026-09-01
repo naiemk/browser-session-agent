@@ -1,6 +1,6 @@
 # V1-06-T02: Country combobox fixture
 
-Status: planned  
+Status: done  
 Story: V1-06  
 Depends: V1-06-T01
 

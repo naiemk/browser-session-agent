@@ -1,6 +1,6 @@
 # V1-E2E: Consumer Onboarding Gate
 
-Status: planned
+Status: done
 
 As the product, the four V1 exit criteria are one CI-runnable path.
 

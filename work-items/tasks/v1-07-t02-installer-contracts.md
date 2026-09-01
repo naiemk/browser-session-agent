@@ -1,6 +1,6 @@
 # V1-07-T02: Installer contracts
 
-Status: planned  
+Status: done  
 Story: V1-07
 
 ## Spec

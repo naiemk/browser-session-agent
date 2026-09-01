@@ -1,6 +1,6 @@
 # V1-05: Honest Action Harness
 
-Status: planned
+Status: done
 
 As a user, I only see an action as done when Playwright succeeded and the page actually changed.
 

@@ -1,6 +1,6 @@
 # V1-02-T02: Localhost fallback
 
-Status: planned  
+Status: done  
 Story: V1-02  
 Depends: V1-02-T01
 

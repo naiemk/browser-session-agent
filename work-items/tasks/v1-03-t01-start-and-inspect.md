@@ -1,6 +1,6 @@
 # V1-03-T01: Start and inspect
 
-Status: planned  
+Status: done  
 Story: V1-03  
 Depends: V1-02-T01
 

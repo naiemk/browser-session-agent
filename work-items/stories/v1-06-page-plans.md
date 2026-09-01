@@ -1,6 +1,6 @@
 # V1-06: Page Plans
 
-Status: planned
+Status: done
 
 As a user, the agent handles a combobox (United States → USA → scroll) in one plan; I see progress and actuals.
 

@@ -1,6 +1,6 @@
 # V1-05-T03: Chat shows harness actuals
 
-Status: planned  
+Status: done  
 Story: V1-05  
 Depends: V1-05-T01, V1-01-T02
 

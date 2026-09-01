@@ -1,6 +1,6 @@
 # V1-02: Pair This Computer
 
-Status: planned
+Status: done
 
 As a signed-in user, I connect this computer and see **Connected** without ever seeing `BSA_TOKEN`.
 

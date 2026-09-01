@@ -1,6 +1,6 @@
 # V1-02-T01: Happy-path pair
 
-Status: planned  
+Status: done  
 Story: V1-02  
 Depends: V1-01-T01
 

@@ -1,6 +1,6 @@
 # V1-01: Hosted Account and Chat
 
-Status: planned
+Status: done
 
 As a new user, I can create an account, sign in on the web, and talk to the hosted agent without installing anything yet.
 

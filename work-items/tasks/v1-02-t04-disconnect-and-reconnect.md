@@ -1,6 +1,6 @@
 # V1-02-T04: Disconnect and reconnect
 
-Status: planned  
+Status: done  
 Story: V1-02  
 Depends: V1-02-T01
 

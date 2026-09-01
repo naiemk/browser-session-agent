@@ -1,6 +1,6 @@
 # V1-04: Live View and Takeover
 
-Status: planned
+Status: done
 
 As a user, I watch the page, take over for login/CAPTCHA, then resume from a fresh observation.
 

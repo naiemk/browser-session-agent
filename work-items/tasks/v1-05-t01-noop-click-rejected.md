@@ -1,6 +1,6 @@
 # V1-05-T01: No-op click is rejected
 
-Status: planned  
+Status: done  
 Story: V1-05  
 Depends: V1-03-T02
 
