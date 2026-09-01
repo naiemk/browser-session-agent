@@ -34,10 +34,16 @@ Headed operator runs use `~/.browser-session-agent/profile`. Tests use a temp di
 
 ## Web chat + desktop node
 
-The VPS runs chat + Pi (`npm run start:api`). The desktop runs Playwright Chromium and connects outbound (`npm run start:node -- --api ws://…/node`). See `docs/web-operator.md`.
+CI builds Docker images. The desktop node is a Playwright container; the VPS API image has no Chrome.
 
 ```bash
-BSA_TOKEN=dev npm run start:api
-BSA_TOKEN=dev npm run start:node -- --api ws://127.0.0.1:8787/node
-# open http://127.0.0.1:8787/?token=dev
+# one-machine trial
+cp .env.example .env
+docker compose -f deploy/docker/compose.local.yml up --build
+# http://127.0.0.1:8080/?token=dev
+
+# desktop only, talking to a remote API
+scripts/run-desktop-node.sh wss://api.example.com/node "$BSA_TOKEN"
 ```
+
+Without Docker: `npm run start:api` on the VPS and `npm run start:node` on the desk. See `docs/web-operator.md`.

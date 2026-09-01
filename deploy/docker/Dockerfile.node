@@ -1,0 +1,24 @@
+# Desktop node — Playwright Chromium matching package-lock, outbound WS to the API.
+# Built in CI so operators only pull. Do not run this image on the VPS.
+FROM node:22-bookworm
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV BSA_HOME=/data
+# Headless is the easy Docker default. Live view still streams to the web UI.
+ENV BSA_HEADLESS=1
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+  && npm install tsx@4.23.13 \
+  && npx playwright install --with-deps chromium \
+  && mkdir -p /data \
+  && chown -R node:node /data /app
+
+COPY --chown=node:node src ./src
+COPY --chown=node:node bin ./bin
+
+USER node
+VOLUME ["/data"]
+
+CMD ["node", "--import", "tsx", "src/hosts/node-agent/cli.ts"]

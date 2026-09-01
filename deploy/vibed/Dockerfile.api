@@ -1,12 +1,13 @@
+# Canonical file: deploy/docker/Dockerfile.api
 FROM node:22-bookworm-slim
 WORKDIR /app
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm install tsx
+RUN npm ci --omit=dev && npm uninstall playwright playwright-core && npm install tsx@4.23.13
 COPY src ./src
 COPY bin ./bin
 COPY deploy/pi-meter.json ./pi-meter.json
 ENV PORT=8787
 ENV NODE_ENV=production
 EXPOSE 8787
-# Intentionally no playwright / chromium.
 CMD ["node", "--import", "tsx", "src/hosts/web/cli.ts"]

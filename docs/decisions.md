@@ -57,6 +57,10 @@ Policy:
 - First-time site / messy SPA / login diagnosis → **ultra**, then downshift
 - Compaction / summarization of long evidence → **low**
 
+## D14. Desktop node is a CI-built Docker image
+
+Operators should not install Playwright on the host. CI publishes `browser-session-node` (Playwright base + our agent) to GHCR. The container runs on the desktop with `BSA_HOME` bind-mounted. Default is headless; the web live view is the takeover surface. Headed X11 is optional. The VPS images never include Chromium.
+
 ## D13. Web UI is a view over a server-side Agent
 
 `@mariozechner/pi-web-ui`’s in-tab `Agent` cannot host Playwright. The VPS runs `createAgentSession()` and streams `agentEvent`s. The browser renders chat (messages, tool cards, model/thinking selectors) plus a live-view panel. `ctx.ui.input/confirm/select` become in-chat cards. Do not replace Pi with Vercel AI SDK `useChat`.

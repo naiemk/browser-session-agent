@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Install the desktop node agent (Playwright Chromium + outbound WS).
+# Native (non-Docker) desktop node. Prefer scripts/run-desktop-node.sh when Docker is available.
 # Do not run this on the VPS.
 set -euo pipefail
+
+if command -v docker >/dev/null 2>&1 && [[ "${BSA_NATIVE:-}" != "1" ]]; then
+  echo "Docker found — using scripts/run-desktop-node.sh (set BSA_NATIVE=1 to force npm)."
+  exec "$(cd "$(dirname "$0")" && pwd)/run-desktop-node.sh" "$@"
+fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 API_URL="${1:-${BSA_API_URL:-}}"

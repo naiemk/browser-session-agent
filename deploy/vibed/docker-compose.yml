@@ -1,27 +1,5 @@
 # Local stand-in for vibed-infra ui + api + gateway.
-# Do not add a Chrome / Playwright service here.
-services:
-  api:
-    build:
-      context: ../..
-      dockerfile: deploy/vibed/Dockerfile.api
-    environment:
-      BSA_TOKEN: ${BSA_TOKEN:-dev}
-      PORT: "8787"
-    expose:
-      - "8787"
-  ui:
-    build:
-      context: ../..
-      dockerfile: deploy/vibed/Dockerfile.ui
-    expose:
-      - "80"
-  gateway:
-    image: nginx:1.27-alpine
-    volumes:
-      - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
-    ports:
-      - "8080:80"
-    depends_on:
-      - api
-      - ui
+# Images are built by .github/workflows/docker.yml.
+# Do not add a Chrome / Playwright service on the VPS — use compose.node.yml on the desktop.
+include:
+  - path: ../docker/compose.vps.yml

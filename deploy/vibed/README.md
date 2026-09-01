@@ -10,9 +10,14 @@ Install **ui + api + gateway** only. The desktop is the node.
 #   ui-config.yaml
 ```
 
-`docker-compose.yml` is a local stand-in. It does not launch Chrome.
+Prefer the images CI publishes to GHCR (`browser-session-api`, `browser-session-ui`, `browser-session-node`). Compose files live in `deploy/docker/`.
 
-LLM keys live on `api`. Playwright is not in `Dockerfile.api`.
+LLM keys live on `api`. Playwright browsers are only in the **node** image.
 
-On the desktop, run `scripts/install-desktop-node.sh wss://api.example.com/node $BSA_TOKEN`.
+On the desktop:
+
+```bash
+scripts/run-desktop-node.sh wss://api.example.com/node "$BSA_TOKEN"
+```
+
 Do not wget `install-nodes.sh` onto the VPS.

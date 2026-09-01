@@ -30,7 +30,10 @@
     "test:e2e": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/e2e/*.test.ts",
     "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts",
     "start:api": "tsx src/hosts/web/cli.ts",
-    "start:node": "tsx src/hosts/node-agent/cli.ts"
+    "start:node": "tsx src/hosts/node-agent/cli.ts",
+    "docker:local": "docker compose -f deploy/docker/compose.local.yml up --build",
+    "docker:vps": "docker compose -f deploy/docker/compose.vps.yml up -d",
+    "docker:node": "docker compose -f deploy/docker/compose.node.yml up -d"
   },
   "engines": {
     "node": ">=22"

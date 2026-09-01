@@ -21,7 +21,38 @@ CLI on that same desktop can still attach to the same `worker.json` CDP endpoint
 - Shared secret: `BSA_TOKEN` on chat `/chat` and node `/node` hello (or `Authorization: Bearer`).
 - Optional HTTP basic for the static UI: `BSA_BASIC_USER` / `BSA_BASIC_PASS`.
 
-## Run locally
+## Easy path: Docker (CI builds the images)
+
+GitHub Actions (`.github/workflows/docker.yml`) builds and pushes:
+
+- `ghcr.io/<owner>/browser-session-api` — VPS, no Chromium
+- `ghcr.io/<owner>/browser-session-ui` — static chat
+- `ghcr.io/<owner>/browser-session-node` — Playwright Chromium for the **desktop**
+
+The node image is meant to run **on your desk**, not on the VPS. Chromium stays in that container; the profile is a bind mount.
+
+### One-machine trial
+
+```bash
+cp .env.example .env   # set BSA_TOKEN
+docker compose -f deploy/docker/compose.local.yml up --build
+# http://127.0.0.1:8080/?token=$BSA_TOKEN
+```
+
+### Desktop node only (API already on a VPS)
+
+```bash
+export BSA_API_URL=wss://api.example.com/node
+export BSA_TOKEN=…
+scripts/run-desktop-node.sh
+# or: docker compose -f deploy/docker/compose.node.yml up -d
+```
+
+Default in Docker is **headless**. Takeover is the live-view panel (input only while `awaiting_takeover`). For a real window on Linux, set `BSA_HEADLESS=0` and mount X11 (see `compose.node.yml`).
+
+First pull of the node image is large (Playwright’s Chromium). After CI has published it, setup is pull-and-run — no `npx playwright install` on the host.
+
+## Run locally without Docker
 
 ```bash
 # VPS-shaped API (no Chrome)
@@ -64,4 +95,4 @@ See `docs/decisions.md` (D12, D13).
 
 Package **`ui` + `api` + `gateway`**. Do **not** install a `nodes` role or Playwright on that box.
 
-Configs live in `deploy/vibed/`. Desktop install is `scripts/install-desktop-node.sh`.
+Configs live in `deploy/vibed/`. Prefer Docker on the desktop (`scripts/run-desktop-node.sh`). The npm/systemd installer is `scripts/install-desktop-node.sh` if you do not want a container.
