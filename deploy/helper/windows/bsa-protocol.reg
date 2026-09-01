@@ -1,0 +1,14 @@
+Windows Registry Editor Version 5.00
+
+; Registers the bsa:// URL protocol for pairing. No long-lived secret is stored here.
+; Helper profile: %APPDATA%\browser-session-agent
+
+[HKEY_CURRENT_USER\Software\Classes\bsa]
+@="URL:Browser Session Agent"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\bsa\DefaultIcon]
+@="%LOCALAPPDATA%\\browser-session-agent\\browser-session-node.exe,0"
+
+[HKEY_CURRENT_USER\Software\Classes\bsa\shell\open\command]
+@="\"%LOCALAPPDATA%\\browser-session-agent\\browser-session-node.exe\" --pair-url \"%1\""
