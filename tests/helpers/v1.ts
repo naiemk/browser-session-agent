@@ -1,3 +1,6 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { startOperatorApi, type OperatorApi } from "../../src/hosts/web/server.ts";
 import { NodeAgent } from "../../src/hosts/node-agent/client.ts";
@@ -155,14 +158,43 @@ export async function waitFor(
   inbox: ChatServerMessage[],
   match: (message: ChatServerMessage) => boolean,
   timeoutMs = 12_000,
+  fromIndex = 0,
 ): Promise<ChatServerMessage> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const found = inbox.find(match);
+    const found = inbox.slice(fromIndex).find(match);
     if (found) return found;
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
   throw new Error(`Timed out waiting for chat message. Saw: ${inbox.map((m) => m.type).join(", ")}`);
+}
+
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+export function spawnHelper(
+  port: number,
+  home: string,
+  extraEnv: Record<string, string | undefined> = {},
+): ChildProcess {
+  const env = { ...process.env, ...extraEnv, BSA_HOME: home, BSA_HEADLESS: "1" };
+  delete env.BSA_TOKEN;
+  return spawn(
+    process.execPath,
+    ["--import", "tsx", path.join(REPO_ROOT, "src/hosts/node-agent/cli.ts"), "--api", `ws://127.0.0.1:${port}/node`, "--headless"],
+    { env, cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+export function stopChild(child: ChildProcess): Promise<void> {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode) {
+      resolve();
+      return;
+    }
+    child.once("exit", () => resolve());
+    child.kill("SIGKILL");
+    setTimeout(() => resolve(), 2000);
+  });
 }
 
 export async function uniqueUser(): Promise<{ email: string; password: string }> {

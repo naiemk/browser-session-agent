@@ -146,10 +146,17 @@ export class AccountStore {
     return record;
   }
 
-  async exchangePairCode(code: string, hostname?: string): Promise<{ device: DeviceRecord; token: string }> {
+  async exchangePairCode(
+    code: string,
+    hostname?: string,
+    sessionAccountId?: string,
+  ): Promise<{ device: DeviceRecord; token: string }> {
     const record = this.data.pairCodes.find((c) => c.code === code);
     if (!record) {
       throw Object.assign(new Error("invalid pair code"), { status: 401, code: "unauthorized" });
+    }
+    if (sessionAccountId && sessionAccountId !== record.accountId) {
+      throw Object.assign(new Error("pair code belongs to another account"), { status: 403, code: "forbidden" });
     }
     if (record.expiresAtMs <= Date.now()) {
       this.data.pairCodes = this.data.pairCodes.filter((c) => c.code !== code);

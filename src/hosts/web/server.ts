@@ -253,9 +253,11 @@ async function handleHttp(
     }
     if (req.method === "POST" && url.pathname === "/pair/exchange") {
       const body = await readJson(req);
+      const sessionAccount = accounts.accountForSession(sessionIdFromRequest(req));
       const { device, token: deviceToken } = await accounts.exchangePairCode(
         String(body.code ?? ""),
         typeof body.hostname === "string" ? body.hostname : undefined,
+        sessionAccount?.id,
       );
       json(res, 200, { deviceToken, deviceId: device.id, accountId: device.accountId });
       return;
