@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dead click</title>
+  </head>
+  <body>
+    <h1>Dead click</h1>
+    <p>This button does not change the page.</p>
+    <button type="button" id="noop">Do nothing</button>
+    <label>Bouncer <input id="bouncer" name="bouncer" /></label>
+    <script>
+      document.getElementById("noop").addEventListener("click", (event) => {
+        event.preventDefault();
+      });
+      document.getElementById("bouncer").addEventListener("input", (event) => {
+        event.target.value = "";
+      });
+    </script>
+  </body>
+</html>

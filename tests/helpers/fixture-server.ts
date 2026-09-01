@@ -74,8 +74,12 @@ export class FixtureServer {
                       ? "error.html"
                       : url.pathname === "/dynamic"
                         ? "dynamic.html"
-                        : url.pathname === "/jsonlint"
-                          ? "jsonlint.html"
+                      : url.pathname === "/jsonlint"
+                        ? "jsonlint.html"
+                        : url.pathname === "/dead-click"
+                          ? "dead-click.html"
+                          : url.pathname === "/combobox"
+                            ? "combobox.html"
                           : "";
         if (!file) {
           send(res, 404, "<h1>Not found</h1>");

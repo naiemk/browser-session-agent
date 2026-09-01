@@ -45,8 +45,10 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
     ) => {
       try {
         const result = await execute(params, ctx);
-        await session.recordTool(name, params, { ok: true });
-        return textResult(stringify(result), { result });
+        const verification = (result as { verification?: { status?: string } } | undefined)?.verification;
+        const failed = verification?.status === "failed";
+        await session.recordTool(name, params, { ok: !failed, verification }, failed);
+        return textResult(stringify(result), { result }, failed);
       } catch (err) {
         const error =
           err instanceof AgentError ? err : new AgentError("tool_error", String(err));

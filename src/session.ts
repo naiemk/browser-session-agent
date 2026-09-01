@@ -12,7 +12,7 @@ import {
 } from "./domain/types.ts";
 import { nowIso, shortId } from "./domain/ids.ts";
 import { assertCanAct } from "./domain/ownership.ts";
-import { evaluateExpectation, recoveryNote } from "./domain/verification.ts";
+import { evaluateActVerification, recoveryNote } from "./domain/verification.ts";
 import { redactParams } from "./domain/text.ts";
 import { RunStore } from "./store/run-store.ts";
 import { KnowledgeStore } from "./store/knowledge-store.ts";
@@ -166,6 +166,10 @@ export class BrowserSession {
     assertCanAct(state, records, tabId);
 
     try {
+      const before =
+        input.action === "click" || input.action === "type" || input.action === "select"
+          ? await this.worker.inspect(tabId)
+          : undefined;
       let inputType: string | undefined;
       switch (input.action) {
         case "navigate":
@@ -198,7 +202,7 @@ export class BrowserSession {
 
       const observation = await this.worker.inspect(tabId);
       const pageText = await this.worker.pageText(tabId);
-      const verification = evaluateExpectation(input.expect, observation, pageText);
+      const verification = evaluateActVerification(input, before, observation, pageText);
       const actionEvent = await this.store.append(
         state.runId,
         "action",
