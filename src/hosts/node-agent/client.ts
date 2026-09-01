@@ -134,7 +134,12 @@ export class NodeAgent {
       try {
         const result = await dispatchSessionRpc(this.session, message.method, message.args);
         this.send({ type: "rpc_result", id: message.id, ok: true, result });
-        if (message.method === "takeover") {
+        if (
+          message.method === "startRun" ||
+          message.method === "takeover" ||
+          message.method === "resume" ||
+          message.method === "inspect"
+        ) {
           await this.beginScreencast();
         }
       } catch (err) {
@@ -149,7 +154,6 @@ export class NodeAgent {
   }
 
   private async beginScreencast(): Promise<void> {
-    if (this.screencastOn && this.session.worker.workerInfo) return;
     if (!this.session.worker.workerInfo) return;
     try {
       const snap = await this.session.worker.screenshotJpeg();
@@ -157,6 +161,7 @@ export class NodeAgent {
     } catch {
       // tab not ready yet
     }
+    if (this.screencastOn) return;
     try {
       await this.session.worker.startScreencast((jpeg, tabId) => {
         this.stopScreenshotLoop();

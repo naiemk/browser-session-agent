@@ -102,6 +102,9 @@ export class NodeHub implements RpcTransport {
       if (method === "takeover") this.takeover = true;
       if (method === "resume" || method === "stopRun" || method === "startRun") this.takeover = false;
       this.broadcast({ type: "nodeStatus", connected: true, takeover: this.takeover });
+      if (method === "startRun" || method === "resume" || method === "takeover" || method === "inspect") {
+        this.startScreencast();
+      }
       return value;
     } catch (err) {
       throw err;

@@ -134,7 +134,6 @@ describe("web host + desktop node", () => {
       await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
       chat.send({ type: "command", name: "browser-start", args: `--url ${origin}/login Sign in` });
       await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Started"));
-      api.hub.startScreencast();
       await waitFor(chat.inbox, (m) => m.type === "frame" && Boolean(m.jpeg), 15_000);
 
       assert.throws(
