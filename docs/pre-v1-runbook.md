@@ -55,15 +55,17 @@ Never set `BSA_NO_PI`. If Pi cannot start, `/healthz` reports `{ ok: true, pi: f
 2. Create the personal account.
 3. Set `BSA_REGISTER_OPEN=0` on api and reload/recreate the api container.
 
-## 6. Pair the laptop Docker helper
+## 6. Pair the laptop helper
 
-In the signed-in UI, click **Pair this computer**. Copy the one-time command (or type it):
+In the signed-in UI, click **Pair this computer**. Copy the one-time command (no git checkout):
 
 ```bash
-BSA_PAIR_CODE=<code> scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node
+wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 ```
 
-The helper image is `ghcr.io/naiemk/browser-session-node`. It stores `{BSA_HOME}/credentials/device.json` (default `~/.browser-session-agent`) and reconnects without `BSA_TOKEN`.
+Windows PowerShell: `wget https://agent.trustless-commerce.com/install.ps1 -OutFile $env:TEMP\bsa-install.ps1` then set `BSA_PAIR_CODE` and run the file.
+
+The first run installs portable Node and Playwright Chromium, or uses Docker if the daemon is already up. It stores `{BSA_HOME}/credentials/device.json` (default `~/.browser-session-agent`) and reconnects without `BSA_TOKEN`. A checkout can still use `scripts/run-desktop-node.sh`.
 
 See **Connected** in the header. If the helper is offline, chat still works; browser tools fail with `helper_disconnected`.
 

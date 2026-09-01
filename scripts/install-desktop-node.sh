@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Native (non-Docker) desktop node. Prefer scripts/run-desktop-node.sh when Docker is available.
-# Do not run this on the VPS.
+# Native (non-Docker) desktop node for a git checkout.
+# Consumer machines without this repo:
+#   wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash
+# Prefer scripts/run-desktop-node.sh when Docker is available. Do not run this on the VPS.
 set -euo pipefail
 
 if command -v docker >/dev/null 2>&1 && [[ "${BSA_NATIVE:-}" != "1" ]]; then

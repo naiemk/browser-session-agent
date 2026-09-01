@@ -210,9 +210,23 @@ document.getElementById("auth-register").addEventListener("click", () => {
   void authRequest("/auth/register");
 });
 
+function pairOrigin() {
+  return `${location.protocol}//${location.host}`;
+}
+
 function pairCommand(code) {
+  const origin = pairOrigin();
   const nodeUrl = `${proto}://${location.host}/node`;
-  return `BSA_PAIR_CODE=${code} scripts/run-desktop-node.sh ${nodeUrl}`;
+  const extra = location.host === "agent.trustless-commerce.com" ? "" : ` BSA_API_URL=${nodeUrl}`;
+  return `wget -qO- ${origin}/install.sh | BSA_PAIR_CODE=${code}${extra} bash`;
+}
+
+function pairWindowsCommand(code) {
+  const origin = pairOrigin();
+  const nodeUrl = `${proto}://${location.host}/node`;
+  const extra =
+    location.host === "agent.trustless-commerce.com" ? "" : ` $env:BSA_API_URL='${nodeUrl}';`;
+  return `wget ${origin}/install.ps1 -OutFile $env:TEMP\\bsa-install.ps1; $env:BSA_PAIR_CODE='${code}';${extra} powershell -ExecutionPolicy Bypass -File $env:TEMP\\bsa-install.ps1`;
 }
 
 pairBtn.addEventListener("click", async () => {
@@ -230,6 +244,8 @@ pairBtn.addEventListener("click", async () => {
   }
   pairCodeEl.textContent = body.code;
   pairHintEl.textContent = pairCommand(body.code);
+  const winEl = document.getElementById("pair-win");
+  if (winEl) winEl.textContent = pairWindowsCommand(body.code);
   pairPanel.classList.remove("hidden");
 });
 

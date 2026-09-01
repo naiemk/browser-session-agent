@@ -334,6 +334,23 @@ async function handleHttp(
       return;
     }
 
+    if (req.method === "GET" && (url.pathname === "/install.sh" || url.pathname === "/install.ps1")) {
+      const file = staticFile(url.pathname);
+      if (!file) {
+        res.writeHead(404);
+        res.end("not found");
+        return;
+      }
+      const body = await readFile(file);
+      res.writeHead(200, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-disposition": `inline; filename="${path.basename(file)}"`,
+      });
+      res.end(body);
+      return;
+    }
+
     if (!checkBasicAuth(req.headers.authorization)) {
       res.writeHead(401, { "www-authenticate": 'Basic realm="bsa", charset="UTF-8"' });
       res.end("unauthorized");
@@ -386,6 +403,7 @@ function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (file.endsWith(".css")) return "text/css; charset=utf-8";
   if (file.endsWith(".svg")) return "image/svg+xml";
+  if (file.endsWith(".sh") || file.endsWith(".ps1")) return "text/plain; charset=utf-8";
   return "text/html; charset=utf-8";
 }
 
