@@ -200,3 +200,19 @@ export function stopChild(child: ChildProcess): Promise<void> {
 export async function uniqueUser(): Promise<{ email: string; password: string }> {
   return { email: `user-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: "correct-horse" };
 }
+
+export async function connectPaidConsumer(world: V1World) {
+  const user = await uniqueUser();
+  const { cookie, account } = await register(world.origin, user.email, user.password);
+  await markPaid(world.origin, cookie);
+  const { deviceToken } = await exchangePair(world.origin, await issuePairCode(world.origin, cookie));
+  connectHelper(world, deviceToken);
+  const chat = await chatClient(world.api.port, cookie);
+  await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
+  return {
+    cookie,
+    account,
+    chat,
+    hub: world.api.registry.hubFor(account.id),
+  };
+}
