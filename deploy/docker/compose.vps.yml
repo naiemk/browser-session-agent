@@ -1,0 +1,43 @@
+# VPS: chat UI + API + gateway. No Chromium.
+name: bsa-vps
+services:
+  api:
+    image: ${BSA_API_IMAGE:-ghcr.io/naiemk/browser-session-api:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    environment:
+      BSA_TOKEN: ${BSA_TOKEN:?set BSA_TOKEN}
+      PORT: "8787"
+      BSA_AGENT_DIR: /data/pi-agent
+      BSA_SESSION_DIR: /data/sessions
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
+    volumes:
+      - api-data:/data
+    expose:
+      - "8787"
+    restart: unless-stopped
+  ui:
+    image: ${BSA_UI_IMAGE:-ghcr.io/naiemk/browser-session-ui:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.ui
+    expose:
+      - "80"
+    restart: unless-stopped
+  gateway:
+    image: nginx:1.27-alpine
+    volumes:
+      - ../vibed/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${BSA_HTTP_PORT:-8080}:80"
+    depends_on:
+      - api
+      - ui
+    restart: unless-stopped
+
+volumes:
+  api-data:

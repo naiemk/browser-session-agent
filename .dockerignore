@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+.browser-session-agent
+test-results
+playwright-report
+coverage
+work-items
+tests
+**/*.test.ts
+.cursor
+*.md
+!README.md
+.env
+.env.*
+npm-debug.log*
+.DS_Store

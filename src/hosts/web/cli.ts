@@ -16,6 +16,8 @@ const api = await startOperatorApi({
   port,
   token: arg("token", process.env.BSA_TOKEN),
   cwd: process.cwd(),
+  agentDir: arg("agent-dir", process.env.BSA_AGENT_DIR),
+  sessionDir: arg("session-dir", process.env.BSA_SESSION_DIR),
 });
 
 console.error(`browser-session-api listening on http://${host}:${api.port}`);

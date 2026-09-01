@@ -1,0 +1,24 @@
+# Desktop: one Playwright Chromium in Docker, outbound WS to the API.
+name: bsa-node
+services:
+  node:
+    image: ${BSA_NODE_IMAGE:-ghcr.io/naiemk/browser-session-node:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.node
+    environment:
+      BSA_API_URL: ${BSA_API_URL:?set BSA_API_URL e.g. wss://api.example.com/node}
+      BSA_TOKEN: ${BSA_TOKEN:?set BSA_TOKEN}
+      BSA_HOME: /data
+      BSA_HEADLESS: ${BSA_HEADLESS:-1}
+      DISPLAY: ${DISPLAY:-}
+    volumes:
+      - ${BSA_DATA:-${HOME}/.browser-session-agent}:/data
+      # Optional headed Linux: uncomment and xhost +local:docker
+      # - /tmp/.X11-unix:/tmp/.X11-unix
+      # - ${HOME}/.Xauthority:/home/node/.Xauthority:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ipc: host
+    shm_size: "1gb"
+    restart: unless-stopped

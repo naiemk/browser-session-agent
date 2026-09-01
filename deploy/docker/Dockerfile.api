@@ -1,0 +1,27 @@
+# VPS API — Pi SDK + chat WebSocket. No Chromium.
+FROM node:22-bookworm-slim
+WORKDIR /app
+
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV NODE_ENV=production
+ENV PORT=8787
+ENV BSA_HOME=/data
+ENV BSA_AGENT_DIR=/data/pi-agent
+ENV BSA_SESSION_DIR=/data/sessions
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+  && npm uninstall playwright playwright-core \
+  && npm install tsx@4.23.13 \
+  && mkdir -p /data/pi-agent /data/sessions
+
+COPY src ./src
+COPY bin ./bin
+COPY deploy/pi-meter.json ./pi-meter.json
+
+EXPOSE 8787
+VOLUME ["/data"]
+HEALTHCHECK --interval=20s --timeout=5s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "--import", "tsx", "src/hosts/web/cli.ts"]
