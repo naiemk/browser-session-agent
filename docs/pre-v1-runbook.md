@@ -60,10 +60,10 @@ Never set `BSA_NO_PI`. If Pi cannot start, `/healthz` reports `{ ok: true, pi: f
 In the signed-in UI, click **Pair this computer**. Copy the one-time command (no git checkout):
 
 ```bash
-wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
+curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 ```
 
-Windows PowerShell: `wget https://agent.trustless-commerce.com/install.ps1 -OutFile $env:TEMP\bsa-install.ps1` then set `BSA_PAIR_CODE` and run the file.
+Windows PowerShell: `curl.exe -fsSL https://agent.trustless-commerce.com/install.ps1 -o $env:TEMP\bsa-install.ps1` then set `BSA_PAIR_CODE` and run the file.
 
 The first run installs portable Node and Playwright Chromium, or uses Docker if the daemon is already up. It stores `{BSA_HOME}/credentials/device.json` (default `~/.browser-session-agent`) and reconnects without `BSA_TOKEN`. A checkout can still use `scripts/run-desktop-node.sh`.
 

@@ -209,7 +209,7 @@ Automated tests stay local (in-process API, helper child, fixtures, file asserti
 ### Docker helper (PRE-04)
 
 - Node compose/script pair without required `BSA_TOKEN`; reconnect from file store. `tests/e2e/pre-v1-04-docker-helper.test.ts`
-- Hosted `wget` installer (`/install.sh`, `/install.ps1`) sets up Node/Chromium or Docker and pairs. `tests/e2e/pre-v1-04-wget-install.test.ts`
+- Hosted `curl` installer (`/install.sh`, `/install.ps1`) sets up Node/Chromium or Docker and pairs. `tests/e2e/pre-v1-04-wget-install.test.ts`
 
 ### Chat UI (PRE-05)
 

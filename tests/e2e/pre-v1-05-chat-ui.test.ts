@@ -79,7 +79,7 @@ describe("PRE-05-T01 UI on same origin (no ?token=)", () => {
       assert.match(code, /\S/);
       const hint = await page.locator("#pair-hint").innerText();
       assert.match(hint, new RegExp(`BSA_PAIR_CODE=${code}`));
-      assert.match(hint, /wget -qO- /);
+      assert.match(hint, /curl -fsSL /);
       assert.match(hint, /\/install\.sh/);
       assert.match(hint, / bash/);
       assert.doesNotMatch(hint, /scripts\/run-desktop-node\.sh/);

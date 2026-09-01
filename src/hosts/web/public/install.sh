@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Desktop node installer. Safe to pipe — no git checkout required.
 #
-#   wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash
 #   curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash
 #
 # First run installs Node 22 + Playwright Chromium (or uses Docker if the
@@ -16,7 +15,7 @@ usage() {
   cat <<'EOF'
 Install and start the browser-session desktop node.
 
-  wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
+  curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 
 Optional env:
   BSA_PAIR_CODE     one-time code from Pair this computer (first run)
@@ -99,7 +98,7 @@ case "$arch" in
 esac
 
 if [[ "$os" == mingw* || "$os" == msys* || "$os" == cygwin* ]]; then
-  die "Git Bash/Cygwin is not the installer path. Use Windows PowerShell: wget https://agent.trustless-commerce.com/install.ps1 -OutFile \$env:TEMP\\bsa-install.ps1 then run it, or use WSL."
+  die "Git Bash/Cygwin is not the installer path. Use Windows PowerShell: curl.exe -fsSL https://agent.trustless-commerce.com/install.ps1 -o \$env:TEMP\\bsa-install.ps1 then run it, or use WSL."
 fi
 [[ "$os" == linux || "$os" == darwin ]] || die "unsupported OS: $os (use WSL on Windows, or install.ps1)"
 

@@ -28,7 +28,7 @@ Inner nginx passes `X-Forwarded-Proto` from the TLS terminator (fallback `https`
 On the laptop, after **Pair this computer** in the signed-in UI:
 
 ```bash
-wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
+curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 ```
 
 `BSA_TOKEN` is not required for the helper. Credentials land in `~/.browser-session-agent/credentials/device.json`.

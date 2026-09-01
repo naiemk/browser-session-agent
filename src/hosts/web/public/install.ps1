@@ -1,6 +1,6 @@
 # Desktop node installer for Windows PowerShell. No git checkout required.
 #
-#   wget https://agent.trustless-commerce.com/install.ps1 -OutFile $env:TEMP\bsa-install.ps1
+#   curl.exe -fsSL https://agent.trustless-commerce.com/install.ps1 -o $env:TEMP\bsa-install.ps1
 #   $env:BSA_PAIR_CODE = '<code>'
 #   powershell -ExecutionPolicy Bypass -File $env:TEMP\bsa-install.ps1
 #

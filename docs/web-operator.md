@@ -46,7 +46,7 @@ docker compose -f deploy/docker/compose.local.yml up --build
 
 ```bash
 # After Pair this computer in the signed-in UI (no repo checkout):
-wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
+curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 # checkout / Docker: scripts/run-desktop-node.sh or deploy/docker/compose.node.yml
 ```
 
@@ -99,6 +99,6 @@ See `docs/decisions.md` (D12, D13).
 
 Package **`ui` + `api` + `gateway`**. Do **not** install a `nodes` role or Playwright on that box.
 
-Configs live in `deploy/vibed/`. On a laptop without this repo: `wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash`. A checkout can still use `scripts/run-desktop-node.sh`.
+Configs live in `deploy/vibed/`. On a laptop without this repo: `curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash`. A checkout can still use `scripts/run-desktop-node.sh`.
 
 Pre-V1 production host is `agent.trustless-commerce.com`. Apply steps: [`docs/pre-v1-runbook.md`](pre-v1-runbook.md). The gateway must also proxy account and pairing HTTP (`/auth`, `/me`, `/pair`, `/devices`) to the API, not only `/chat` and `/node`.

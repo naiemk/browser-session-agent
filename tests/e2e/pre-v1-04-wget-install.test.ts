@@ -21,7 +21,7 @@ describe("PRE-04 wget desktop install", () => {
     const nginx = await readFile(path.join(ROOT, "deploy/vibed/nginx-ui.conf"), "utf8");
 
     assert.match(sh, /^#!/);
-    assert.match(sh, /wget -qO-/);
+    assert.match(sh, /curl -fsSL/);
     assert.match(sh, /BSA_PAIR_CODE/);
     assert.match(sh, /nodejs\.org\/dist/);
     assert.match(sh, /playwright install chromium/);
@@ -37,7 +37,7 @@ describe("PRE-04 wget desktop install", () => {
     assert.match(ps1, /Invoke-WebRequest/);
     assert.doesNotMatch(ps1, /BSA_TOKEN\s*=/);
 
-    assert.match(ui, /wget -qO-/);
+    assert.match(ui, /curl -fsSL/);
     assert.match(ui, /install\.sh/);
     assert.match(ui, /install\.ps1/);
     assert.doesNotMatch(ui, /scripts\/run-desktop-node\.sh/);

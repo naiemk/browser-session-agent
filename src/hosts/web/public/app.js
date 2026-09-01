@@ -218,7 +218,7 @@ function pairCommand(code) {
   const origin = pairOrigin();
   const nodeUrl = `${proto}://${location.host}/node`;
   const extra = location.host === "agent.trustless-commerce.com" ? "" : ` BSA_API_URL=${nodeUrl}`;
-  return `wget -qO- ${origin}/install.sh | BSA_PAIR_CODE=${code}${extra} bash`;
+  return `curl -fsSL ${origin}/install.sh | BSA_PAIR_CODE=${code}${extra} bash`;
 }
 
 function pairWindowsCommand(code) {
@@ -226,7 +226,7 @@ function pairWindowsCommand(code) {
   const nodeUrl = `${proto}://${location.host}/node`;
   const extra =
     location.host === "agent.trustless-commerce.com" ? "" : ` $env:BSA_API_URL='${nodeUrl}';`;
-  return `wget ${origin}/install.ps1 -OutFile $env:TEMP\\bsa-install.ps1; $env:BSA_PAIR_CODE='${code}';${extra} powershell -ExecutionPolicy Bypass -File $env:TEMP\\bsa-install.ps1`;
+  return `curl.exe -fsSL ${origin}/install.ps1 -o $env:TEMP\\bsa-install.ps1; $env:BSA_PAIR_CODE='${code}';${extra} powershell -ExecutionPolicy Bypass -File $env:TEMP\\bsa-install.ps1`;
 }
 
 pairBtn.addEventListener("click", async () => {

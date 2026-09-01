@@ -3,7 +3,7 @@
 # Pair with a one-time code or a stored device token under BSA_HOME. BSA_TOKEN is optional.
 # Usage:
 # Consumer machines without this repo:
-#   wget -qO- https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash
+#   curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash
 #   BSA_PAIR_CODE=abc123 scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node
 #   scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node
 #   BSA_API_URL=ws://host.docker.internal:8787/node scripts/run-desktop-node.sh
