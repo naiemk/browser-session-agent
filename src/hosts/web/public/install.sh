@@ -23,6 +23,7 @@ Optional env:
   BSA_ORIGIN        https origin used to derive BSA_API_URL
   BSA_HOME          profile + credentials dir (default ~/.browser-session-agent)
   BSA_NATIVE=1      skip Docker even if it is running
+  BSA_DOCKER_PLATFORM   e.g. linux/amd64 if you want to force an emulated image
   BSA_HEADLESS=0    show a real Chromium window (default is headless + live view)
   BSA_REPO / BSA_REF  source tarball (default GitHub main)
   BSA_NODE_VERSION  portable Node (default 22.19.0)
@@ -107,9 +108,20 @@ docker_ready() {
 }
 
 run_docker() {
+  local platform_args=()
+  if [[ -n "${BSA_DOCKER_PLATFORM:-}" ]]; then
+    platform_args=(--platform "$BSA_DOCKER_PLATFORM")
+  fi
   log "Docker is running — pulling ${IMAGE}"
   if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    docker pull "$IMAGE" || die "Could not pull ${IMAGE}. Set BSA_NATIVE=1 to install without Docker."
+    if ! docker pull "${platform_args[@]}" "$IMAGE"; then
+      if [[ "$node_arch" == "arm64" ]]; then
+        log "GHCR has no linux/arm64 node image (Apple Silicon / ARM). Installing a native node instead."
+      else
+        log "Could not pull ${IMAGE}. Installing a native node instead."
+      fi
+      return 1
+    fi
   fi
   docker rm -f browser-session-node >/dev/null 2>&1 || true
   log "Starting desktop node → ${API_URL}"
@@ -118,6 +130,7 @@ run_docker() {
     --ipc=host \
     --shm-size=1g \
     --add-host=host.docker.internal:host-gateway \
+    "${platform_args[@]}" \
     -e "BSA_API_URL=${API_URL}" \
     -e "BSA_PAIR_CODE=${PAIR_CODE}" \
     -e "BSA_HOME=/data" \
@@ -239,7 +252,7 @@ run_native() {
 }
 
 if docker_ready; then
-  run_docker
+  run_docker || run_native
 else
   if have docker && [[ -z "$FORCE_NATIVE" ]]; then
     log "Docker CLI found but the daemon is not running — installing a native node instead."

@@ -27,6 +27,8 @@ describe("PRE-04 wget desktop install", () => {
     assert.match(sh, /playwright install chromium/);
     assert.match(sh, /docker pull|docker run/);
     assert.match(sh, /ghcr\.io\/naiemk\/browser-session-node/);
+    assert.match(sh, /no linux\/arm64|native node instead/);
+    assert.match(sh, /run_docker \|\| run_native/);
     assert.doesNotMatch(sh, /BSA_TOKEN=/);
     assert.doesNotMatch(sh, /device_token\s*=/i);
     assert.doesNotMatch(sh, /BEGIN (RSA |OPENSSH )?PRIVATE KEY/);

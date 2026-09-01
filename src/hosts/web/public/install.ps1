@@ -115,21 +115,33 @@ function Install-NpmAndBrowser {
   }
 }
 
+$usedDocker = $false
 if (Test-DockerReady) {
   Write-Log "Docker is running — pulling $Image"
   docker image inspect $Image 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) { docker pull $Image }
-  docker rm -f browser-session-node 2>$null | Out-Null
-  Write-Log "Starting desktop node → $ApiUrl"
-  $headless = $(if ($env:BSA_HEADLESS) { $env:BSA_HEADLESS } else { "1" })
-  docker run --rm --name browser-session-node --ipc=host --shm-size=1g `
-    -e "BSA_API_URL=$ApiUrl" `
-    -e "BSA_PAIR_CODE=$PairCode" `
-    -e "BSA_HOME=/data" `
-    -e "BSA_HEADLESS=$headless" `
-    -v "${HomeDir}:/data" `
-    $Image
-  exit $LASTEXITCODE
+  if ($LASTEXITCODE -ne 0) {
+    docker pull $Image
+    if ($LASTEXITCODE -ne 0) {
+      Write-Log "Could not pull $Image (often no linux/arm64 manifest). Installing a native node instead."
+    } else {
+      $usedDocker = $true
+    }
+  } else {
+    $usedDocker = $true
+  }
+  if ($usedDocker) {
+    docker rm -f browser-session-node 2>$null | Out-Null
+    Write-Log "Starting desktop node → $ApiUrl"
+    $headless = $(if ($env:BSA_HEADLESS) { $env:BSA_HEADLESS } else { "1" })
+    docker run --rm --name browser-session-node --ipc=host --shm-size=1g `
+      -e "BSA_API_URL=$ApiUrl" `
+      -e "BSA_PAIR_CODE=$PairCode" `
+      -e "BSA_HOME=/data" `
+      -e "BSA_HEADLESS=$headless" `
+      -v "${HomeDir}:/data" `
+      $Image
+    exit $LASTEXITCODE
+  }
 }
 
 Install-PortableNode
