@@ -1,5 +1,6 @@
 # VPS packager: ui + api + gateway only.
 # Do not add a nodes role. Chromium runs on the operator desktop.
+# Do not set BSA_NO_PI — production must run the real Pi agent.
 version: 1
 sites:
   - name: ui
@@ -12,12 +13,15 @@ sites:
     env:
       BSA_TOKEN: ${BSA_TOKEN}
       PORT: "8787"
-      # LLM keys belong here. No PLAYWRIGHT / CHROME vars.
+      BSA_HOST: agent.trustless-commerce.com
+      BSA_AGENT_DIR: /data/pi-agent
+      BSA_SESSION_DIR: /data/sessions
+      # LLM keys belong here. No PLAYWRIGHT / CHROME vars. No BSA_NO_PI.
   - name: gateway
     role: gateway
     tls: true
     routes:
-      - host: ${BSA_HOST}
+      - host: agent.trustless-commerce.com
         paths:
           - prefix: /chat
             upstream: api
@@ -26,6 +30,14 @@ sites:
             upstream: api
             websocket: true
           - prefix: /healthz
+            upstream: api
+          - prefix: /auth
+            upstream: api
+          - prefix: /me
+            upstream: api
+          - prefix: /pair
+            upstream: api
+          - prefix: /devices
             upstream: api
           - prefix: /
             upstream: ui

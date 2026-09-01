@@ -1,6 +1,6 @@
 # Web chat + desktop node
 
-Consumer V1 (accounts, Windows/Mac helper, no token paste) is specified in `docs/v1.md`. This page is the operator/deploy view of the same core.
+Consumer V1 (accounts, Windows/Mac helper, no token paste) is specified in `docs/v1.md`. Pre-V1 (personal production: same protocol, no billing, Docker helper, `agent.trustless-commerce.com`) is [`docs/pre-v1.md`](pre-v1.md). This page is the operator/deploy view of the same core.
 
 The product stays one `BrowserSession` / `BrowserWorker` / evidence store. Two hosts sit on that core:
 
@@ -98,3 +98,5 @@ See `docs/decisions.md` (D12, D13).
 Package **`ui` + `api` + `gateway`**. Do **not** install a `nodes` role or Playwright on that box.
 
 Configs live in `deploy/vibed/`. Prefer Docker on the desktop (`scripts/run-desktop-node.sh`). The npm/systemd installer is `scripts/install-desktop-node.sh` if you do not want a container.
+
+Pre-V1 production host is `agent.trustless-commerce.com` (see `docs/pre-v1.md`). The gateway must also proxy account and pairing HTTP (`/auth`, `/me`, `/pair`, `/devices`) to the API, not only `/chat` and `/node`.

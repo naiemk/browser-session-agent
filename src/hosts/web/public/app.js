@@ -137,7 +137,47 @@ function onServerMessage(event) {
       const v = ev.result.verification;
       addMessage("tool", `harness ${v.status}${ev.result.recovery ? `: ${ev.result.recovery}` : ""}`);
     }
+    if (isPlanEvent(ev.type)) {
+      addPlanCard(ev);
+    }
   }
+}
+
+const PLAN_TYPES = new Set([
+  "action_start",
+  "action_done",
+  "action_failed",
+  "attempt_start",
+  "attempt_result",
+  "plan_done",
+  "escalate",
+  "step",
+]);
+
+function isPlanEvent(type) {
+  return PLAN_TYPES.has(type);
+}
+
+function addPlanCard(ev) {
+  const el = addMessage(
+    "tool",
+    planLine(ev),
+    "plan",
+  );
+  el.dataset.planType = ev.type || "";
+  el.dataset.actionId = ev.actionId || "";
+}
+
+function planLine(ev) {
+  if (ev.type === "action_start") return `plan ${ev.actionId || ""}: ${ev.intent || "start"}`;
+  if (ev.type === "action_done") return `plan ${ev.actionId || ""} done via ${ev.via || ""}`.trim();
+  if (ev.type === "attempt_start") return `plan attempt ${ev.attempt || ""}`;
+  if (ev.type === "attempt_result") return `plan attempt ${ev.attempt || ""} ${ev.ok ? "ok" : "miss"} ${ev.reason || ""}`.trim();
+  if (ev.type === "plan_done") return "plan done";
+  if (ev.type === "escalate") return `plan escalate: ${ev.reason || ""}`;
+  if (ev.type === "step") return `plan step ${ev.op || ""} ${ev.ok ? "ok" : "fail"} ${ev.detail || ""}`.trim();
+  if (ev.type === "action_failed") return `plan ${ev.actionId || ""} failed`;
+  return `plan ${ev.type}`;
 }
 
 async function authRequest(path) {

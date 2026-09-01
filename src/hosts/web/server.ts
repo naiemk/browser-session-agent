@@ -171,7 +171,7 @@ async function acceptChat(
         const hub = registry.hubFor(account.id);
         const consumer = new OperatorRuntime(hub, (m) => send(m), {
           ...options,
-          requirePaid: true,
+          requirePaid: options.requirePaid === true || process.env.BSA_REQUIRE_PAID === "1",
           paid: () => Boolean(accounts.getAccount(account.id)?.paidAt),
         });
         runtimes.add(consumer);
@@ -217,23 +217,27 @@ async function handleHttp(
     }
 
     if (req.method === "POST" && url.pathname === "/auth/register") {
+      if (!registrationOpen()) {
+        json(res, 403, { error: "registration is closed", code: "registration_closed" });
+        return;
+      }
       const body = await readJson(req);
       const account = await accounts.register(String(body.email ?? ""), String(body.password ?? ""));
       const { session } = await accounts.login(account.email, String(body.password ?? ""));
-      setSessionCookie(res, session.id);
+      setSessionCookie(res, session.id, req);
       json(res, 201, { account: accounts.publicView(account) });
       return;
     }
     if (req.method === "POST" && url.pathname === "/auth/login") {
       const body = await readJson(req);
       const { account, session } = await accounts.login(String(body.email ?? ""), String(body.password ?? ""));
-      setSessionCookie(res, session.id);
+      setSessionCookie(res, session.id, req);
       json(res, 200, { account: accounts.publicView(account) });
       return;
     }
     if (req.method === "POST" && url.pathname === "/auth/logout") {
       await accounts.logout(sessionIdFromRequest(req));
-      clearSessionCookie(res);
+      clearSessionCookie(res, req);
       json(res, 200, { ok: true });
       return;
     }
@@ -350,6 +354,12 @@ function requireAccount(accounts: AccountStore, req: IncomingMessage) {
     throw Object.assign(new Error("unauthorized"), { status: 401, code: "unauthorized" });
   }
   return account;
+}
+
+function registrationOpen(): boolean {
+  const raw = process.env.BSA_REGISTER_OPEN;
+  if (raw === undefined || raw === "") return true;
+  return raw !== "0" && raw.toLowerCase() !== "false";
 }
 
 function allowMarkPaid(req: IncomingMessage, token?: string): boolean {

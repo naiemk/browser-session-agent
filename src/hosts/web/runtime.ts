@@ -23,7 +23,7 @@ export class OperatorRuntime {
     commands: Map<string, import("../../pi-api.ts").RegisteredCommand>;
   };
   readonly handle: RpcSessionHandle;
-  private pi: Awaited<ReturnType<typeof createAgentSession>>["session"] | null = null;
+  private pi: PiLike | null = null;
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
   private readonly send: (message: ChatServerMessage) => void;
@@ -84,6 +84,17 @@ export class OperatorRuntime {
       this.send({ type: "stateSync", state: this.state() });
       return;
     }
+    if (process.env.BSA_FAKE_PI === "1") {
+      this.pi = this.createFakePi();
+      this.model = "fake/scripted";
+      this.models = [
+        ...this.models,
+        { id: "fake/scripted", label: "fake/scripted (CI double)" },
+      ];
+      this.send({ type: "models", models: this.models });
+      this.send({ type: "stateSync", state: this.state() });
+      return;
+    }
     try {
       const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
       const authStorage = AuthStorage.create();
@@ -114,7 +125,7 @@ export class OperatorRuntime {
         noTools: "builtin",
         thinkingLevel: "medium",
       });
-      this.pi = result.session;
+      this.pi = result.session as PiLike;
       this.model = describeModel(result.session.model) ?? this.model;
       this.thinking = String(result.session.thinkingLevel ?? this.thinking);
       this.unsubscribePi = result.session.subscribe((event) => {
@@ -251,12 +262,69 @@ export class OperatorRuntime {
     }
   }
 
+  private createFakePi(): PiLike {
+    return {
+      model: { provider: "fake", id: "scripted" },
+      thinkingLevel: "medium",
+      subscribe: () => () => undefined,
+      abort: () => undefined,
+      dispose: () => undefined,
+      setThinkingLevel: () => undefined,
+      setModel: async () => undefined,
+      prompt: async (text: string) => {
+        const tools = [...this.api.tools.keys()];
+        this.send({
+          type: "agentEvent",
+          event: { type: "text_delta", text: `Pi: ${text}` },
+        });
+        if (looksLikeBrowserWork(text)) {
+          const inspect = this.api.tools.get("browser_inspect");
+          this.send({
+            type: "agentEvent",
+            event: { type: "tool_call", toolName: "browser_inspect", tools },
+          });
+          if (inspect) {
+            try {
+              const result = await inspect.execute(
+                "fake-pi",
+                { runId: this.handle.currentRunId ?? undefined },
+                undefined,
+                undefined,
+                extensionContext(this.host),
+              );
+              this.send({
+                type: "agentEvent",
+                event: {
+                  type: "tool_result",
+                  toolName: "browser_inspect",
+                  isError: Boolean(result.isError),
+                  text: result.content.map((part) => ("text" in part ? part.text : "")).join(""),
+                },
+              });
+            } catch (err) {
+              this.send({
+                type: "agentEvent",
+                event: {
+                  type: "tool_result",
+                  toolName: "browser_inspect",
+                  isError: true,
+                  text: err instanceof Error ? err.message : String(err),
+                },
+              });
+            }
+          }
+        }
+        this.send({ type: "agentEvent", event: { type: "turn_end" } });
+      },
+    };
+  }
+
   private async setModel(id: string): Promise<void> {
     this.model = id;
     if (this.pi && this.modelRegistry && id !== "auto" && !["low", "medium", "high", "ultra"].includes(id)) {
       const [provider, ...rest] = id.split("/");
       const found = this.modelRegistry.find(provider ?? "", rest.join("/"));
-      if (found) await this.pi.setModel(found);
+      if (found) await this.pi.setModel?.(found);
     }
     this.send({ type: "stateSync", state: this.state() });
     this.send({
@@ -286,6 +354,17 @@ export class OperatorRuntime {
       },
     });
   }
+}
+
+interface PiLike {
+  prompt: (text: string) => Promise<void>;
+  abort: () => Promise<void> | void;
+  dispose: () => void;
+  setThinkingLevel: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
+  setModel?: (model: unknown) => Promise<void> | void;
+  subscribe?: (listener: (event: unknown) => void) => () => void;
+  model?: { provider?: string; id?: string };
+  thinkingLevel?: string;
 }
 
 function describeModel(model: { provider?: string; id?: string } | undefined): string | undefined {
