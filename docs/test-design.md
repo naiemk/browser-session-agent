@@ -1,6 +1,10 @@
-# Test Design — MVP
+# Test Design
 
 Tests prove the stories’ observable criteria without a live Pi TUI or real job sites.
+
+V1 consumer tests use an in-process API, a helper child process, and local fixtures. They do not require Clerk, Stripe, signed installers, or live job boards.
+
+# MVP
 
 ## Layers
 
@@ -76,3 +80,93 @@ Tests prove the stories’ observable criteria without a live Pi TUI or real job
 - Real LinkedIn/Indeed/Greenhouse sessions
 - Full Pi TUI keypress tests
 - Load/performance
+
+---
+
+# V1
+
+Consumer E2E: account session + pair + helper child + fixture site. `BSA_TOKEN` may remain a power-user escape; V1 tests must not require it in the URL or helper env.
+
+## Layers (added)
+
+| Layer | Runner | What it covers |
+| --- | --- | --- |
+| Account / pair HTTP | tsx + API process | register, session, pair codes, revoke, billing flag |
+| Helper child | node-agent subprocess | `/node` hello, fail-closed, reconnect |
+| Chat WS | WebSocket client | `agentEvent`, tool cards, progress, live frames |
+| Chat UI | Playwright | sign-in form, send message (no `?token=`) |
+| Page plans | Playwright + fixture | PlanRuntime, combobox, `browser_run_plan`, `browser_fill` |
+| Manifest / artifact | file assertions | `bsa://`, login item, no baked secret |
+| Onboarding gate | `tests/e2e/v1-e2e-onboarding.test.ts` | V1 exit criteria in one path |
+
+## Fixture additions
+
+Keep `tests/fixtures/site/` and add:
+
+- `/combobox` — searchable country list; query `?mode=united-states-first|usa-only|scroll-only|none`
+- `/dead-click` — button that does not change URL, title, dialogs, or controls (harness no-op)
+
+Pairing and account E2E do not need new HTML.
+
+## Required cases (mapped to tasks)
+
+### Account and chat (V1-01)
+
+- Register → login → `GET /me` → logout; wrong password 401. `tests/e2e/v1-01-session.test.ts`
+- Session opens `/chat`, prompt → `agentEvent`; no session rejected. Helper off. `tests/e2e/v1-01-chat.test.ts`
+- Playwright UI: sign-in, send message, see reply; URL has no `token=`. `tests/e2e/v1-01-chat-ui.test.ts`
+
+### Pairing (V1-02)
+
+- Issue → exchange → helper hello → Connected; no `BSA_TOKEN`. `tests/e2e/v1-02-pair.test.ts`
+- Localhost challenge + claim → Connected. `tests/e2e/v1-02-pair-localhost.test.ts`
+- Expired code, foreign account, revoked device, empty store. `tests/e2e/v1-02-pair-security.test.ts`
+- Kill helper → `helper_disconnected`, chat lives; relaunch with stored token → Connected. `tests/e2e/v1-02-reconnect.test.ts`
+
+### Drive helper (V1-03)
+
+- Start run on `/apply`; inspect has URL/title/refs; API launched no Chromium. `tests/e2e/v1-03-inspect.test.ts`
+- Type/click; next observation shows the mutation. `tests/e2e/v1-03-act.test.ts`
+
+### Live view and takeover (V1-04)
+
+- After start, chat/live client gets ≥1 JPEG. `tests/e2e/v1-04-live-view.test.ts`
+- Takeover accepts pointer; act rejected; input ignored before takeover; resume new observation then act. `tests/e2e/v1-04-takeover.test.ts`
+
+### Harness (V1-05)
+
+- `/dead-click` → verification failed, not `ok`. `tests/e2e/v1-05-noop-click.test.ts`
+- Type/select read-back accept/reject; navigate URL intent. `tests/e2e/v1-05-readback.test.ts`
+- Chat payload the UI renders includes verification + recovery. `tests/e2e/v1-05-harness-chat.test.ts`
+
+### Page plans (V1-06)
+
+- PlanRuntime types a labeled input on Playwright. `tests/e2e/v1-06-plan-runtime.test.ts`
+- Four combobox modes including escalate + empty value. `tests/e2e/v1-06-combobox.test.ts`
+- `browser_run_plan` streams progress; JS-shaped plan rejected. `tests/e2e/v1-06-run-plan-wire.test.ts`
+- `browser_fill` one call; stop on first bad field. `tests/e2e/v1-06-fill.test.ts`
+
+### Helper package (V1-07)
+
+- Helper binary pair + restart, no `BSA_TOKEN` env. `tests/e2e/v1-07-helper-binary.test.ts`
+- Manifests: `bsa://`, login item, profile paths, no secret. `tests/e2e/v1-07-installer-contracts.test.ts`
+- Unsigned archive contains node entry + Chromium notes. `tests/e2e/v1-07-artifact-layout.test.ts`
+
+### Billing (V1-08)
+
+- Unpaid: chat ok, start-run `payment_required`. `tests/e2e/v1-08-unpaid.test.ts`
+- Mark-paid → start-run + inspect succeeds. `tests/e2e/v1-08-mark-paid.test.ts`
+
+### Onboarding gate (V1-E2E)
+
+- Register → pair → start → country plan → takeover → resume → quit helper → disconnected. No hardcoded refs. `tests/e2e/v1-e2e-onboarding.test.ts`
+- `npm test` includes this file once implemented.
+
+## V1 non-goals for CI
+
+- Signed/notarized MSI/pkg
+- Real Clerk or Stripe
+- Cloud-hosted browsers
+- Live Greenhouse / LinkedIn / Indeed
+- Pixel diffs of live view
+
