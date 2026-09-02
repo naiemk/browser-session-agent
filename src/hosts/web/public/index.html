@@ -4,11 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Browser session operator</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
     <div id="auth" class="auth hidden">
       <form id="auth-form" class="auth-card">
+        <img class="auth-logo" src="/logo.svg" alt="" width="48" height="48" />
         <h1>Sign in</h1>
         <p id="auth-error" class="auth-error" hidden></p>
         <label>
@@ -28,6 +33,7 @@
     <div id="app">
       <header class="top">
         <div class="brand">
+          <img class="brand-logo" src="/logo.svg" alt="" width="28" height="28" />
           <strong>Browser operator</strong>
           <span id="node-pill" class="pill off">node offline</span>
           <span id="takeover-pill" class="pill hidden">takeover</span>
@@ -52,9 +58,11 @@
         </div>
       </header>
       <div id="pair-panel" class="pair-panel hidden">
-        <p>One-time pair code (expires soon):</p>
+        <p>One-time pair code (expires soon). Paste the command in a terminal on the computer that should run the browser — first run installs Node and Chromium (or uses Docker if it is already running). No git checkout.</p>
         <code id="pair-code"></code>
-        <p id="pair-hint" class="pair-hint"></p>
+        <pre id="pair-hint" class="pair-hint"></pre>
+        <p class="pair-alt-label">Windows PowerShell</p>
+        <pre id="pair-win" class="pair-hint pair-win"></pre>
         <button type="button" id="pair-copy">Copy command</button>
       </div>
       <main>

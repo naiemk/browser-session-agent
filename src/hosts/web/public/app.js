@@ -40,7 +40,12 @@ const COMMANDS = [
 ];
 
 function send(message) {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+    return true;
+  }
+  addMessage("system", "Chat is not connected. Refresh the page.", "error");
+  return false;
 }
 
 function addMessage(role, text, extraClass = "") {
@@ -75,8 +80,17 @@ async function me() {
 
 function connectChat() {
   socket = new WebSocket(`${proto}://${location.host}/chat`);
-  socket.addEventListener("open", () => send({ type: "hello", token: powerToken || undefined }));
+  socket.addEventListener("open", () => {
+    socket.send(JSON.stringify({ type: "hello", token: powerToken || undefined }));
+  });
   socket.addEventListener("message", onServerMessage);
+  socket.addEventListener("close", () => {
+    addMessage("system", "Chat disconnected. Reconnecting…", "error");
+    setTimeout(connectChat, 1500);
+  });
+  socket.addEventListener("error", () => {
+    addMessage("system", "Chat socket error. Check the connection and refresh if this persists.", "error");
+  });
 }
 
 function onServerMessage(event) {
@@ -210,9 +224,23 @@ document.getElementById("auth-register").addEventListener("click", () => {
   void authRequest("/auth/register");
 });
 
+function pairOrigin() {
+  return `${location.protocol}//${location.host}`;
+}
+
 function pairCommand(code) {
+  const origin = pairOrigin();
   const nodeUrl = `${proto}://${location.host}/node`;
-  return `BSA_PAIR_CODE=${code} scripts/run-desktop-node.sh ${nodeUrl}`;
+  const extra = location.host === "agent.trustless-commerce.com" ? "" : ` BSA_API_URL=${nodeUrl}`;
+  return `curl -fsSL ${origin}/install.sh | BSA_PAIR_CODE=${code}${extra} bash`;
+}
+
+function pairWindowsCommand(code) {
+  const origin = pairOrigin();
+  const nodeUrl = `${proto}://${location.host}/node`;
+  const extra =
+    location.host === "agent.trustless-commerce.com" ? "" : ` $env:BSA_API_URL='${nodeUrl}';`;
+  return `curl.exe -fsSL ${origin}/install.ps1 -o $env:TEMP\\bsa-install.ps1; $env:BSA_PAIR_CODE='${code}';${extra} powershell -ExecutionPolicy Bypass -File $env:TEMP\\bsa-install.ps1`;
 }
 
 pairBtn.addEventListener("click", async () => {
@@ -230,6 +258,8 @@ pairBtn.addEventListener("click", async () => {
   }
   pairCodeEl.textContent = body.code;
   pairHintEl.textContent = pairCommand(body.code);
+  const winEl = document.getElementById("pair-win");
+  if (winEl) winEl.textContent = pairWindowsCommand(body.code);
   pairPanel.classList.remove("hidden");
 });
 

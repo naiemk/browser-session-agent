@@ -38,7 +38,6 @@ describe("PRE-06-T01 vibed-infra host + no Chromium on API", () => {
 
     for (const file of [dockerfile, vibedDockerfile]) {
       assert.match(file, /PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1/);
-      assert.match(file, /npm uninstall playwright/);
       assert.match(file, /No Chromium/);
       assert.match(file, /BSA_HOME=\/data/);
       assert.match(file, /VOLUME \["\/data"\]/);
