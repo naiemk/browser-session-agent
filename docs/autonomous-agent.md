@@ -64,7 +64,8 @@ Deliberately not decided yet: session strategy (D27), planner and graph, memory 
 
 ## Open questions and how each gets settled
 
-- **Does the environment diagnosis hold?** Settled by Step 1 of the plan: if probe plus external criteria plus richer failure evidence do not move suite success rate materially, the diagnosis is wrong and nothing downstream is worth building.
+- **Does the environment diagnosis hold?** Not yet answered, and it is the one that matters most. The mechanisms are built and tested, but comparing agent success with and without them needs a valid agent run, which needs model credits. Until then the diagnosis remains a hypothesis with good arguments behind it, not a measured result.
+- **Can the new core replace the old one?** Blocked on the same baseline plus a `BrowserPort` adapter over the kept CDP worker (`work-items/tasks/agent-09-t01-cutover-and-delete.md`). The old core is still the shipping default, on purpose.
 - **Long compacted session or fresh session per task?** (D27) Run the suite both ways; compare success, steps, and cost.
 - **Is a planner the binding constraint, or is single-task reliability?** (D28) Do not build the graph until single tasks pass reliably; a graph over an unreliable executor multiplies failures.
 - **Do page archetypes repeat enough for cross-session memory to pay?** (D28) Instrument archetype revisits, turns spent re-perceiving a known surface, and prediction hit rate. If repeats are rare, stop at the within-run fixes; that is a legitimate outcome, not a failure.

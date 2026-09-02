@@ -3,11 +3,32 @@ id: AGENT-09-T01
 title: Cutover by measurement, then delete the old core
 story: AGENT-09
 epic: agent
-status: todo
+status: blocked
 depends: AGENT-07-T01
 ---
 
 # AGENT-09-T01 — Cutover by measurement, then delete the old core
+
+## Blocked, deliberately
+
+D35 makes the flip conditional on beating a valid agent baseline, and that baseline does
+not exist yet. Two conditions are open:
+
+1. **No valid agent baseline.** The suite runs the real agent end to end, but every
+   session in the full run failed with HTTP 402: the model credits are exhausted. The
+   runner marks such a run invalid and refuses to quote it (`results/agent-attempt-invalid.json`).
+   Individual tasks pass when run with credit available, so the wiring is sound; the
+   number is simply not measurable here. Reproduce with credits:
+   `npx tsx scripts/run-suite.ts --target agent --out results/baseline-agent.json`.
+2. **No browser-port adapter over the kept CDP plumbing.** The new core drives Playwright
+   through `LocalBrowser`, which launches its own browser. The product path needs a second
+   `BrowserPort` implementation wrapping `src/worker/browser-worker.ts` so the persistent
+   profile, CDP reconnect, and screencast are reused rather than rewritten. That worker
+   exposes no `Page` accessor today, so it needs one small addition.
+
+Deleting the old core before either is settled would break the shipping product with no
+evidence the replacement is better, which is the exact failure D35 exists to prevent.
+The old default stands.
 
 ## Spec
 

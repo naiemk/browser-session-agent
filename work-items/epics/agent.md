@@ -1,6 +1,8 @@
 # Epic: Coding-agent competence in the browser
 
-Status: todo (0/13 tasks)
+Status: in progress. The environment layer, the scoreboard, and the outer loop are built
+and tested (287 tests pass). Two things are open and both need model credits: a valid
+agent baseline, and therefore the cutover (AGENT-09-T01 is blocked, not skipped).
 
 ## Outcome
 
@@ -35,19 +37,28 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 
 | Task | Story | Status |
 | --- | --- | --- |
-| [AGENT-01-T01](../tasks/agent-01-t01-suite-and-runner.md) | AGENT-01 | todo |
-| [AGENT-01-T02](../tasks/agent-01-t02-baseline-metrics.md) | AGENT-01 | todo |
-| [AGENT-02-T01](../tasks/agent-02-t01-probe-tool.md) | AGENT-02 | todo |
-| [AGENT-02-T02](../tasks/agent-02-t02-probe-security.md) | AGENT-02 | todo |
-| [AGENT-03-T01](../tasks/agent-03-t01-external-criteria.md) | AGENT-03 | todo |
-| [AGENT-03-T02](../tasks/agent-03-t02-step-checks.md) | AGENT-03 | todo |
-| [AGENT-04-T01](../tasks/agent-04-t01-failure-evidence.md) | AGENT-04 | todo |
-| [AGENT-04-T02](../tasks/agent-04-t02-context-hygiene.md) | AGENT-04 | todo |
-| [AGENT-05-T01](../tasks/agent-05-t01-reversibility-judgment.md) | AGENT-05 | todo |
-| [AGENT-05-T02](../tasks/agent-05-t02-commit-gate.md) | AGENT-05 | todo |
-| [AGENT-06-T01](../tasks/agent-06-t01-park-and-entity-state.md) | AGENT-06 | todo |
-| [AGENT-07-T01](../tasks/agent-07-t01-session-strategy-experiment.md) | AGENT-07 | todo |
+| [AGENT-00-T01](../tasks/agent-00-t01-core-seam-and-perception.md) | AGENT-00 | done |
+| [AGENT-00-T02](../tasks/agent-00-t02-evidence-and-state-store.md) | AGENT-00 | done |
+| [AGENT-01-T01](../tasks/agent-01-t01-suite-and-runner.md) | AGENT-01 | done |
+| [AGENT-01-T02](../tasks/agent-01-t02-baseline-metrics.md) | AGENT-01 | partial — reference baseline recorded; agent baseline blocked on credits |
+| [AGENT-02-T01](../tasks/agent-02-t01-probe-tool.md) | AGENT-02 | done |
+| [AGENT-02-T02](../tasks/agent-02-t02-probe-security.md) | AGENT-02 | done |
+| [AGENT-03-T01](../tasks/agent-03-t01-external-criteria.md) | AGENT-03 | done |
+| [AGENT-03-T02](../tasks/agent-03-t02-step-checks.md) | AGENT-03 | done |
+| [AGENT-04-T01](../tasks/agent-04-t01-failure-evidence.md) | AGENT-04 | done |
+| [AGENT-04-T02](../tasks/agent-04-t02-context-hygiene.md) | AGENT-04 | done |
+| [AGENT-05-T01](../tasks/agent-05-t01-reversibility-judgment.md) | AGENT-05 | done |
+| [AGENT-05-T02](../tasks/agent-05-t02-commit-gate.md) | AGENT-05 | done |
+| [AGENT-06-T01](../tasks/agent-06-t01-park-and-entity-state.md) | AGENT-06 | done |
+| [AGENT-07-T01](../tasks/agent-07-t01-session-strategy-experiment.md) | AGENT-07 | partial — bounded session built and running; the A/B comparison needs credits |
 | [AGENT-07-T02](../tasks/agent-07-t02-memory-instrumentation.md) | AGENT-07 | todo |
+| [AGENT-09-T01](../tasks/agent-09-t01-cutover-and-delete.md) | AGENT-09 | blocked — see the task for the two open conditions |
+
+Also built beyond the original table, because the todo list called for them: the
+independent evaluator (`src/core/evaluator.ts`), the living task graph
+(`src/core/plan.ts`), and lazy skills (`src/agent/skills.ts`). These were gated behind
+measurement in AGENT-08; they exist and are tested, but the gate that would justify
+*relying* on them is still open.
 
 Order: AGENT-01 first and alone. Then AGENT-02, AGENT-03, AGENT-04 in any order. Then a suite rerun: **if perception plus the oracle do not move the numbers, the diagnosis is wrong and nothing downstream is worth building.** Then AGENT-05 and AGENT-06, then AGENT-07 to choose what comes next.
 
