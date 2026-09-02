@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Compose</title>
+  </head>
+  <body>
+    <h1>Compose post</h1>
+    <p>Cancelling looks clean but quietly keeps a draft.</p>
+    <div id="composer">
+      <label>Caption <textarea name="caption"></textarea></label>
+      <button type="button" id="publish">Publish</button>
+      <button type="button" id="cancel">Cancel</button>
+    </div>
+    <p>Published: <span id="published"></span></p>
+    <p>Drafts: <span id="drafts">0</span></p>
+    <script>
+      const caption = document.querySelector('[name="caption"]');
+      let drafts = 0;
+
+      document.getElementById("publish").addEventListener("click", () => {
+        document.getElementById("published").textContent = caption.value || "(empty)";
+        caption.value = "";
+      });
+
+      // The trap: cancel autosaves. A no-trace check must catch this.
+      document.getElementById("cancel").addEventListener("click", () => {
+        if (caption.value) {
+          drafts += 1;
+          document.getElementById("drafts").textContent = String(drafts);
+        }
+        caption.value = "";
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,173 @@
+/**
+ * The runner owns measurement. It opens a tab, hands the task to a driver, and then
+ * evaluates the task's criteria itself against a fresh look at the page.
+ *
+ * Two properties matter and are enforced here rather than trusted:
+ *   - the driver cannot influence what is evaluated (criteria are snapshotted first)
+ *   - a step cap produces "capped", which is a different outcome from "failed"
+ */
+
+import { LocalBrowser, type BrowserPort } from "../core/browser.ts";
+import { verify } from "../core/predicates.ts";
+import type { Predicate } from "../core/types.ts";
+import {
+  StepCapExceeded,
+  type AgentDriver,
+  type SuiteReport,
+  type SuiteTask,
+  type TaskRun,
+} from "./types.ts";
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    for (const entry of Object.values(value as Record<string, unknown>)) deepFreeze(entry);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/** A copy the driver has no reference to, so criteria cannot be edited mid-run. */
+function snapshotCriteria(task: SuiteTask): Predicate[] {
+  return structuredClone(task.criteria) as Predicate[];
+}
+
+export interface RunSuiteOptions {
+  tasks: SuiteTask[];
+  driver: AgentDriver;
+  origin: string;
+  browser?: BrowserPort;
+  headless?: boolean;
+  only?: string[];
+  onTask?: (run: TaskRun) => void;
+}
+
+export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
+  const startedAt = new Date().toISOString();
+  const selected = options.only?.length
+    ? options.tasks.filter((task) => options.only!.includes(task.id))
+    : options.tasks;
+
+  const ownBrowser = !options.browser;
+  const browser = options.browser ?? (await LocalBrowser.launch({ headless: options.headless ?? true }));
+  const runs: TaskRun[] = [];
+
+  try {
+    for (const task of selected) {
+      runs.push(await runOne(task, browser, options));
+      options.onTask?.(runs[runs.length - 1]!);
+    }
+  } finally {
+    if (ownBrowser) await browser.close();
+  }
+
+  const passed = runs.filter((run) => run.outcome === "passed").length;
+  const totals = runs.reduce(
+    (acc, run) => ({
+      steps: acc.steps + run.steps,
+      tokens: acc.tokens + (run.tokens ?? 0),
+      cost: acc.cost + (run.costUsd ?? 0),
+    }),
+    { steps: 0, tokens: 0, cost: 0 },
+  );
+  const count = runs.length || 1;
+
+  return {
+    target: options.driver.name,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    taskCount: runs.length,
+    passed,
+    successRate: round(passed / count),
+    stepsPerTask: round(totals.steps / count),
+    tokensPerTask: totals.tokens > 0 ? round(totals.tokens / count) : undefined,
+    costPerTask: totals.cost > 0 ? round(totals.cost / count, 6) : undefined,
+    runs,
+  };
+}
+
+async function runOne(
+  task: SuiteTask,
+  browser: BrowserPort,
+  options: RunSuiteOptions,
+): Promise<TaskRun> {
+  const criteria = snapshotCriteria(task);
+  const startedAt = Date.now();
+  let steps = 0;
+
+  const context = {
+    task: deepFreeze({ ...task }),
+    browser,
+    tabId: "",
+    origin: options.origin,
+    maxSteps: task.maxSteps,
+    step: () => {
+      steps += 1;
+      if (steps > task.maxSteps) throw new StepCapExceeded(steps);
+    },
+  };
+
+  let outcome: TaskRun["outcome"] = "failed";
+  let detail = "";
+  let tokens: number | undefined;
+  let costUsd: number | undefined;
+  let capped = false;
+
+  try {
+    context.tabId = await browser.openTab(`${options.origin}${task.path}`);
+    const result = await options.driver.runTask(context);
+    tokens = result.tokens;
+    costUsd = result.costUsd;
+    detail = result.claimed ?? "";
+  } catch (err) {
+    if (err instanceof StepCapExceeded) {
+      capped = true;
+      detail = err.message;
+    } else {
+      // A driver error is still measured: the criteria decide the outcome below.
+      detail = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // The verdict never comes from the driver.
+  let checks: TaskRun["checks"] = [];
+  try {
+    const facts = await browser.facts(context.tabId || undefined);
+    const verification = verify(criteria, facts);
+    checks = verification.checks;
+    if (verification.status === "passed") {
+      outcome = capped ? "capped" : "passed";
+      if (capped) detail = `${detail} (criteria met but step cap exceeded)`;
+    } else {
+      outcome = capped ? "capped" : "failed";
+      const failed = checks.filter((check) => !check.passed);
+      detail = [detail, failed.map((check) => `${check.predicate}: ${check.detail}`).join("; ")]
+        .filter(Boolean)
+        .join(" — ");
+    }
+  } catch (err) {
+    outcome = "error";
+    detail = `criteria evaluation failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+
+  return {
+    id: task.id,
+    outcome,
+    steps,
+    durationMs: Date.now() - startedAt,
+    detail,
+    checks,
+    tokens,
+    costUsd,
+  };
+}
+
+export function formatReport(report: SuiteReport): string {
+  const pct = (report.successRate * 100).toFixed(1);
+  const cost = report.costPerTask === undefined ? "n/a" : `$${report.costPerTask.toFixed(4)}`;
+  return `${report.target}: ${report.passed}/${report.taskCount} passed (${pct}%), ${report.stepsPerTask} steps/task, ${cost}/task`;
+}
+
+function round(value: number, digits = 3): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Subscription</title>
+  </head>
+  <body>
+    <h1>Manage subscription</h1>
+    <p>Two controls look plausible. Only one keeps the account.</p>
+    <button type="button" id="pause">Pause subscription</button>
+    <button type="button" id="cancel">Cancel subscription</button>
+    <p>Status: <span id="status">active</span></p>
+    <script>
+      document.getElementById("pause").addEventListener("click", () => {
+        document.getElementById("status").textContent = "paused";
+      });
+      document.getElementById("cancel").addEventListener("click", () => {
+        document.getElementById("status").textContent = "cancelled permanently";
+      });
+    </script>
+  </body>
+</html>

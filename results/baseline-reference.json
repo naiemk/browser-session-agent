@@ -1,0 +1,434 @@
+{
+  "target": "reference",
+  "startedAt": "2026-09-02T14:52:52.525Z",
+  "finishedAt": "2026-09-02T14:52:56.173Z",
+  "taskCount": 27,
+  "passed": 27,
+  "successRate": 1,
+  "stepsPerTask": 2.593,
+  "runs": [
+    {
+      "id": "login-happy",
+      "outcome": "passed",
+      "steps": 3,
+      "durationMs": 183,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "url=http://127.0.0.1:43371/jobs",
+          "predicate": "url includes \"/jobs\""
+        }
+      ]
+    },
+    {
+      "id": "login-validation",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 99,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"required\"",
+          "predicate": "text visible \"required\""
+        }
+      ]
+    },
+    {
+      "id": "login-then-apply",
+      "outcome": "passed",
+      "steps": 4,
+      "durationMs": 190,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "url=http://127.0.0.1:43371/apply",
+          "predicate": "url includes \"/apply\""
+        }
+      ]
+    },
+    {
+      "id": "apply-submit",
+      "outcome": "passed",
+      "steps": 3,
+      "durationMs": 129,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Thanks Ada Lovelace\"",
+          "predicate": "text visible \"Thanks Ada Lovelace\""
+        },
+        {
+          "passed": true,
+          "detail": "url=http://127.0.0.1:43371/apply",
+          "predicate": "url includes \"/apply\""
+        }
+      ]
+    },
+    {
+      "id": "apply-validation",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 96,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"required\"",
+          "predicate": "text visible \"required\""
+        }
+      ]
+    },
+    {
+      "id": "apply-location-nyc",
+      "outcome": "passed",
+      "steps": 4,
+      "durationMs": 131,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Thanks Ada Lovelace\"",
+          "predicate": "text visible \"Thanks Ada Lovelace\""
+        }
+      ]
+    },
+    {
+      "id": "fill-profile",
+      "outcome": "passed",
+      "steps": 3,
+      "durationMs": 118,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Thanks Ada Lovelace\"",
+          "predicate": "text visible \"Thanks Ada Lovelace\""
+        }
+      ]
+    },
+    {
+      "id": "combobox-united-states",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 114,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Committed: United States\"",
+          "predicate": "text visible \"Committed: United States\""
+        },
+        {
+          "passed": true,
+          "detail": "actual=\"United States\"",
+          "predicate": "\"Country\" includes \"United States\""
+        }
+      ]
+    },
+    {
+      "id": "combobox-usa-abbreviation",
+      "outcome": "passed",
+      "steps": 3,
+      "durationMs": 133,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Committed: USA\"",
+          "predicate": "text visible \"Committed: USA\""
+        }
+      ]
+    },
+    {
+      "id": "combobox-scroll-only",
+      "outcome": "passed",
+      "steps": 7,
+      "durationMs": 449,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Committed: United States\"",
+          "predicate": "text visible \"Committed: United States\""
+        }
+      ]
+    },
+    {
+      "id": "combobox-unavailable",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 149,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text present: \"Committed: United States\"",
+          "predicate": "text absent \"Committed: United States\""
+        },
+        {
+          "passed": true,
+          "detail": "combobox:Country, listbox:Suggestions, option:Albania, option:Belgium, option:Canada, option:Denmark",
+          "predicate": "control exists combobox \"Country\""
+        }
+      ]
+    },
+    {
+      "id": "dead-click-detect",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 87,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"This button does not change the page\"",
+          "predicate": "text visible \"This button does not change the page\""
+        }
+      ]
+    },
+    {
+      "id": "dynamic-reveal",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 82,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "button:Reveal, submit:Continue application",
+          "predicate": "control exists any \"Continue application\""
+        }
+      ]
+    },
+    {
+      "id": "jsonlint-validate",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 101,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Valid JSON\"",
+          "predicate": "text visible \"Valid JSON\""
+        }
+      ]
+    },
+    {
+      "id": "jsonlint-invalid",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 82,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Invalid JSON\"",
+          "predicate": "text visible \"Invalid JSON\""
+        }
+      ]
+    },
+    {
+      "id": "jsonlint-prettify",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 102,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "actual=\"{ \"a\": 1, \"b\": [ 2, 3 ] }\"",
+          "predicate": "\"JSON editor\" includes \"\"a\": 1\""
+        }
+      ]
+    },
+    {
+      "id": "upload-cv",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 99,
+      "detail": "reference step click Attach failed: noop click: nothing on the page changed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Attached: cv.txt\"",
+          "predicate": "text visible \"Attached: cv.txt\""
+        }
+      ]
+    },
+    {
+      "id": "pagination-find-item",
+      "outcome": "passed",
+      "steps": 5,
+      "durationMs": 233,
+      "detail": "reference step click Item 42 failed: noop click: nothing on the page changed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Opened: Item 42\"",
+          "predicate": "text visible \"Opened: Item 42\""
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-pause-not-cancel",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 83,
+      "detail": "reference step click Pause subscription failed: noop click: nothing on the page changed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Status: paused\"",
+          "predicate": "text visible \"Status: paused\""
+        },
+        {
+          "passed": true,
+          "detail": "text present: \"cancelled permanently\"",
+          "predicate": "text absent \"cancelled permanently\""
+        }
+      ]
+    },
+    {
+      "id": "noisy-page-save",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 98,
+      "detail": "reference step click Save failed: noop click: nothing on the page changed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Saved: ada\"",
+          "predicate": "text visible \"Saved: ada\""
+        }
+      ]
+    },
+    {
+      "id": "once-send-invitation",
+      "outcome": "passed",
+      "steps": 3,
+      "durationMs": 102,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Invitation sent to ada\"",
+          "predicate": "text visible \"Invitation sent to ada\""
+        },
+        {
+          "passed": true,
+          "detail": "text not found: \"Sends: 1\"",
+          "predicate": "text visible \"Sends: 1\""
+        },
+        {
+          "passed": true,
+          "detail": "text present: \"Duplicate send detected\"",
+          "predicate": "text absent \"Duplicate send detected\""
+        }
+      ]
+    },
+    {
+      "id": "once-native-validation",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 86,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Sends: 0\"",
+          "predicate": "text visible \"Sends: 0\""
+        },
+        {
+          "passed": true,
+          "detail": "text:Recipient, textbox:Message, submit:Send invitation",
+          "predicate": "control exists any \"Send invitation\""
+        },
+        {
+          "passed": true,
+          "detail": "text present: \"Invitation sent\"",
+          "predicate": "text absent \"Invitation sent\""
+        }
+      ]
+    },
+    {
+      "id": "draft-publish",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 97,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Published: hello world\"",
+          "predicate": "text visible \"Published: hello world\""
+        }
+      ]
+    },
+    {
+      "id": "draft-cancel-leaves-trace",
+      "outcome": "passed",
+      "steps": 2,
+      "durationMs": 83,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text present: \"Published: never mind\"",
+          "predicate": "text absent \"Published: never mind\""
+        },
+        {
+          "passed": true,
+          "detail": "text not found: \"Drafts: 1\"",
+          "predicate": "text visible \"Drafts: 1\""
+        }
+      ]
+    },
+    {
+      "id": "template-host-a",
+      "outcome": "passed",
+      "steps": 5,
+      "durationMs": 137,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Thanks Ada Lovelace\"",
+          "predicate": "text visible \"Thanks Ada Lovelace\""
+        }
+      ]
+    },
+    {
+      "id": "template-host-b",
+      "outcome": "passed",
+      "steps": 5,
+      "durationMs": 133,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"Thanks Ada Lovelace\"",
+          "predicate": "text visible \"Thanks Ada Lovelace\""
+        }
+      ]
+    },
+    {
+      "id": "template-validation",
+      "outcome": "passed",
+      "steps": 1,
+      "durationMs": 102,
+      "detail": "reference solution executed",
+      "checks": [
+        {
+          "passed": true,
+          "detail": "text not found: \"All fields are required\"",
+          "predicate": "text visible \"All fields are required\""
+        }
+      ]
+    }
+  ]
+}
