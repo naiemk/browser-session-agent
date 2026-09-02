@@ -56,6 +56,19 @@ const COLLECT = `(() => {
 
   const clean = (s) => (s || "").trim().replace(/\\s+/g, " ");
 
+  // A label wrapping its control also contains that control's text, so
+  // "<label>Location <select><option>Remote</option>…" would otherwise be named
+  // "Location Remote NYC". Strip nested controls before reading the label.
+  const labelTextFor = (el) => {
+    const label = el.closest ? el.closest("label") : null;
+    if (!label) return "";
+    const copy = label.cloneNode(true);
+    for (const nested of copy.querySelectorAll("input, select, textarea, button, option")) {
+      nested.remove();
+    }
+    return clean(copy.textContent);
+  };
+
   const monacoValue = () => {
     const api = window.monaco && window.monaco.editor && window.monaco.editor.getEditors
       ? window.monaco.editor.getEditors()[0]
@@ -76,8 +89,7 @@ const COLLECT = `(() => {
     const ref = "e" + (index + 1);
     el.setAttribute(REF_ATTR, ref);
     const tag = el.tagName.toLowerCase();
-    const label = el.closest("label");
-    const labelText = clean(label && label.textContent ? label.textContent : "").slice(0, 80);
+    const labelText = labelTextFor(el).slice(0, 80);
     let role = el.getAttribute("role") || "";
     let inputType = el.type || undefined;
     if (el.isContentEditable) {

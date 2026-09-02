@@ -10,6 +10,7 @@ import { refSelector, visibleText } from "./perceive.ts";
 import { evaluatePredicate, verify } from "./predicates.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { Ledger } from "./ledger.ts";
+import { classifyAction, type Classification } from "./reversibility.ts";
 import {
   CoreError,
   type ActionRequest,
@@ -19,37 +20,10 @@ import {
   type Observation,
   type PageFacts,
   type Predicate,
-  type Reversibility,
   type Verification,
 } from "./types.ts";
 
-export interface Classification {
-  reversibility: Reversibility;
-  reason: string;
-}
-
 export type Classifier = (request: ActionRequest, control: Control | undefined) => Classification;
-
-/**
- * Conservative placeholder. AGENT-05-T01 replaces this with the real per-action
- * judgment; until then anything that submits is treated as committing, which is the
- * safe direction per D23.
- */
-export const conservativeClassifier: Classifier = (request, control) => {
-  if (request.kind === "navigate") {
-    return { reversibility: "navigational", reason: "navigation replaces page state" };
-  }
-  if (request.kind === "wait" || request.kind === "scroll" || request.kind === "check") {
-    return { reversibility: "reversible", reason: `${request.kind} does not mutate` };
-  }
-  if (control?.submits) {
-    return { reversibility: "committing", reason: `"${control.name}" submits a form` };
-  }
-  if (request.kind === "type" || request.kind === "select") {
-    return { reversibility: "reversible", reason: `${request.kind} can be overwritten` };
-  }
-  return { reversibility: "committing", reason: "unclassified action, treated as committing" };
-};
 
 export interface ActOptions {
   classify?: Classifier;
@@ -68,7 +42,7 @@ export async function act(
   request: ActionRequest,
   options: ActOptions = {},
 ): Promise<ActionResult> {
-  const classify = options.classify ?? conservativeClassifier;
+  const classify = options.classify ?? classifyAction;
   const timeout = options.timeoutMs ?? 10_000;
   const page = browser.pageFor(request.tabId);
 
