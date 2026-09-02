@@ -9,6 +9,7 @@
 import { refSelector, visibleText } from "./perceive.ts";
 import { evaluatePredicate, verify } from "./predicates.ts";
 import type { BrowserPort } from "./browser.ts";
+import type { Ledger } from "./ledger.ts";
 import {
   CoreError,
   type ActionRequest,
@@ -55,7 +56,12 @@ export interface ActOptions {
   /** Directory for on-failure screenshots. Omitted means no screenshot. */
   screenshotDir?: string;
   timeoutMs?: number;
+  /** When set, every action is traced: intent, before, action, after, outcome. */
+  ledger?: Ledger;
+  entityId?: string;
 }
+
+export const MAX_RECOVERY_CHARS = 600;
 
 export async function act(
   browser: BrowserPort,
@@ -149,6 +155,34 @@ export async function act(
   if (!result.ok) {
     result.failure = await buildFailure(browser, request, facts, verification, options);
   }
+
+  // One event per action, carrying the whole story including the failure bundle, so a
+  // trace is diagnosable without the model transcript.
+  await options.ledger?.append({
+    type: result.ok ? "action" : "failure",
+    entityId: options.entityId,
+    intent: request.intent ?? `${request.kind} ${request.ref ?? request.url ?? ""}`.trim(),
+    before: { url: before.url, title: before.title, controls: before.controls.length },
+    action: {
+      kind: request.kind,
+      ref: request.ref,
+      url: request.url,
+      reversibility: classification.reversibility,
+      reversibilityReason: classification.reason,
+    },
+    after: {
+      url: facts.observation.url,
+      title: facts.observation.title,
+      changes: facts.observation.changes,
+    },
+    outcome: {
+      ok: result.ok,
+      detail: verification.checks.map((check) => `${check.predicate}: ${check.detail}`).join("; "),
+    },
+    payload: result.failure ? { failure: result.failure } : undefined,
+    artifacts: result.failure?.screenshot ? [result.failure.screenshot] : undefined,
+  });
+
   return result;
 }
 
@@ -261,9 +295,10 @@ async function buildFailure(
   options: ActOptions,
 ): Promise<FailureBundle> {
   const failed = verification.checks.filter((check) => !check.passed);
-  const recovery =
+  const recovery = (
     failed.map((check) => check.detail).join(" | ") ||
-    `action did not meet expectations at ${facts.url}`;
+    `action did not meet expectations at ${facts.url}`
+  ).slice(0, MAX_RECOVERY_CHARS);
 
   let screenshot: string | undefined;
   if (options.screenshotDir) {

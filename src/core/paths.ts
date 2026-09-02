@@ -13,6 +13,7 @@ export interface GoalPaths {
   goalFile: string;
   eventsFile: string;
   entitiesDir: string;
+  tasksDir: string;
   artifactsDir: string;
 }
 
@@ -24,11 +25,13 @@ export function goalPaths(root: string, goalId: string): GoalPaths {
     goalFile: path.join(dir, "goal.json"),
     eventsFile: path.join(dir, "events.jsonl"),
     entitiesDir: path.join(dir, "entities"),
+    tasksDir: path.join(dir, "tasks"),
     artifactsDir: path.join(dir, "artifacts"),
   };
 }
 
 export async function ensureGoalDirs(paths: GoalPaths): Promise<void> {
   await mkdir(paths.entitiesDir, { recursive: true });
+  await mkdir(paths.tasksDir, { recursive: true });
   await mkdir(paths.artifactsDir, { recursive: true });
 }
