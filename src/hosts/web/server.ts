@@ -26,6 +26,8 @@ export interface OperatorApiOptions extends OperatorRuntimeOptions {
   host?: string;
   port?: number;
   token?: string;
+  /** Test-only delay applied to cookie-auth runtimes, not the boot-time primary. */
+  consumerStartDelayMs?: number;
 }
 
 export interface OperatorApi {
@@ -43,9 +45,15 @@ export async function startOperatorApi(options: OperatorApiOptions = {}): Promis
   const accounts = await AccountStore.open(dataRoot);
   const registry = new HubRegistry();
   const runtimes = new Set<OperatorRuntime>();
+  const consumers = new Map<string, OperatorRuntime>();
 
   const broadcast = (message: Parameters<NodeHub["broadcast"]>[0]) => registry.operator.broadcast(message);
-  const primary = new OperatorRuntime(registry.operator, broadcast, { ...options, requirePaid: false, paid: true });
+  const primary = new OperatorRuntime(registry.operator, broadcast, {
+    ...options,
+    startDelayMs: undefined,
+    requirePaid: false,
+    paid: true,
+  });
   runtimes.add(primary);
   await primary.start();
 
@@ -64,7 +72,7 @@ export async function startOperatorApi(options: OperatorApiOptions = {}): Promis
       if (url.pathname === "/node") {
         void acceptNode(ws, req, registry, accounts, token);
       } else {
-        void acceptChat(ws, req, registry, accounts, primary, runtimes, token, options);
+        void acceptChat(ws, req, registry, accounts, primary, runtimes, consumers, token, options);
       }
     });
   });
@@ -135,8 +143,9 @@ async function acceptChat(
   accounts: AccountStore,
   primary: OperatorRuntime,
   runtimes: Set<OperatorRuntime>,
+  consumers: Map<string, OperatorRuntime>,
   token?: string,
-  options: OperatorRuntimeOptions = {},
+  options: OperatorApiOptions = {},
 ): Promise<void> {
   const headerToken = bearerFromHeader(req.headers.authorization);
   const cookieSession = sessionIdFromRequest(req);
@@ -147,11 +156,11 @@ async function acceptChat(
   let runtime: OperatorRuntime | null = null;
   let unsub: (() => void) | undefined;
   let authed = false;
-  let starting = false;
   const pending: ChatClientMessage[] = [];
 
-  const bind = async (hub: NodeHub, next: OperatorRuntime) => {
+  const bind = (hub: NodeHub, next: OperatorRuntime) => {
     runtime = next;
+    next.setSend((message) => send(message));
     unsub?.();
     unsub = hub.subscribe((message) => send(message));
   };
@@ -174,40 +183,37 @@ async function acceptChat(
       const provided = message.token ?? headerToken;
       if (token && tokensEqual(token, provided)) {
         authed = true;
-        void bind(registry.operator, primary);
+        bind(registry.operator, primary);
         deliver(message);
         return;
       }
       const account = accounts.accountForSession(cookieSession);
       if (account) {
         authed = true;
-        starting = true;
-        send({
-          type: "notify",
-          message: "Starting the agent…",
-          level: "info",
-        });
         const hub = registry.hubFor(account.id);
-        const consumer = new OperatorRuntime(hub, (m) => send(m), {
-          ...options,
-          requirePaid: options.requirePaid === true || process.env.BSA_REQUIRE_PAID === "1",
-          paid: () => Boolean(accounts.getAccount(account.id)?.paidAt),
-        });
-        runtimes.add(consumer);
-        void (async () => {
-          await consumer.start();
-          await bind(hub, consumer);
-          starting = false;
-          deliver(message);
+        let consumer = consumers.get(account.id);
+        if (!consumer) {
+          consumer = new OperatorRuntime(hub, (m) => send(m), {
+            ...options,
+            startDelayMs: options.consumerStartDelayMs,
+            sessionDir: options.sessionDir ? path.join(options.sessionDir, account.id) : undefined,
+            requirePaid: options.requirePaid === true || process.env.BSA_REQUIRE_PAID === "1",
+            paid: () => Boolean(accounts.getAccount(account.id)?.paidAt),
+          });
+          consumers.set(account.id, consumer);
+          runtimes.add(consumer);
+        }
+        bind(hub, consumer);
+        void consumer.start().then(() => {
           while (pending.length) deliver(pending.shift()!);
-        })().catch((err) => {
-          starting = false;
+        }).catch((err) => {
           send({
             type: "error",
             message: err instanceof Error ? err.message : String(err),
             code: "agent_start_failed",
           });
         });
+        deliver(message);
         return;
       }
       send({ type: "error", message: "unauthorized", code: "unauthorized" });
@@ -219,11 +225,16 @@ async function acceptChat(
       return;
     }
     if (!runtime) {
-      if (starting) {
-        pending.push(message);
-        return;
-      }
       send({ type: "error", message: "unauthorized", code: "unauthorized" });
+      return;
+    }
+    if (runtime.starting && message.type === "prompt") {
+      pending.push(message);
+      send({
+        type: "notify",
+        message: "The agent is still starting. Your message is queued.",
+        level: "info",
+      });
       return;
     }
     deliver(message);
@@ -231,10 +242,7 @@ async function acceptChat(
 
   ws.on("close", () => {
     unsub?.();
-    if (runtime && runtime !== primary) {
-      runtimes.delete(runtime);
-      void runtime.dispose();
-    }
+    if (runtime && runtime !== primary) runtime.setSend(() => undefined);
   });
 }
 

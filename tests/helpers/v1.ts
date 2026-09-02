@@ -24,7 +24,13 @@ export function cookieFromResponse(res: Response): string {
 }
 
 export async function startV1Api(
-  options: { token?: string; requirePaid?: boolean; fakePi?: boolean; failPi?: boolean } = {},
+  options: {
+    token?: string;
+    requirePaid?: boolean;
+    fakePi?: boolean;
+    failPi?: boolean;
+    consumerStartDelayMs?: number;
+  } = {},
 ): Promise<V1World> {
   delete process.env.BSA_PI_FAIL;
   if (options.failPi) {
@@ -45,6 +51,7 @@ export async function startV1Api(
     token: options.token,
     agentDir: home,
     requirePaid: options.requirePaid ?? true,
+    consumerStartDelayMs: options.consumerStartDelayMs,
   });
   return {
     api,

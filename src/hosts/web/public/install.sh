@@ -107,30 +107,49 @@ docker_ready() {
   [[ -z "$FORCE_NATIVE" ]] && have docker && docker info >/dev/null 2>&1
 }
 
+# macOS Bash 3.2 + `set -u` treats empty arrays as unbound, so this path
+# never expands an empty --platform list. GHCR's node image is linux/amd64
+# only; Apple Silicon uses native Node unless BSA_DOCKER_PLATFORM is set.
 run_docker() {
-  local platform_args=()
-  if [[ -n "${BSA_DOCKER_PLATFORM:-}" ]]; then
-    platform_args=(--platform "$BSA_DOCKER_PLATFORM")
+  if [[ "$node_arch" == "arm64" && -z "${BSA_DOCKER_PLATFORM:-}" ]]; then
+    log "GHCR has no linux/arm64 node image (Apple Silicon / ARM). Installing a native node instead."
+    return 1
   fi
   log "Docker is running — pulling ${IMAGE}"
   if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    if ! docker pull "${platform_args[@]}" "$IMAGE"; then
-      if [[ "$node_arch" == "arm64" ]]; then
-        log "GHCR has no linux/arm64 node image (Apple Silicon / ARM). Installing a native node instead."
-      else
+    if [[ -n "${BSA_DOCKER_PLATFORM:-}" ]]; then
+      if ! docker pull --platform "$BSA_DOCKER_PLATFORM" "$IMAGE"; then
         log "Could not pull ${IMAGE}. Installing a native node instead."
+        return 1
       fi
-      return 1
+    else
+      if ! docker pull "$IMAGE"; then
+        log "Could not pull ${IMAGE}. Installing a native node instead."
+        return 1
+      fi
     fi
   fi
   docker rm -f browser-session-node >/dev/null 2>&1 || true
   log "Starting desktop node → ${API_URL}"
+  if [[ -n "${BSA_DOCKER_PLATFORM:-}" ]]; then
+    exec docker run --rm \
+      --name browser-session-node \
+      --ipc=host \
+      --shm-size=1g \
+      --add-host=host.docker.internal:host-gateway \
+      --platform "$BSA_DOCKER_PLATFORM" \
+      -e "BSA_API_URL=${API_URL}" \
+      -e "BSA_PAIR_CODE=${PAIR_CODE}" \
+      -e "BSA_HOME=/data" \
+      -e "BSA_HEADLESS=${BSA_HEADLESS:-1}" \
+      -v "${HOME_DIR}:/data" \
+      "$IMAGE"
+  fi
   exec docker run --rm \
     --name browser-session-node \
     --ipc=host \
     --shm-size=1g \
     --add-host=host.docker.internal:host-gateway \
-    "${platform_args[@]}" \
     -e "BSA_API_URL=${API_URL}" \
     -e "BSA_PAIR_CODE=${PAIR_CODE}" \
     -e "BSA_HOME=/data" \
