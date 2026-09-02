@@ -5,6 +5,7 @@ import { RpcSessionHandle } from "../../host/session-handle.ts";
 import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
 import type { ChatClientMessage, ChatServerMessage, OperatorState } from "../shared/protocol.ts";
 import { resolveCostExtensions } from "./pi-packages.ts";
+import { applyHostedApiKeys, assistantErrorFromEvent, capHostedModelOutput } from "./hosted-pi.ts";
 import type { NodeHub } from "./hub.ts";
 import { AgentError } from "../../domain/types.ts";
 
@@ -107,6 +108,7 @@ export class OperatorRuntime {
       }
       const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
       const authStorage = AuthStorage.create();
+      applyHostedApiKeys(authStorage);
       this.modelRegistry = ModelRegistry.create(authStorage);
       const extras = await resolveCostExtensions();
       const cwd = this.options.cwd ?? process.cwd();
@@ -137,10 +139,13 @@ export class OperatorRuntime {
       this.pi = result.session as PiLike;
       this.piReady = true;
       this.piReason = null;
+      this.capPiModel();
       this.model = describeModel(result.session.model) ?? this.model;
       this.thinking = String(result.session.thinkingLevel ?? this.thinking);
       this.unsubscribePi = result.session.subscribe((event) => {
         this.send({ type: "agentEvent", event: normalizeAgentEvent(event) });
+        const err = assistantErrorFromEvent(event);
+        if (err) this.send({ type: "error", message: err, code: "pi_turn_error" });
       });
       const available = this.modelRegistry.getAvailable();
       this.models = [
@@ -266,11 +271,41 @@ export class OperatorRuntime {
       });
       return;
     }
-    await this.pi.prompt(trimmed);
+    try {
+      this.capPiModel();
+      await this.pi.prompt(trimmed);
+    } catch (err) {
+      this.send({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+        code: "pi_prompt_failed",
+      });
+    }
+  }
+
+  private capPiModel(): void {
+    capHostedModelOutput(this.pi?.model);
+    capHostedModelOutput(this.pi?.agent?.state?.model);
   }
 
   private async runCommand(name: string, args: string): Promise<void> {
     const key = name.replace(/^\//, "");
+    if (key === "browser-status" && !this.hub.connected) {
+      this.send({
+        type: "notify",
+        message: JSON.stringify(
+          {
+            nodeConnected: false,
+            hint: "Pair this computer, then run the curl installer on that machine. Chat still works without the desktop node.",
+            currentRun: null,
+            runs: [],
+          },
+          null,
+          2,
+        ),
+      });
+      return;
+    }
     const command = this.api.commands.get(key);
     if (!command) {
       this.send({ type: "error", message: `Unknown command /${key}` });
@@ -351,7 +386,11 @@ export class OperatorRuntime {
     if (this.pi && this.modelRegistry && id !== "auto" && !["low", "medium", "high", "ultra"].includes(id)) {
       const [provider, ...rest] = id.split("/");
       const found = this.modelRegistry.find(provider ?? "", rest.join("/"));
-      if (found) await this.pi.setModel?.(found);
+      if (found) {
+        capHostedModelOutput(found as { maxTokens?: number });
+        await this.pi.setModel?.(found);
+        this.capPiModel();
+      }
     }
     this.send({ type: "stateSync", state: this.state() });
     this.send({
@@ -390,8 +429,9 @@ interface PiLike {
   setThinkingLevel: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
   setModel?: (model: unknown) => Promise<void> | void;
   subscribe?: (listener: (event: unknown) => void) => () => void;
-  model?: { provider?: string; id?: string };
+  model?: { provider?: string; id?: string; maxTokens?: number };
   thinkingLevel?: string;
+  agent?: { state?: { model?: { maxTokens?: number }; errorMessage?: string } };
 }
 
 function describeModel(model: { provider?: string; id?: string } | undefined): string | undefined {

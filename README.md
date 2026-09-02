@@ -42,8 +42,8 @@ cp .env.example .env
 docker compose -f deploy/docker/compose.local.yml up --build
 # http://127.0.0.1:8080/ — register, then Pair this computer
 
-# desktop helper talking to the hosted API
-BSA_PAIR_CODE=<code> scripts/run-desktop-node.sh wss://agent.trustless-commerce.com/node
+# desktop helper talking to the hosted API (no repo checkout)
+curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 ```
 
 Without Docker: `npm run start:api` on the VPS and `npm run start:node` on the desk. Pre-V1 apply: `docs/pre-v1-runbook.md`. Operator notes: `docs/web-operator.md`.

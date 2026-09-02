@@ -50,7 +50,7 @@ Desktop Docker node  →  wss://agent.trustless-commerce.com/node  (device token
 - **Gateway** must proxy `/auth`, `/me`, `/pair`, `/devices`, `/chat`, `/node`, `/healthz` to the API; `/` is the static UI
 - **Session cookie** `bsa_session`: `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS
 - **API image** has no Playwright/Chromium ([`deploy/docker/Dockerfile.api`](../deploy/docker/Dockerfile.api))
-- **Helper:** [`deploy/docker/compose.node.yml`](../deploy/docker/compose.node.yml) / [`scripts/run-desktop-node.sh`](../scripts/run-desktop-node.sh) with pair code or stored device token
+- **Helper:** `curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash` (or [`scripts/run-desktop-node.sh`](../scripts/run-desktop-node.sh) from a checkout)
 
 ## Relation to V1
 

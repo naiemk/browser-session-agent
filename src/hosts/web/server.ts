@@ -147,11 +147,24 @@ async function acceptChat(
   let runtime: OperatorRuntime | null = null;
   let unsub: (() => void) | undefined;
   let authed = false;
+  let starting = false;
+  const pending: ChatClientMessage[] = [];
 
   const bind = async (hub: NodeHub, next: OperatorRuntime) => {
     runtime = next;
     unsub?.();
     unsub = hub.subscribe((message) => send(message));
+  };
+
+  const deliver = (message: ChatClientMessage) => {
+    if (!runtime) return;
+    void runtime.handleClient(message).catch((err) => {
+      send({
+        type: "error",
+        message: err instanceof Error ? err.message : String(err),
+        code: "chat_handler_failed",
+      });
+    });
   };
 
   ws.on("message", (raw) => {
@@ -162,12 +175,18 @@ async function acceptChat(
       if (token && tokensEqual(token, provided)) {
         authed = true;
         void bind(registry.operator, primary);
-        void primary.handleClient(message);
+        deliver(message);
         return;
       }
       const account = accounts.accountForSession(cookieSession);
       if (account) {
         authed = true;
+        starting = true;
+        send({
+          type: "notify",
+          message: "Starting the agent…",
+          level: "info",
+        });
         const hub = registry.hubFor(account.id);
         const consumer = new OperatorRuntime(hub, (m) => send(m), {
           ...options,
@@ -178,19 +197,36 @@ async function acceptChat(
         void (async () => {
           await consumer.start();
           await bind(hub, consumer);
-          await consumer.handleClient(message);
-        })();
+          starting = false;
+          deliver(message);
+          while (pending.length) deliver(pending.shift()!);
+        })().catch((err) => {
+          starting = false;
+          send({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+            code: "agent_start_failed",
+          });
+        });
         return;
       }
       send({ type: "error", message: "unauthorized", code: "unauthorized" });
       ws.close(4401, "unauthorized");
       return;
     }
-    if (!authed || !runtime) {
+    if (!authed) {
       send({ type: "error", message: "unauthorized", code: "unauthorized" });
       return;
     }
-    void runtime.handleClient(message);
+    if (!runtime) {
+      if (starting) {
+        pending.push(message);
+        return;
+      }
+      send({ type: "error", message: "unauthorized", code: "unauthorized" });
+      return;
+    }
+    deliver(message);
   });
 
   ws.on("close", () => {
@@ -334,6 +370,23 @@ async function handleHttp(
       return;
     }
 
+    if (req.method === "GET" && (url.pathname === "/install.sh" || url.pathname === "/install.ps1")) {
+      const file = staticFile(url.pathname);
+      if (!file) {
+        res.writeHead(404);
+        res.end("not found");
+        return;
+      }
+      const body = await readFile(file);
+      res.writeHead(200, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-disposition": `inline; filename="${path.basename(file)}"`,
+      });
+      res.end(body);
+      return;
+    }
+
     if (!checkBasicAuth(req.headers.authorization)) {
       res.writeHead(401, { "www-authenticate": 'Basic realm="bsa", charset="UTF-8"' });
       res.end("unauthorized");
@@ -386,6 +439,9 @@ function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (file.endsWith(".css")) return "text/css; charset=utf-8";
   if (file.endsWith(".svg")) return "image/svg+xml";
+  if (file.endsWith(".png")) return "image/png";
+  if (file.endsWith(".ico")) return "image/x-icon";
+  if (file.endsWith(".sh") || file.endsWith(".ps1")) return "text/plain; charset=utf-8";
   return "text/html; charset=utf-8";
 }
 
