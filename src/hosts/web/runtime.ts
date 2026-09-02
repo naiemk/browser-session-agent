@@ -5,7 +5,13 @@ import { RpcSessionHandle } from "../../host/session-handle.ts";
 import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
 import type { ChatClientMessage, ChatServerMessage, OperatorState } from "../shared/protocol.ts";
 import { resolveCostExtensions } from "./pi-packages.ts";
-import { applyHostedApiKeys, assistantErrorFromEvent, capHostedModelOutput } from "./hosted-pi.ts";
+import {
+  applyHostedApiKeys,
+  assistantErrorFromEvent,
+  capHostedModelOutput,
+  hostedResourceLoaderOptions,
+  normalizeAgentEvent,
+} from "./hosted-pi.ts";
 import type { NodeHub } from "./hub.ts";
 import { AgentError } from "../../domain/types.ts";
 
@@ -47,6 +53,7 @@ export class OperatorRuntime {
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
   private send: (message: ChatServerMessage) => void;
+  private sendGeneration = 0;
   private readonly hub: NodeHub;
   private readonly options: OperatorRuntimeOptions;
   private startPromise: Promise<void> | null = null;
@@ -89,7 +96,12 @@ export class OperatorRuntime {
   }
 
   setSend(send: (message: ChatServerMessage) => void): void {
-    this.send = send;
+    this.sendGeneration += 1;
+    const generation = this.sendGeneration;
+    this.send = (message) => {
+      if (generation !== this.sendGeneration) return;
+      send(message);
+    };
   }
 
   state(): OperatorState {
@@ -174,14 +186,13 @@ export class OperatorRuntime {
         const extras = await resolveCostExtensions();
         const cwd = this.options.cwd ?? process.cwd();
         const agentDir = this.options.agentDir ?? getAgentDir();
-        const loader = new DefaultResourceLoader({
-          cwd,
-          agentDir,
-          additionalExtensionPaths: extras,
-          appendSystemPrompt: [
-            "You operate a remote headed Chromium on the operator's desktop through browser_* tools. If the browser node is disconnected, say so and do not invent page state.",
-          ],
-        });
+        const loader = new DefaultResourceLoader(
+          hostedResourceLoaderOptions({
+            cwd,
+            agentDir,
+            additionalExtensionPaths: extras,
+          }),
+        );
         await loader.reload();
         const customTools = [...this.api.tools.values()].map((tool) => this.toPiTool(tool));
         const result = await createAgentSession({
@@ -241,6 +252,9 @@ export class OperatorRuntime {
 
   async handleClient(message: ChatClientMessage): Promise<void> {
     switch (message.type) {
+      case "ping":
+        this.send({ type: "pong", ts: Date.now() });
+        return;
       case "hello":
         this.send({ type: "hello_ok", protocol: 1 });
         this.send({ type: "models", models: this.models });
@@ -341,6 +355,7 @@ export class OperatorRuntime {
     }
     try {
       this.capPiModel();
+      this.send({ type: "agentEvent", event: { type: "turn_start" } });
       await this.pi.prompt(trimmed);
     } catch (err) {
       this.send({
@@ -513,18 +528,4 @@ function stubReply(text: string): string {
 
 function looksLikeBrowserWork(text: string): boolean {
   return /browser|click|inspect|login|tab|page|navigate|takeover/i.test(text);
-}
-
-function normalizeAgentEvent(event: unknown): Record<string, unknown> {
-  const value = event as {
-    type?: string;
-    assistantMessageEvent?: { type?: string; delta?: string };
-    message?: unknown;
-    toolName?: string;
-  };
-  if (value.type === "message_update" && value.assistantMessageEvent?.type === "text_delta") {
-    return { type: "text_delta", text: value.assistantMessageEvent.delta ?? "" };
-  }
-  if (value.type) return { ...value };
-  return { type: "agentEvent", event };
 }

@@ -251,12 +251,12 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
   pi.registerTool({
     name: "browser_ask_user",
     label: "Ask user",
-    description: "Ask a concise CLI question when required information is missing.",
+    description: "Ask a concise operator question when required information is missing.",
     parameters: Type.Object({
       question: Type.String(),
       runId: runParam(),
     }),
-    promptSnippet: "Ask the operator a focused question in the CLI.",
+    promptSnippet: "Ask the operator a focused question in chat.",
     promptGuidelines: [
       "Use browser_ask_user for missing facts (name, email, which job). Do not guess user-specific data.",
     ],
@@ -410,7 +410,7 @@ export function registerBrowserCommands(pi: ExtensionAPI, session: SessionHandle
   });
 
   pi.registerCommand("browser-stop", {
-    description: "Complete the current run and restore coding tools. Add --browser to close Chromium.",
+    description: "Complete the current run. Add --browser to close Chromium.",
     handler: async (args, ctx) => {
       if (session.currentRunId) {
         await session.stopRun(session.currentRunId, "completed");

@@ -2,6 +2,7 @@ export const PROTOCOL_VERSION = 1;
 
 export type ChatClientMessage =
   | { type: "hello"; token?: string }
+  | { type: "ping" }
   | { type: "prompt"; text: string }
   | { type: "abort" }
   | { type: "setModel"; model: string }
@@ -14,6 +15,7 @@ export type ChatClientMessage =
 
 export type ChatServerMessage =
   | { type: "hello_ok"; protocol: number }
+  | { type: "pong"; ts?: number }
   | { type: "agentEvent"; event: Record<string, unknown> }
   | { type: "stateSync"; state: OperatorState }
   | { type: "ui_request"; requestId: string; kind: "input" | "confirm" | "select"; title: string; message?: string; placeholder?: string; options?: string[] }

@@ -165,6 +165,10 @@ async function acceptChat(
     unsub = hub.subscribe((message) => send(message));
   };
 
+  const keepalive = setInterval(() => {
+    if (ws.readyState === ws.OPEN) ws.ping();
+  }, 20_000);
+
   const deliver = (message: ChatClientMessage) => {
     if (!runtime) return;
     void runtime.handleClient(message).catch((err) => {
@@ -179,6 +183,10 @@ async function acceptChat(
   ws.on("message", (raw) => {
     const message = parseJsonMessage<ChatClientMessage>(typeof raw === "string" ? raw : raw.toString());
     if (!message) return;
+    if (message.type === "ping") {
+      send({ type: "pong", ts: Date.now() });
+      return;
+    }
     if (message.type === "hello") {
       const provided = message.token ?? headerToken;
       if (token && tokensEqual(token, provided)) {
@@ -241,8 +249,9 @@ async function acceptChat(
   });
 
   ws.on("close", () => {
+    clearInterval(keepalive);
     unsub?.();
-    if (runtime && runtime !== primary) runtime.setSend(() => undefined);
+    // Do not setSend(noop): a reconnect may already own this runtime's sender.
   });
 }
 

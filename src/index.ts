@@ -22,6 +22,11 @@ export type { PagePlan, PlanResult, PlanRuntime, ProgressEvent } from "./plan/in
 export { runBrowserPrompt } from "./operator/run-prompt.ts";
 export { interpretPrompt } from "./operator/prompt.ts";
 export { bindBrowserExtension, OPERATOR_PROMPT } from "./host/bind-extension.ts";
+export {
+  BROWSER_OPERATOR_PROMPT,
+  browserOperatorPrompt,
+  applyBrowserSystemPrompt,
+} from "./host/browser-agent-prompt.ts";
 export { MemoryOperatorHost, createExtensionApi, extensionContext } from "./host/memory-host.ts";
 export type { OperatorHost, UiRequest } from "./host/types.ts";
 export { RpcSessionHandle } from "./host/session-handle.ts";

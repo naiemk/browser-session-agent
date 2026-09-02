@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { bindBrowserExtension } from "../../src/host/bind-extension.ts";
+import { BROWSER_TOOL_NAMES } from "../../src/domain/types.ts";
 import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../src/host/memory-host.ts";
 import { RpcSessionHandle } from "../../src/host/session-handle.ts";
 import { parseJsonMessage } from "../../src/hosts/shared/protocol.ts";
 
 describe("OperatorHost", () => {
+  it("defaults the hosted host to browser tools, not coding tools", () => {
+    const host = new MemoryOperatorHost();
+    assert.deepEqual(host.getActiveTools(), [...BROWSER_TOOL_NAMES]);
+    assert.equal(host.getActiveTools().includes("bash"), false);
+  });
+
   it("parks input/confirm/select until answer()", async () => {
     const host = new MemoryOperatorHost();
     const seen: string[] = [];

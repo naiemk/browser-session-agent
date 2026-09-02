@@ -61,6 +61,13 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280p
 .pill { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: #3a2c24; color: var(--warn); }
 .pill.on { background: #243524; color: var(--ok); }
 .pill.off { background: #3a2424; color: var(--err); }
+.pill.warn { background: #3a3224; color: var(--warn); }
+.turn-status {
+  margin: 0; padding: 0.45rem 0.9rem; font-size: 0.8rem; color: var(--muted);
+  border-bottom: 1px solid var(--line); font-style: italic; white-space: pre-wrap;
+}
+.turn-status.hidden { display: none; }
+.msg.thinking { color: var(--muted); font-style: italic; border-style: dashed; }
 .hidden { display: none; }
 .pair-panel {
   display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;

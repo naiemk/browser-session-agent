@@ -35,6 +35,7 @@
         <div class="brand">
           <img class="brand-logo" src="/logo.svg" alt="" width="28" height="28" />
           <strong>Browser operator</strong>
+          <span id="chat-pill" class="pill off">offline</span>
           <span id="node-pill" class="pill off">node offline</span>
           <span id="takeover-pill" class="pill hidden">takeover</span>
         </div>
@@ -68,10 +69,11 @@
       <main>
         <section class="chat-pane">
           <div id="commands" class="commands"></div>
+          <p id="turn-status" class="turn-status hidden" aria-live="polite"></p>
           <div id="messages" class="messages" aria-live="polite"></div>
           <div id="cards" class="cards"></div>
           <form id="composer" class="composer">
-            <textarea id="input" rows="2" placeholder="Message the operator, or /browser-start …"></textarea>
+            <textarea id="input" rows="2" placeholder="Ask the operator to open a site, fill a form, or run a multi-tab task…"></textarea>
             <div class="composer-actions">
               <button type="button" id="abort">Abort</button>
               <button type="submit">Send</button>

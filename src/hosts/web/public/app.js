@@ -3,8 +3,14 @@ const powerToken = params.get("token") || "";
 
 const proto = location.protocol === "https:" ? "wss" : "ws";
 let socket;
+let socketGen = 0;
 let takeover = false;
 let assistantBuf = "";
+let thinkingBuf = "";
+let greeted = false;
+const sendQueue = [];
+let pingTimer = null;
+let reconnectTimer = null;
 
 const messagesEl = document.getElementById("messages");
 const cardsEl = document.getElementById("cards");
@@ -12,6 +18,8 @@ const commandsEl = document.getElementById("commands");
 const inputEl = document.getElementById("input");
 const modelEl = document.getElementById("model");
 const thinkingEl = document.getElementById("thinking");
+const chatPill = document.getElementById("chat-pill");
+const turnStatusEl = document.getElementById("turn-status");
 const nodePill = document.getElementById("node-pill");
 const takeoverPill = document.getElementById("takeover-pill");
 const liveEl = document.getElementById("live");
@@ -39,13 +47,95 @@ const COMMANDS = [
   ["browser-approve", "Approve"],
 ];
 
+function setChatStatus(status, detail) {
+  const labels = {
+    offline: "Offline",
+    live: "Live",
+    reconnecting: "Reconnecting",
+    thinking: "Thinking",
+    tools: "Using tools",
+    streaming: "Streaming",
+  };
+  if (chatPill) {
+    chatPill.textContent = labels[status] || status;
+    const tone = status === "live" || status === "streaming" ? "on"
+      : status === "thinking" || status === "tools" ? "warn"
+      : "off";
+    chatPill.className = `pill ${tone}`;
+  }
+  if (!turnStatusEl) return;
+  if (detail) {
+    turnStatusEl.classList.remove("hidden");
+    turnStatusEl.textContent = detail;
+    return;
+  }
+  if (status === "thinking") {
+    turnStatusEl.classList.remove("hidden");
+    turnStatusEl.textContent = "Thinking…";
+    return;
+  }
+  if (status === "tools") {
+    turnStatusEl.classList.remove("hidden");
+    turnStatusEl.textContent = "Using browser tools…";
+    return;
+  }
+  if (status === "reconnecting") {
+    turnStatusEl.classList.remove("hidden");
+    turnStatusEl.textContent = "Reconnecting to the operator…";
+    return;
+  }
+  turnStatusEl.classList.add("hidden");
+  turnStatusEl.textContent = "";
+}
+
 function send(message) {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
     return true;
   }
-  addMessage("system", "Chat is not connected. Refresh the page.", "error");
+  if (message.type === "ping") return false;
+  sendQueue.push(message);
+  setChatStatus("reconnecting");
+  connectChat();
   return false;
+}
+
+function flushQueue() {
+  while (sendQueue.length && socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(sendQueue.shift()));
+  }
+}
+
+function stopPing() {
+  if (pingTimer) clearInterval(pingTimer);
+  pingTimer = null;
+}
+
+function startPing() {
+  stopPing();
+  pingTimer = setInterval(() => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "ping" }));
+    }
+  }, 20_000);
+}
+
+function playTurnChime() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 660;
+    gain.gain.value = 0.04;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.09);
+    osc.onended = () => ctx.close();
+  } catch {
+    // Web Audio may be blocked until a gesture.
+  }
 }
 
 function addMessage(role, text, extraClass = "") {
@@ -82,29 +172,56 @@ function connectChat() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  const gen = ++socketGen;
+  setChatStatus(greeted ? "reconnecting" : "offline");
   socket = new WebSocket(`${proto}://${location.host}/chat`);
   socket.addEventListener("open", () => {
+    if (gen !== socketGen) return;
     socket.send(JSON.stringify({ type: "hello", token: powerToken || undefined }));
+    startPing();
   });
-  socket.addEventListener("message", onServerMessage);
+  socket.addEventListener("message", (event) => {
+    if (gen !== socketGen) return;
+    onServerMessage(event);
+  });
   socket.addEventListener("close", (event) => {
+    if (gen !== socketGen) return;
+    stopPing();
     socket = null;
     if (event.code === 4401) {
+      setChatStatus("offline");
       addMessage("system", "Chat is unauthorized. Sign in again.", "error");
       authEl.classList.remove("hidden");
       return;
     }
-    addMessage("system", "Chat disconnected. Reconnecting…", "error");
-    setTimeout(connectChat, 1500);
+    setChatStatus("reconnecting");
+    reconnectTimer = setTimeout(connectChat, 1500);
   });
   socket.addEventListener("error", () => {
-    addMessage("system", "Chat socket error. Check the connection and refresh if this persists.", "error");
+    if (gen !== socketGen) return;
+    setChatStatus("reconnecting");
   });
 }
 
 function onServerMessage(event) {
   const msg = JSON.parse(event.data);
-  if (msg.type === "hello_ok") return;
+  if (msg.type === "pong") return;
+  if (msg.type === "hello_ok") {
+    setChatStatus("live");
+    flushQueue();
+    if (!greeted) {
+      greeted = true;
+      addMessage(
+        "system",
+        "Browser operator ready. Pair a desktop computer, then ask me to open a site, fill a form, or run a multi-tab task.",
+      );
+    }
+    return;
+  }
   if (msg.type === "models") {
     modelEl.innerHTML = "";
     for (const model of msg.models) {
@@ -147,15 +264,37 @@ function onServerMessage(event) {
   }
   if (msg.type === "agentEvent") {
     const ev = msg.event || {};
+    if (ev.type === "turn_start") {
+      thinkingBuf = "";
+      assistantBuf = "";
+      setChatStatus("thinking");
+      return;
+    }
+    if (ev.type === "thinking_delta") {
+      thinkingBuf += ev.text || ev.delta || "";
+      setChatStatus("thinking", thinkingBuf.slice(-400) || "Thinking…");
+      return;
+    }
     if (ev.type === "text_delta") {
       assistantBuf += ev.text || "";
+      setChatStatus("streaming");
       const last = messagesEl.querySelector(".msg.assistant:last-child");
       if (last) last.textContent = assistantBuf;
       else addMessage("assistant", assistantBuf);
       return;
     }
-    if (ev.type === "agent_end" || ev.type === "turn_end") assistantBuf = "";
-    if (ev.toolName) addMessage("tool", `${ev.toolName}`);
+    if (ev.type === "agent_end" || ev.type === "turn_end") {
+      assistantBuf = "";
+      thinkingBuf = "";
+      setChatStatus("live");
+      playTurnChime();
+      return;
+    }
+    if (ev.type === "tool_execution_start" || ev.type === "tool_call" || ev.toolName) {
+      const name = ev.toolName || ev.name || "tool";
+      setChatStatus("tools", name);
+      addMessage("tool", String(name));
+    }
     if (ev.verification) {
       addMessage("tool", `harness ${ev.verification.status}${ev.recovery ? `: ${ev.recovery}` : ""}`);
     }
@@ -318,6 +457,8 @@ document.getElementById("composer").addEventListener("submit", (event) => {
   send({ type: "prompt", text });
   inputEl.value = "";
   assistantBuf = "";
+  thinkingBuf = "";
+  setChatStatus("thinking");
 });
 
 document.getElementById("abort").addEventListener("click", () => send({ type: "abort" }));
@@ -421,6 +562,10 @@ window.addEventListener("keyup", (event) => {
   if (!takeover) return;
   sendInput({ kind: "key", action: "up", key: event.key });
 });
+
+globalThis.__bsaCloseChat = () => {
+  socket?.close();
+};
 
 void (async () => {
   if (powerToken) {

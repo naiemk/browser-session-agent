@@ -24,12 +24,20 @@ describe("V1-01-T03 chat UI sign-in", () => {
       await page.locator("#auth-password").fill(user.password);
       await page.locator("#auth-register").click();
       await page.locator("#composer").waitFor();
+      await page.locator("#chat-pill").filter({ hasText: "Live" }).waitFor({ timeout: 8_000 });
+      assert.match(await page.locator(".msg.system").first().innerText(), /Browser operator ready/);
       assert.equal(new URL(page.url()).search.includes("token="), false);
       await page.locator("#input").fill("hello ui");
       await page.locator("#composer button[type=submit]").click();
       await page.locator(".msg.assistant").waitFor({ timeout: 8_000 });
       assert.match(await page.locator(".msg.assistant").innerText(), /hello ui/);
       assert.equal(new URL(page.url()).search.includes("token="), false);
+
+      await page.evaluate("globalThis.__bsaCloseChat && globalThis.__bsaCloseChat()");
+      await page.locator("#chat-pill").filter({ hasText: "Reconnecting" }).waitFor({ timeout: 8_000 });
+      const transcript = await page.locator("#messages .msg").allInnerTexts();
+      assert.equal(transcript.some((text) => /Chat disconnected/.test(text)), false);
+      await page.locator("#chat-pill").filter({ hasText: "Live" }).waitFor({ timeout: 8_000 });
     } finally {
       await browser.close();
     }

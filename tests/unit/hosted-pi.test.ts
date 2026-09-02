@@ -5,6 +5,7 @@ import {
   applyHostedApiKeys,
   assistantErrorFromEvent,
   capHostedModelOutput,
+  normalizeAgentEvent,
 } from "../../src/hosts/web/hosted-pi.ts";
 
 describe("hosted Pi helpers", () => {
@@ -43,5 +44,28 @@ describe("hosted Pi helpers", () => {
       if (prev === undefined) delete process.env.OPENROUTER_API_KEY;
       else process.env.OPENROUTER_API_KEY = prev;
     }
+  });
+
+  it("unwraps thinking and tool events for the chat UI", () => {
+    assert.deepEqual(
+      normalizeAgentEvent({
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_delta", delta: "checking the form" },
+      }),
+      { type: "thinking_delta", text: "checking the form" },
+    );
+    assert.deepEqual(
+      normalizeAgentEvent({
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "Hi" },
+      }),
+      { type: "text_delta", text: "Hi" },
+    );
+    const tool = normalizeAgentEvent({
+      type: "tool_execution_start",
+      tool: { name: "browser_inspect" },
+    });
+    assert.equal(tool.type, "tool_execution_start");
+    assert.equal(tool.toolName, "browser_inspect");
   });
 });

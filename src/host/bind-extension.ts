@@ -1,25 +1,17 @@
 import type { ExtensionAPI } from "../pi-api.ts";
 import type { SessionHandle } from "./session-handle.ts";
 import { registerBrowserCommands, registerBrowserTools } from "../tools/register.ts";
+import { applyBrowserSystemPrompt } from "./browser-agent-prompt.ts";
 
-export const OPERATOR_PROMPT = `You are operating a persistent headed Chromium profile through bounded browser tools.
-Inspect before you act. Use snapshot refs, never CSS or arbitrary JavaScript.
-If a login, CAPTCHA, 2FA, or other human-only step appears, call browser_takeover.
-If a required fact is missing, call browser_ask_user.
-After failures, read the recovery note and current observation instead of blindly retrying.
-Search approved knowledge at the start of a run. Never modify product code or broaden your tools.`;
+export { OPERATOR_PROMPT, BROWSER_OPERATOR_PROMPT, browserOperatorPrompt } from "./browser-agent-prompt.ts";
 
 export function bindBrowserExtension(pi: ExtensionAPI, session: SessionHandle): void {
   registerBrowserTools(pi, session);
   registerBrowserCommands(pi, session);
 
   pi.on("before_agent_start", (event: unknown) => {
-    if (!session.currentRunId) return;
     const current = event as { systemPrompt?: string };
-    if (typeof current.systemPrompt === "string") {
-      return { systemPrompt: `${current.systemPrompt}\n\n${OPERATOR_PROMPT}` };
-    }
-    return undefined;
+    return applyBrowserSystemPrompt(current);
   });
 
   pi.on("session_start", async () => {

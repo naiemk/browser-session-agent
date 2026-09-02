@@ -28,6 +28,21 @@ describe("V1-01-T02 authenticated chat", () => {
     }
   });
 
+  it("answers app-level ping with pong", async () => {
+    const world = await startV1Api();
+    worlds.push(world);
+    const user = await uniqueUser();
+    const { cookie } = await register(world.origin, user.email, user.password);
+    const chat = await chatClient(world.api.port, cookie);
+    try {
+      chat.send({ type: "ping" });
+      const pong = await waitFor(chat.inbox, (m) => m.type === "pong");
+      assert.equal(pong.type, "pong");
+    } finally {
+      chat.close();
+    }
+  });
+
   it("rejects chat without a session", async () => {
     const world = await startV1Api();
     worlds.push(world);

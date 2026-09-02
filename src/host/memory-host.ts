@@ -9,7 +9,7 @@ export type HostListener = {
 };
 
 export class MemoryOperatorHost implements OperatorHost {
-  active: string[] = ["read", "bash", "write", "edit"];
+  active: string[] = [...BROWSER_TOOL_NAMES];
   private pending = new Map<string, { resolve: (value: unknown) => void }>();
   private seq = 0;
   listeners: HostListener = {};

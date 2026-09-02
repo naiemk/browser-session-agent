@@ -21,6 +21,8 @@ describe("PRE-03-T01 gateway API prefixes", () => {
     assert.match(gateway, /proxy_pass http:\/\/api:8787/);
     assert.match(gateway, /location \/ \{\s*proxy_pass http:\/\/ui:80;/s);
     assert.match(gateway, /Upgrade \$http_upgrade/);
+    assert.match(gateway, /proxy_send_timeout 3600s/);
+    assert.match(gateway, /proxy_buffering off/);
     assert.match(gateway, /\$http_x_forwarded_proto/);
     assert.match(gateway, /X-Forwarded-Proto \$forwarded_proto/);
     assert.doesNotMatch(gateway, /proxy_set_header X-Forwarded-Proto \$scheme;/);
