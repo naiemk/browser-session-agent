@@ -79,12 +79,21 @@ async function me() {
 }
 
 function connectChat() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
   socket = new WebSocket(`${proto}://${location.host}/chat`);
   socket.addEventListener("open", () => {
     socket.send(JSON.stringify({ type: "hello", token: powerToken || undefined }));
   });
   socket.addEventListener("message", onServerMessage);
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (event) => {
+    socket = null;
+    if (event.code === 4401) {
+      addMessage("system", "Chat is unauthorized. Sign in again.", "error");
+      authEl.classList.remove("hidden");
+      return;
+    }
     addMessage("system", "Chat disconnected. Reconnecting…", "error");
     setTimeout(connectChat, 1500);
   });

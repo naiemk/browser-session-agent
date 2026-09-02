@@ -17,6 +17,7 @@ env:
   - OPENAI_API_KEY
   - OPENROUTER_API_KEY
   - AI_GATEWAY_API_KEY
+  - PI_OFFLINE
 volumes:
   - /var/lib/browser-session:/data
 playwright: false

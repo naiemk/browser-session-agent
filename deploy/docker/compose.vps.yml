@@ -17,6 +17,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
+      PI_OFFLINE: "1"
       # HTTP :8080 stand-in: do not set BSA_COOKIE_SECURE=1 here.
       # TLS vibed pack sets BSA_COOKIE_SECURE=1. Never set BSA_NO_PI.
     volumes:

@@ -26,6 +26,7 @@ sites:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY}
+      PI_OFFLINE: "1"
       # LLM keys belong here. No PLAYWRIGHT / CHROME vars. No BSA_NO_PI.
   - name: gateway
     role: gateway

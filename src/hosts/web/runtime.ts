@@ -15,6 +15,25 @@ export interface OperatorRuntimeOptions {
   sessionDir?: string;
   requirePaid?: boolean;
   paid?: boolean | (() => boolean);
+  /** Test-only: delay before Pi boot. Does not block chat hello. */
+  startDelayMs?: number;
+  /** Fail the wait for start() after this many ms. Boot may still finish later. */
+  startTimeoutMs?: number;
+}
+
+let piStartLock: Promise<void> = Promise.resolve();
+
+function withPiStartLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = piStartLock.then(fn, fn);
+  piStartLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class OperatorRuntime {
@@ -27,11 +46,16 @@ export class OperatorRuntime {
   private pi: PiLike | null = null;
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
-  private readonly send: (message: ChatServerMessage) => void;
+  private send: (message: ChatServerMessage) => void;
   private readonly hub: NodeHub;
   private readonly options: OperatorRuntimeOptions;
+  private startPromise: Promise<void> | null = null;
   piReady = false;
   piReason: string | null = null;
+
+  get starting(): boolean {
+    return this.startPromise !== null && !this.piReady && this.piReason === null;
+  }
   sessionId = `sess_${Date.now().toString(36)}`;
   model = "auto";
   thinking = "medium";
@@ -64,6 +88,10 @@ export class OperatorRuntime {
     };
   }
 
+  setSend(send: (message: ChatServerMessage) => void): void {
+    this.send = send;
+  }
+
   state(): OperatorState {
     return {
       sessionId: this.sessionId,
@@ -82,6 +110,14 @@ export class OperatorRuntime {
   }
 
   async start(): Promise<void> {
+    if (!this.startPromise) this.startPromise = this.startOnce();
+    return this.startPromise;
+  }
+
+  private async startOnce(): Promise<void> {
+    if (this.options.startDelayMs && this.options.startDelayMs > 0) {
+      await sleep(this.options.startDelayMs);
+    }
     if (process.env.BSA_NO_PI === "1") {
       this.piReady = false;
       this.piReason = "BSA_NO_PI";
@@ -102,63 +138,89 @@ export class OperatorRuntime {
       this.send({ type: "stateSync", state: this.state() });
       return;
     }
+    const timeoutMs = this.options.startTimeoutMs
+      ?? Number(process.env.BSA_PI_START_TIMEOUT_MS ?? 20_000);
+    const boot = this.bootPi();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), timeoutMs);
+    });
+    const winner = await Promise.race([boot.then(() => "ok" as const), timeout]);
+    if (timer) clearTimeout(timer);
+    if (winner === "timeout" && !this.piReady && this.piReason === null) {
+      this.piReason = `Pi start timed out after ${timeoutMs}ms`;
+      this.sendPiUnavailable();
+      this.send({ type: "models", models: this.models });
+      this.send({ type: "stateSync", state: this.state() });
+      void boot.then(() => {
+        if (!this.piReady) return;
+        this.send({ type: "notify", message: "Agent is ready.", level: "info" });
+        this.send({ type: "models", models: this.models });
+        this.send({ type: "stateSync", state: this.state() });
+      });
+    }
+  }
+
+  private async bootPi(): Promise<void> {
     try {
       if (process.env.BSA_PI_FAIL === "1") {
         throw new Error("BSA_PI_FAIL");
       }
-      const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
-      const authStorage = AuthStorage.create();
-      applyHostedApiKeys(authStorage);
-      this.modelRegistry = ModelRegistry.create(authStorage);
-      const extras = await resolveCostExtensions();
-      const cwd = this.options.cwd ?? process.cwd();
-      const agentDir = this.options.agentDir ?? getAgentDir();
-      const loader = new DefaultResourceLoader({
-        cwd,
-        agentDir,
-        additionalExtensionPaths: extras,
-        appendSystemPrompt: [
-          "You operate a remote headed Chromium on the operator's desktop through browser_* tools. If the browser node is disconnected, say so and do not invent page state.",
-        ],
+      await withPiStartLock(async () => {
+        const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
+        const authStorage = AuthStorage.create();
+        applyHostedApiKeys(authStorage);
+        this.modelRegistry = ModelRegistry.create(authStorage);
+        const extras = await resolveCostExtensions();
+        const cwd = this.options.cwd ?? process.cwd();
+        const agentDir = this.options.agentDir ?? getAgentDir();
+        const loader = new DefaultResourceLoader({
+          cwd,
+          agentDir,
+          additionalExtensionPaths: extras,
+          appendSystemPrompt: [
+            "You operate a remote headed Chromium on the operator's desktop through browser_* tools. If the browser node is disconnected, say so and do not invent page state.",
+          ],
+        });
+        await loader.reload();
+        const customTools = [...this.api.tools.values()].map((tool) => this.toPiTool(tool));
+        const result = await createAgentSession({
+          cwd,
+          agentDir,
+          authStorage,
+          modelRegistry: this.modelRegistry,
+          resourceLoader: loader,
+          sessionManager: this.options.sessionDir
+            ? SessionManager.create(cwd, this.options.sessionDir)
+            : SessionManager.inMemory(cwd),
+          customTools,
+          noTools: "builtin",
+          thinkingLevel: "medium",
+        });
+        this.pi = result.session as PiLike;
+        this.piReady = true;
+        this.piReason = null;
+        this.capPiModel();
+        this.model = describeModel(result.session.model) ?? this.model;
+        this.thinking = String(result.session.thinkingLevel ?? this.thinking);
+        this.unsubscribePi = result.session.subscribe((event) => {
+          this.send({ type: "agentEvent", event: normalizeAgentEvent(event) });
+          const err = assistantErrorFromEvent(event);
+          if (err) this.send({ type: "error", message: err, code: "pi_turn_error" });
+        });
+        const available = this.modelRegistry.getAvailable();
+        this.models = [
+          { id: "auto", label: "Pi Router (Auto)" },
+          { id: "low", label: "@low" },
+          { id: "medium", label: "@medium" },
+          { id: "high", label: "@high" },
+          { id: "ultra", label: "@ultra" },
+          ...available.map((model) => ({
+            id: `${model.provider}/${model.id}`,
+            label: `${model.provider}/${model.id}`,
+          })),
+        ];
       });
-      await loader.reload();
-      const customTools = [...this.api.tools.values()].map((tool) => this.toPiTool(tool));
-      const result = await createAgentSession({
-        cwd,
-        agentDir,
-        authStorage,
-        modelRegistry: this.modelRegistry,
-        resourceLoader: loader,
-        sessionManager: this.options.sessionDir
-          ? SessionManager.create(cwd, this.options.sessionDir)
-          : SessionManager.inMemory(cwd),
-        customTools,
-        noTools: "builtin",
-        thinkingLevel: "medium",
-      });
-      this.pi = result.session as PiLike;
-      this.piReady = true;
-      this.piReason = null;
-      this.capPiModel();
-      this.model = describeModel(result.session.model) ?? this.model;
-      this.thinking = String(result.session.thinkingLevel ?? this.thinking);
-      this.unsubscribePi = result.session.subscribe((event) => {
-        this.send({ type: "agentEvent", event: normalizeAgentEvent(event) });
-        const err = assistantErrorFromEvent(event);
-        if (err) this.send({ type: "error", message: err, code: "pi_turn_error" });
-      });
-      const available = this.modelRegistry.getAvailable();
-      this.models = [
-        { id: "auto", label: "Pi Router (Auto)" },
-        { id: "low", label: "@low" },
-        { id: "medium", label: "@medium" },
-        { id: "high", label: "@high" },
-        { id: "ultra", label: "@ultra" },
-        ...available.map((model) => ({
-          id: `${model.provider}/${model.id}`,
-          label: `${model.provider}/${model.id}`,
-        })),
-      ];
     } catch (err) {
       this.pi = null;
       this.piReady = false;
@@ -190,7 +252,13 @@ export class OperatorRuntime {
           reason: this.hub.connected ? undefined : "browser node disconnected",
         });
         if (this.hub.connected) this.hub.startScreencast();
-        if (!this.piReady && process.env.BSA_NO_PI !== "1") this.sendPiUnavailable();
+        if (!this.piReady && process.env.BSA_NO_PI !== "1") {
+          if (this.starting) {
+            this.send({ type: "notify", message: "Starting the agent…", level: "info" });
+          } else {
+            this.sendPiUnavailable();
+          }
+        }
         return;
       case "prompt":
         await this.prompt(message.text);
