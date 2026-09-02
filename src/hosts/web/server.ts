@@ -439,6 +439,8 @@ function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (file.endsWith(".css")) return "text/css; charset=utf-8";
   if (file.endsWith(".svg")) return "image/svg+xml";
+  if (file.endsWith(".png")) return "image/png";
+  if (file.endsWith(".ico")) return "image/x-icon";
   if (file.endsWith(".sh") || file.endsWith(".ps1")) return "text/plain; charset=utf-8";
   return "text/html; charset=utf-8";
 }

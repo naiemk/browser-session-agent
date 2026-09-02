@@ -21,6 +21,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel);
 }
 .brand { display: flex; gap: 0.6rem; align-items: center; }
+.brand-logo { width: 28px; height: 28px; border-radius: 7px; display: block; }
+.auth-logo { width: 48px; height: 48px; border-radius: 12px; display: block; }
 .controls { display: flex; gap: 0.75rem; }
 label { font-size: 0.8rem; color: var(--muted); display: flex; gap: 0.4rem; align-items: center; }
 select, textarea, button, input {

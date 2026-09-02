@@ -64,5 +64,11 @@ describe("PRE-04 wget desktop install", () => {
     const win = await fetch(`${world.origin}/install.ps1`);
     assert.equal(win.status, 200);
     assert.match(await win.text(), /playwright install chromium/);
+
+    const icon = await fetch(`${world.origin}/favicon.ico`);
+    assert.equal(icon.status, 200);
+    const logo = await fetch(`${world.origin}/logo.svg`);
+    assert.equal(logo.status, 200);
+    assert.match(await logo.text(), /e8c07a/);
   });
 });
