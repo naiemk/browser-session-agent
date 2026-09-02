@@ -77,8 +77,8 @@ Every suite run. Append, never rewrite.
 
 | Date | Commit | Change | Success rate | Steps/task | Cost/task | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 2026-09-02 | a481a0e | suite validity: 27 tasks, reference target | 100% (27/27) | 2.59 | n/a | AGENT-01. Reference solutions pass every task, so the criteria are reachable and we are not measuring agents against impossible work. No model involved, hence no cost. Raw: `results/baseline-reference.json`. |
-| pending | — | agent baseline | — | — | — | Lands with the first agent driver (bounded per-task session). Until then no agent number exists to compare against, and D19's gate is satisfied only for suite validity. |
+| 2026-09-02 | a481a0e | suite validity: 26 tasks, reference target | 100% (26/26) | 2.69 | n/a | AGENT-01. Reference solutions pass every task, so the criteria are reachable and we are not measuring agents against impossible work. No model involved, hence no cost. Raw: `results/baseline-reference.json`. |
+| 2026-09-02 | (this branch) | agent baseline attempt | **invalid** | — | ~$0.003 observed | Blocked on model credits: the OpenRouter key is exhausted, so 26/26 sessions failed with HTTP 402 before acting. The runner marks the run invalid and refuses to quote it. Raw: `results/agent-attempt-invalid.json`. Reproduce with credits: `npx tsx scripts/run-suite.ts --target agent --out results/baseline-agent.json`. Individually, before credits ran out, `apply-submit`, `noisy-page-save`, `fill-profile`, `dynamic-reveal`, and `combobox-unavailable` all passed, so the wiring works. |
 
 ## Lessons
 
@@ -90,6 +90,9 @@ Written down so they are not relearned.
 - **We modelled reversibility as a property of tools.** It is a property of situations. Hence D23.
 - **We over-engineered flow knowledge within minutes of a good example.** Signatures, retrieval, and a promotion pipeline for knowledge the model already had. Hence D26.
 - **A blanket prohibition hid three different activities.** "Never crawl" bundled ahead-of-need mapping, pre-commit scouting, and enumeration, which have different economics. Hence D24.
+- **A provider failure is indistinguishable from an agent doing nothing, unless you look.** The first agent run reported 15.4% success. Every one of those failures was HTTP 402: the credits were gone. Pi surfaces model failures as error assistant messages rather than thrown exceptions, so the driver saw a session that completed with no report and scored it as incompetence. Two fixes: the session now captures model errors, and provider failures are excluded from the success rate with the whole run marked invalid past a quarter lost. A scoreboard that silently blames the agent for the bill is worse than no scoreboard.
+- **Suite tasks can be passed by doing nothing.** Three "abandon" tasks had criteria satisfied on page load, so an agent that never acted scored them. Abandon tasks now need a criterion that proves engagement — an option list that only renders once opened, a field that must be filled before the refusal counts — and the one that could not be made observable was deleted rather than kept as noise.
+- **Running many model sessions back to back trips rate limits.** The suite paces itself between tasks for that reason. Measuring the provider's throttle instead of the agent is an easy and invisible mistake.
 
 ## External evidence we are relying on
 

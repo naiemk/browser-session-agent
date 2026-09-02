@@ -39,6 +39,12 @@ export interface RunSuiteOptions {
   headless?: boolean;
   only?: string[];
   onTask?: (run: TaskRun) => void;
+  /**
+   * Gap between tasks. Running many model-backed sessions back to back trips provider
+   * rate limits, and a throttled request looks exactly like an agent that did nothing.
+   * The suite must measure the agent, not the rate limiter.
+   */
+  pauseMs?: number;
 }
 
 export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
@@ -52,7 +58,10 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
   const runs: TaskRun[] = [];
 
   try {
-    for (const task of selected) {
+    for (const [index, task] of selected.entries()) {
+      if (index > 0 && options.pauseMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.pauseMs));
+      }
       runs.push(await runOne(task, browser, options));
       options.onTask?.(runs[runs.length - 1]!);
     }
@@ -61,6 +70,8 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
   }
 
   const passed = runs.filter((run) => run.outcome === "passed").length;
+  const errored = runs.filter((run) => run.outcome === "error").length;
+  const scored = runs.length - errored;
   const totals = runs.reduce(
     (acc, run) => ({
       steps: acc.steps + run.steps,
@@ -69,7 +80,7 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
     }),
     { steps: 0, tokens: 0, cost: 0 },
   );
-  const count = runs.length || 1;
+  const denominator = scored || 1;
 
   return {
     target: options.driver.name,
@@ -77,10 +88,15 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
     finishedAt: new Date().toISOString(),
     taskCount: runs.length,
     passed,
-    successRate: round(passed / count),
-    stepsPerTask: round(totals.steps / count),
-    tokensPerTask: totals.tokens > 0 ? round(totals.tokens / count) : undefined,
-    costPerTask: totals.cost > 0 ? round(totals.cost / count, 6) : undefined,
+    errored,
+    scored,
+    successRate: round(passed / denominator),
+    stepsPerTask: round(totals.steps / denominator),
+    tokensPerTask: totals.tokens > 0 ? round(totals.tokens / denominator) : undefined,
+    costPerTask: totals.cost > 0 ? round(totals.cost / denominator, 6) : undefined,
+    // A run that lost more than a quarter of its tasks to infrastructure says nothing
+    // about the agent, so it must not be quoted as a result.
+    valid: runs.length > 0 && errored / runs.length <= 0.25,
     runs,
   };
 }
@@ -111,6 +127,7 @@ async function runOne(
   let tokens: number | undefined;
   let costUsd: number | undefined;
   let capped = false;
+  let infraError: string | undefined;
 
   try {
     context.tabId = await browser.openTab(`${options.origin}${task.path}`);
@@ -118,6 +135,7 @@ async function runOne(
     tokens = result.tokens;
     costUsd = result.costUsd;
     detail = result.claimed ?? "";
+    infraError = result.infraError;
   } catch (err) {
     if (err instanceof StepCapExceeded) {
       capped = true;
@@ -126,6 +144,20 @@ async function runOne(
       // A driver error is still measured: the criteria decide the outcome below.
       detail = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  // A run that never happened is not a run the agent failed.
+  if (infraError) {
+    return {
+      id: task.id,
+      outcome: "error",
+      steps,
+      durationMs: Date.now() - startedAt,
+      detail: `infrastructure: ${infraError}`,
+      checks: [],
+      tokens,
+      costUsd,
+    };
   }
 
   // The verdict never comes from the driver.
@@ -164,7 +196,14 @@ async function runOne(
 export function formatReport(report: SuiteReport): string {
   const pct = (report.successRate * 100).toFixed(1);
   const cost = report.costPerTask === undefined ? "n/a" : `$${report.costPerTask.toFixed(4)}`;
-  return `${report.target}: ${report.passed}/${report.taskCount} passed (${pct}%), ${report.stepsPerTask} steps/task, ${cost}/task`;
+  const head = `${report.target}: ${report.passed}/${report.scored} passed (${pct}%), ${report.stepsPerTask} steps/task, ${cost}/task`;
+  if (report.errored > 0) {
+    const note = report.valid
+      ? `${report.errored} run(s) lost to infrastructure and excluded`
+      : `INVALID: ${report.errored}/${report.taskCount} runs lost to infrastructure; do not quote this as a result`;
+    return `${head}\n${note}`;
+  }
+  return head;
 }
 
 function round(value: number, digits = 3): number {

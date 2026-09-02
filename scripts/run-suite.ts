@@ -11,11 +11,14 @@
  * behind a red build.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { FixtureServer } from "../tests/helpers/fixture-server.ts";
 import { formatReport, runSuite } from "../src/suite/runner.ts";
 import { ReferenceDriver } from "../src/suite/reference-driver.ts";
+import { SuiteAgentDriver } from "../src/suite/agent-driver.ts";
+import { createPiSessionFactory } from "../src/agent/pi-session.ts";
 import { SUITE_TASKS } from "../src/suite/tasks.ts";
 import type { AgentDriver } from "../src/suite/types.ts";
 
@@ -29,15 +32,31 @@ function flag(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
 
-function driverFor(target: string): AgentDriver {
+async function driverFor(target: string): Promise<AgentDriver> {
   switch (target) {
     case "reference":
       return new ReferenceDriver();
+    case "agent": {
+      const root = arg("root") ?? (await mkdtemp(path.join(os.tmpdir(), "suite-agent-")));
+      process.stderr.write(`agent evidence: ${root}\n`);
+      return new SuiteAgentDriver({
+        root,
+        createSession: createPiSessionFactory({
+          thinkingLevel: (arg("thinking") as "low") ?? "low",
+          maxOutputTokens: 4096,
+          model: arg("model"),
+        }),
+        // Fixtures are disposable, so the suite commits without pausing for a human.
+        policy: "auto",
+        answers: {
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          password: "hunter2",
+        },
+      });
+    }
     default:
-      throw new Error(
-        `Unknown target "${target}". Available: reference. ` +
-          `Agent targets are added by AGENT-07-T01 (session strategy experiment).`,
-      );
+      throw new Error(`Unknown target "${target}". Available: reference, agent.`);
   }
 }
 
@@ -51,10 +70,11 @@ const origin = await server.start();
 try {
   const report = await runSuite({
     tasks: SUITE_TASKS,
-    driver: driverFor(target),
+    driver: await driverFor(target),
     origin,
     headless: !flag("headed"),
     only,
+    pauseMs: target === "reference" ? 0 : Number(arg("pause") ?? 2000),
     onTask: (run) => {
       const mark = run.outcome === "passed" ? "ok" : run.outcome;
       process.stderr.write(`  ${mark.padEnd(6)} ${run.id} (${run.steps} steps)\n`);

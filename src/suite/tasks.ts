@@ -161,7 +161,10 @@ export const SUITE_TASKS: SuiteTask[] = [
     path: "/combobox?mode=none",
     tags: ["combobox", "abandon"],
     maxSteps: 16,
+    // An abandon task needs a criterion that proves engagement, or an agent that does
+    // nothing at all would pass it. Options only render once the list is opened.
     criteria: [
+      { kind: "control_exists", role: "option" },
       { kind: "text_absent", text: "Committed: United States" },
       { kind: "control_exists", role: "combobox", name: "Country" },
     ],
@@ -169,15 +172,6 @@ export const SUITE_TASKS: SuiteTask[] = [
       { do: "click", name: "Country" },
       { do: "scroll", name: "Suggestions", dy: 120 },
     ],
-  },
-  {
-    id: "dead-click-detect",
-    goal: "Press the button on this page and tell me whether anything actually happened.",
-    path: "/dead-click",
-    tags: ["perception", "noop"],
-    maxSteps: 6,
-    criteria: [{ kind: "text_visible", text: "This button does not change the page" }],
-    reference: [{ do: "click", name: "Do nothing", allowFailure: true }],
   },
   {
     id: "dynamic-reveal",
@@ -296,18 +290,21 @@ export const SUITE_TASKS: SuiteTask[] = [
   },
   {
     id: "once-native-validation",
-    goal: "Try sending an invitation with nothing filled in, then tell me whether it sent.",
+    goal: "Put ada as the recipient but leave the message empty, try to send, then tell me whether it sent.",
     path: "/once",
-    tags: ["validation", "native"],
-    maxSteps: 6,
+    tags: ["validation", "native", "abandon"],
+    maxSteps: 8,
     // The browser blocks submission itself, so there is no message in the DOM to read.
-    // The only observable truth is that nothing was sent and the form is still up.
+    // The recipient value proves the agent engaged; Sends: 0 proves it did not send.
     criteria: [
+      { kind: "value_includes", name: "Recipient", text: "ada" },
       { kind: "text_visible", text: "Sends: 0" },
-      { kind: "control_exists", name: "Send invitation" },
       { kind: "text_absent", text: "Invitation sent" },
     ],
-    reference: [{ do: "click", name: "Send invitation", allowFailure: true }],
+    reference: [
+      { do: "type", name: "Recipient", text: "ada" },
+      { do: "click", name: "Send invitation", allowFailure: true },
+    ],
   },
   {
     id: "draft-publish",

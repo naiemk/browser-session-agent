@@ -63,10 +63,16 @@ export interface SuiteReport {
   finishedAt: string;
   taskCount: number;
   passed: number;
+  /** Runs that could not happen (credits, rate limits, outages). Not the agent's fault. */
+  errored: number;
+  /** taskCount minus errored: the denominator for success rate. */
+  scored: number;
   successRate: number;
   stepsPerTask: number;
   costPerTask?: number;
   tokensPerTask?: number;
+  /** False when too much of the run was lost to infrastructure to draw a conclusion. */
+  valid: boolean;
   runs: TaskRun[];
 }
 
@@ -85,6 +91,12 @@ export interface DriverOutcome {
   claimed?: string;
   tokens?: number;
   costUsd?: number;
+  /**
+   * Set when the run could not happen for reasons outside the agent: exhausted
+   * credits, rate limits, provider outages. These runs are excluded from the success
+   * rate, because scoring them would blame the agent for the bill.
+   */
+  infraError?: string;
 }
 
 export interface AgentDriver {
