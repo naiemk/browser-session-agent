@@ -85,11 +85,18 @@ Pre-V1 apply: [docs/pre-v1-runbook.md](docs/pre-v1-runbook.md). Operator notes:
 ## Development
 
 ```bash
+npm run precommit         # everything CI gates on, in CI's order
 npm test                  # unit, integration, and end-to-end
 npm run typecheck         # core, runtime, suite, and CLI
 npm run suite:reference   # validates the suite tasks themselves
 npm run suite             # the agent loop end to end, mock model, no tokens
 ```
+
+Run `npm ci` rather than `npm install` before `precommit` when you want to be sure of a
+result. npm hoists transitive dependencies when nothing conflicts, so a stale or
+`npm install`-shaped `node_modules` can resolve imports that CI cannot — which is exactly
+how two undeclared dependencies and a broken 0.84 API migration reached CI green-looking
+locally. A test now checks that everything `src/` imports is declared.
 
 Tests never call a model. The agent loop is exercised through a mock that speaks the same
 stream protocol a provider does, so the real browser, real tools, real verification, and
