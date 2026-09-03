@@ -216,6 +216,42 @@ composes in a shell, and irreversible actions default to needing approval so an 
 run cannot submit something by surprise. Hosted use can adopt the same runtime later; it is
 a transport, not a different agent.
 
+## D41. Situational awareness is a primitive, not a taxonomy
+
+The agent needs to know where it stands: who it is acting as, what its session grants,
+whether what it is reading is reachable by anyone. The tempting fix is to declare the
+answers — flags for "own data" and "public data", a list of site categories, a policy table.
+Every version of that is wrong for the next site, because the same URL means different
+things depending on who is signed in, and the taxonomy has to be maintained per site
+forever.
+
+So we give one mechanism instead: load the same URL with no session and compare. It needs
+no knowledge of any particular site, and it answers all three questions at once. A redirect
+to a login wall, a shorter control list, an identical page — each is a fact the model can
+reason from. `compareObservations` deliberately returns differences and never a verdict:
+there is no `isPublic` field, because "public" is a conclusion and conclusions belong to
+whoever has the task in front of them. A difference is evidence and not proof, since A/B
+tests, geography, and consent walls all change an anonymous view for reasons unrelated to
+authorization, and the card says so.
+
+The same reasoning governs `remember`: free-form keys chosen by the agent, rather than a
+schema of fields we predicted it would need. Each fact carries the ledger event that
+established it, so a claim about the situation can always be traced to what was observed.
+
+## D42. A refusal is an outcome, not silence
+
+A model that answers in prose and calls no tools is invisible to a loop that only watches
+for reports: it looks identical to a task where nothing happened. That is how a human ends
+up arguing with a chatbot for twenty turns while the system believes it is working. So a
+run with zero tool calls, no report, and no transport error is recorded as `declined`, and
+the evaluator maps a persistent decline to `needs_user_input` — a decision for the human to
+rephrase, authorise, or drop.
+
+There is exactly one retry, and only when there are newly established facts to attach. A
+refusal is often correct, and a loop that keeps rephrasing until the model agrees is a
+machine for talking models out of correct refusals. One retry covers the case worth
+covering: the agent declined because it could not tell where it stood, and now it can.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

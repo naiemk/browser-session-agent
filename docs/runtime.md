@@ -22,6 +22,40 @@ Suite (src/suite) ───────────┘            │
   runner that decides outcomes itself.
 - **`src/cli`** is the front door. No socket, no pairing, no background service.
 
+## Knowing where you stand
+
+A coding agent can read its whole world: `pwd`, `git remote`, the config file. A browser
+agent is handed a viewport and must work out the rest — whose account this is, what the
+session grants, whether a page is reachable by anyone. Those answers decide what "my
+followers" refers to and where to look for it, and they differ per site and per session.
+
+There is one primitive for all of it. `openIsolatedTab` loads a URL in a fresh Playwright
+context with no cookies and no storage, and `viewWithoutSession` compares that with the
+same URL as us. A redirect to a login wall says the content is behind the session; an
+identical page says the session was not what made it visible; a shorter control list names
+what the session grants. The comparison is read-only by construction, since a context with
+no credentials cannot change the user's account, and the isolated tab is always closed so a
+comparison cannot quietly become a second session.
+
+`compareObservations` returns differences, never a verdict. There is no `isPublic`, because
+"public" is a conclusion and the evidence underdetermines it: A/B tests, geography, and
+consent walls also change an anonymous view. The card tells the model that.
+
+What the agent works out, it keeps. `remember` writes a free-form key and value onto the
+goal, along with the ledger event that established it, so the reasoning behind a claim
+about the situation stays auditable and a later task does not repeat the investigation.
+Session-free views are budgeted like any other exploration, because each one is a real
+anonymous request to somebody's site.
+
+## When the model says no
+
+A model that answers in prose and calls no tools is otherwise indistinguishable from a task
+where nothing happened. `RunOutcome.declined` names it, and the evaluator turns a
+persistent decline into `needs_user_input` so the human is told plainly rather than left to
+argue with a chatbot. `runTaskWithDeclineRetry` gives exactly one more attempt, and only
+when there are established facts to attach: sometimes the agent declined because it could
+not tell where it stood. If the answer does not change, it stands.
+
 ## Why it builds on `pi-agent-core` rather than `createAgentSession`
 
 Two reasons, both load-bearing.
