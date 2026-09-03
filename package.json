@@ -50,7 +50,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.2",
+    "@earendil-works/pi-coding-agent": "^0.84.4",
     "@mariozechner/pi-web-ui": "^0.73.1",
     "pi-meter": "^0.1.1",
     "pi-model-auto": "^0.2.2",
