@@ -84,24 +84,19 @@ export interface LiveModel {
  * initialised when tests run, so a test run cannot accidentally reach a provider.
  */
 export async function createLiveModel(options: { model?: string } = {}): Promise<LiveModel> {
-  const [{ AuthStorage, ModelRegistry }, { streamSimple }] = await Promise.all([
-    import("@earendil-works/pi-coding-agent"),
-    import("@earendil-works/pi-ai"),
-  ]);
+  const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
 
-  const auth = AuthStorage.create();
-  const runtimeKeys = auth as unknown as {
-    setRuntimeApiKey?: (provider: string, key: string) => void;
-  };
-  if (typeof runtimeKeys.setRuntimeApiKey === "function") {
-    for (const provider of Object.keys(KEY_ENV_NAMES)) {
-      const key = resolveKey(provider);
-      if (key) runtimeKeys.setRuntimeApiKey(provider, key);
-    }
+  // The catalog of the models we prefer is fetched, not static, so the network has to be
+  // allowed here or `getAvailable` comes back with builtins only.
+  const runtime = await ModelRuntime.create({ allowModelNetwork: true });
+
+  for (const provider of Object.keys(KEY_ENV_NAMES)) {
+    const key = resolveKey(provider);
+    if (key) await runtime.setRuntimeApiKey(provider, key);
   }
 
-  const registry = ModelRegistry.create(auth);
-  const model = pickModel(registry.getAvailable() as never[], options.model);
+  const available = [...(await runtime.getAvailable())];
+  const model = pickModel(available as never[], options.model);
   if (!model) {
     throw new Error(
       "No model available. Set OPENROUTER_API_KEY (or another provider key) and try again. " +
@@ -109,15 +104,10 @@ export async function createLiveModel(options: { model?: string } = {}): Promise
     );
   }
 
-  const stream: ModelPort = async (target, context, streamOptions) => {
-    const resolved = await registry.getApiKeyAndHeaders(target as never);
-    if (!resolved.ok) throw new Error(resolved.error);
-    return streamSimple(target as never, context, {
-      ...streamOptions,
-      apiKey: resolved.apiKey,
-      headers: resolved.headers ?? streamOptions?.headers,
-    });
-  };
+  // `streamSimple` resolves credentials and headers per request itself, so there is no key
+  // plumbing to get wrong here.
+  const stream: ModelPort = (target, context, streamOptions) =>
+    runtime.streamSimple(target as never, context, streamOptions as never);
 
   return { model: model as Model<never>, stream, name: `${model.provider}/${model.id}` };
 }
