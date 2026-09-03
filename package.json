@@ -52,6 +52,8 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.4",
+    "@earendil-works/pi-ai": "^0.84.4",
     "@earendil-works/pi-coding-agent": "^0.84.4",
     "@mariozechner/pi-web-ui": "^0.73.1",
     "pi-meter": "^0.1.1",
