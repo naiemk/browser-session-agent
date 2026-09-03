@@ -7,7 +7,16 @@
 
 import { describePredicate } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
-import { TOOL_ACT, TOOL_ASK, TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE, TOOL_PROBE } from "./names.ts";
+import {
+  TOOL_ACT,
+  TOOL_ASK,
+  TOOL_CHECK,
+  TOOL_DONE,
+  TOOL_OBSERVE,
+  TOOL_PROBE,
+  TOOL_REMEMBER,
+  TOOL_STRANGER,
+} from "./names.ts";
 
 export interface TaskCardInput {
   objective: string;
@@ -53,5 +62,12 @@ RULES
 - ${TOOL_DONE} to finish. A truthful failure beats a false success.
 - On failure, read the recovery note and errors, then change approach. Do not repeat the same click.
 - ${commit}
+
+WORKING OUT WHERE YOU STAND
+You are given a browser, not a description of the situation. Establish it rather than assume it.
+- Who are you acting as? Usually discoverable from an account menu, a profile link, or a settings page. It decides what "my", "mine", and "our" refer to in the task, and where those things live.
+- What does your session grant? ${TOOL_STRANGER} loads a URL with no session. Comparing that with what you see tells you whether content is reachable by anyone or only through this session.
+- ${TOOL_REMEMBER} what you work out, in your own words, so a later task does not redo it.
+Reason from what you observed. A difference between the two views is evidence, not proof: A/B tests, geography, and consent walls change an anonymous page too. If the task turns out to be something you should not do, say so with ${TOOL_DONE} and explain what you observed that led there.
 ${input.maxTurns ? `\nBudget: about ${input.maxTurns} turns. Spend them understanding the page, not retrying.` : ""}`;
 }

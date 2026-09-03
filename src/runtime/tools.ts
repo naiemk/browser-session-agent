@@ -11,10 +11,21 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import type { Ledger } from "../core/ledger.ts";
+import { viewWithoutSession } from "../core/perspective.ts";
 import { probe } from "../core/probe.ts";
+import type { GoalStore } from "../core/state.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
-import { TOOL_ACT, TOOL_ASK, TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE, TOOL_PROBE } from "./names.ts";
+import {
+  TOOL_ACT,
+  TOOL_ASK,
+  TOOL_CHECK,
+  TOOL_DONE,
+  TOOL_OBSERVE,
+  TOOL_PROBE,
+  TOOL_REMEMBER,
+  TOOL_STRANGER,
+} from "./names.ts";
 import {
   toWireActionResult,
   toWireObservation,
@@ -42,7 +53,16 @@ export interface ToolContext {
   onParked?: (parked: ParkedOutcome) => void;
   /** Counts one browser action against the task budget. */
   onStep?: () => void;
+  /** Where established facts are kept, so they survive the task that found them. */
+  goalStore?: GoalStore;
+  /**
+   * Cap on session-free views. Each one is a real anonymous request to the site, so it is
+   * budgeted like any other read-only exploration rather than being free.
+   */
+  strangerViewBudget?: number;
 }
+
+export const DEFAULT_STRANGER_VIEW_BUDGET = 3;
 
 type Result = { content: Array<{ type: "text"; text: string }>; details: unknown; terminate?: boolean };
 
@@ -70,6 +90,7 @@ function describeError(err: unknown): string {
 
 export function buildTools(context: ToolContext): AgentTool[] {
   const tab = () => context.tabId;
+  let strangerViews = 0;
 
   const tools: RuntimeTool[] = [
     {
@@ -199,6 +220,69 @@ export function buildTools(context: ToolContext): AgentTool[] {
         return answer === undefined
           ? reply({ answered: false, note: "Nobody available. Report what you are missing." })
           : reply({ answered: true, answer });
+      },
+    },
+    {
+      name: TOOL_STRANGER,
+      label: "View without session",
+      description:
+        "Load a URL with no cookies and no session, and compare it with the same URL as you. Use it when it matters who can see something, or to find out what your session grants. Returns what a stranger sees plus the differences; it draws no conclusion, and a difference can also come from A/B tests or geography. Each call is a real anonymous request, so it is budgeted.",
+      promptSnippet: "See a page as an anonymous visitor, and how that differs.",
+      parameters: Type.Object({
+        url: Type.Optional(Type.String({ description: "Defaults to the current page" })),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const budget = context.strangerViewBudget ?? DEFAULT_STRANGER_VIEW_BUDGET;
+        if (strangerViews >= budget) {
+          return reply({
+            error: `session-free view budget of ${budget} is spent`,
+            note: "Reason from what you already observed, or ask the operator.",
+          });
+        }
+        strangerViews += 1;
+        try {
+          const result = await viewWithoutSession(context.browser, {
+            url: (params as { url?: string }).url,
+            tabId: tab(),
+            ledger: context.ledger,
+            entityId: context.entityId,
+          });
+          return reply({
+            asStranger: toWireObservation(result.signedOut),
+            differences: result.delta,
+          });
+        } catch (err) {
+          return reply({ error: describeError(err) });
+        }
+      },
+    },
+    {
+      name: TOOL_REMEMBER,
+      label: "Remember",
+      description:
+        "Record something you established, in your own words, so it outlives this task. Use it for what you worked out about the situation: who you are acting as, what your session grants, what you confirmed about a page. Free-form: pick your own keys.",
+      promptSnippet: "Record what you established, with the evidence for it.",
+      parameters: Type.Object({
+        key: Type.String({ description: "Short name, e.g. operating-identity" }),
+        value: Type.String({ description: "What you established, and what you saw" }),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const raw = params as { key?: unknown; value?: unknown };
+        const key = String(raw.key ?? "").trim();
+        const value = String(raw.value ?? "").trim();
+        if (!key || !value) return reply({ error: "remember needs a key and a value" });
+
+        // The ledger event is the provenance: the fact points at what established it.
+        const event = await context.ledger?.append({
+          type: "note",
+          entityId: context.entityId,
+          intent: `established: ${key}`,
+          outcome: { ok: true, detail: value },
+        });
+        await context.goalStore?.mergeGoalFacts({
+          [key]: { value, evidence: event?.id, at: new Date().toISOString() },
+        });
+        return reply({ remembered: key, evidence: event?.id ?? null });
       },
     },
     {
