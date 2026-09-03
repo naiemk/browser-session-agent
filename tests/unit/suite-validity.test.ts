@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { BrowserPort } from "../../src/core/browser.ts";
 import type { Observation, PageFacts } from "../../src/core/types.ts";
-import { infrastructureFailure } from "../../src/suite/agent-driver.ts";
+import { infrastructureFailure } from "../../src/suite/runtime-driver.ts";
 import { formatReport, runSuite } from "../../src/suite/runner.ts";
 import type { AgentDriver, SuiteTask } from "../../src/suite/types.ts";
 

@@ -163,6 +163,59 @@ The old agent is the control group. The baseline row required by D19 is its scor
 
 The old core is deleted in the same change that flips the default, along with its now-dead tests. Two agent cores may coexist only while that comparison is running, and a third is never allowed. Without this trigger the repo keeps both forever.
 
+## D36. The runtime builds on `pi-agent-core`, so the model can be replaced
+
+`createAgentSession` hardcodes its stream function: it always calls `streamSimple` with a
+real key, so there is no seam and every test of the loop would cost money and vary. It also
+brings a resource loader, on-disk sessions, settings, and auth that a bounded browser task
+does not need. `pi-agent-core`'s `Agent` takes `streamFn` as a first-class option, so the
+runtime uses it directly and keeps Pi's real loop — tool execution, errors-as-text,
+truncation, queueing — untouched. See `docs/runtime.md`.
+
+## D37. Tests use a mock model, never a live one
+
+Default CI must be free and deterministic, and a test that costs money gets run less, which
+is the opposite of what tests are for. The mock implements the same event protocol a
+provider does (`start`, content blocks, `done`), honours abort signals, and reports usage,
+so everything except the model's judgement is exercised for nothing: real browser, real
+loop, real tools, real verification, real commit gate, real criteria.
+
+Two modes. `plan` lists intended tool calls with targets named rather than ref'd, resolving
+refs at call time from the newest observation, which is what a real agent must do. `script`
+plays raw turns so awkward behaviour can be reproduced deliberately — a model that claims
+success without acting, one that repeats a failing click, one that fails with a 402.
+
+The suite's `mock` target reuses each task's reference steps, so no solution knowledge is
+duplicated. CI asserts that no provider key is present, because a green build that quietly
+depends on a paid call is not testing the guarantee.
+
+## D38. Live baseline runs by hand, on a subset
+
+Competence measurement costs money and is the only thing a live run buys; plumbing
+regressions are already caught by the mock target. So the live suite is a
+`workflow_dispatch` job, defaulting to a small subset chosen to cover distinct failure
+modes rather than to be thorough, with `--all` available. Every run reports tokens and cost
+per task so a change that improves success while tripling spend is visible.
+
+## D39. The turn budget is enforced at the model port
+
+Pi's engine has no step limit, and aborting from a `turn_end` listener only signals the
+provider — a stream that ignores the signal keeps the loop running, which is what happened
+the first time this was built. Capping at the port is simpler and engine-friendly: once the
+budget is spent the port returns a turn with no tool calls, so the loop ends because the
+model stopped asking for tools. It also costs nothing, since the capped turn never reaches
+a provider.
+
+## D40. The CLI is the primary surface
+
+The hosted chat transport was the least reliable part of the old product: sessions dropped
+and a disconnect was indistinguishable from a stalled agent. The CLI removes that class of
+failure entirely — no socket, no pairing, no background service — and is the easiest thing
+to debug when a run goes wrong. `run` exits non-zero unless the criteria pass, so it
+composes in a shell, and irreversible actions default to needing approval so an unattended
+run cannot submit something by surprise. Hosted use can adopt the same runtime later; it is
+a transport, not a different agent.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

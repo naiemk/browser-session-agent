@@ -18,7 +18,7 @@ depends: AGENT-01-T02
 
 - `src/domain/observe-diff.ts` — control fingerprints for an archetype signature
 - `src/store/run-store.ts` — event log to aggregate from
-- `scripts/run-suite.ts` — where the report is emitted
+- the suite CLI (`src/cli`) — where the report is emitted
 
 ## Do
 

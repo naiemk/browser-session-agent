@@ -11,6 +11,7 @@
   "license": "MIT",
   "main": "./src/index.ts",
   "bin": {
+    "browser-agent": "./bin/browser-agent.mjs",
     "browser-session-api": "./bin/browser-session-api.mjs",
     "browser-session-node": "./bin/browser-session-node.mjs"
   },
@@ -28,8 +29,11 @@
   "scripts": {
     "test": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/unit/*.test.ts tests/integration/*.test.ts tests/e2e/*.test.ts",
     "test:e2e": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/e2e/*.test.ts",
-    "suite": "tsx scripts/run-suite.ts",
-    "suite:reference": "tsx scripts/run-suite.ts --target reference --out results/reference.json",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "agent": "tsx src/cli/run.ts",
+    "suite": "tsx src/cli/run.ts suite --target mock",
+    "suite:reference": "tsx src/cli/run.ts suite --target reference",
+    "suite:live": "tsx src/cli/run.ts suite --target live",
     "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts",
     "start:api": "tsx src/hosts/web/cli.ts",
     "start:node": "tsx src/hosts/node-agent/cli.ts",

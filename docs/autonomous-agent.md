@@ -46,11 +46,13 @@ Work breakdown: `work-items/epics/agent.md` (8 stories, 13 tasks). Each task car
 
 ## Current state
 
-New core (D34), built and tested against fixtures, not yet wired to the product shell:
+New core and runtime (D34, D36), built and tested against fixtures, not yet wired to the hosted shell. Layering is described in `docs/runtime.md`.
 
-- `src/core/` — perception (semantic snapshot with stable refs), one action choke point that always evaluates a postcondition, code-only predicate engine, append-only ledger, entity-oriented state with idempotency keys, redaction on write.
-- `src/suite/` plus `scripts/run-suite.ts` — 27-task suite with external criteria and reference solutions; reports success rate, steps per task, cost per task.
-- Boundary enforced by test: the core imports only node builtins and Playwright, so no old assumption can leak in.
+- `src/core/` — perception (semantic snapshot with stable refs), one action choke point that always evaluates a postcondition, read-only probe, code-only predicate engine, reversibility judgement, commit gate, append-only ledger, entity state with idempotency keys, task graph, evaluator. Imports only node builtins and Playwright, enforced by test.
+- `src/runtime/` — one bounded task on `pi-agent-core`'s loop with an injectable model port, plus the task card, tools, context pruning, and turn budget.
+- `src/suite/` — 26 tasks with external criteria and three targets: `reference` (no model), `mock` (real loop, no tokens), `live` (paid).
+- `src/cli/` — the front door: `run`, `suite`, `replay`. No socket, no pairing (D40).
+- Tests never call a provider (D37). CI runs the mock target on every push and asserts no key is present; the live baseline is a manual workflow (D38).
 
 Old system, still the shipping product (see `docs/architecture.md`):
 
@@ -64,7 +66,7 @@ Deliberately not decided yet: session strategy (D27), planner and graph, memory 
 
 ## Open questions and how each gets settled
 
-- **Does the environment diagnosis hold?** Not yet answered, and it is the one that matters most. The mechanisms are built and tested, but comparing agent success with and without them needs a valid agent run, which needs model credits. Until then the diagnosis remains a hypothesis with good arguments behind it, not a measured result.
+- **Does the environment diagnosis hold?** Not yet answered, and it is the one that matters most. The mechanisms are built and tested, but comparing agent success with and without them needs a live run, which needs model credits. Until then the diagnosis remains a hypothesis with good arguments behind it, not a measured result. Note what the mock target does and does not settle: it proves the plumbing works end to end, and says nothing about competence.
 - **Can the new core replace the old one?** Blocked on the same baseline plus a `BrowserPort` adapter over the kept CDP worker (`work-items/tasks/agent-09-t01-cutover-and-delete.md`). The old core is still the shipping default, on purpose.
 - **Long compacted session or fresh session per task?** (D27) Run the suite both ways; compare success, steps, and cost.
 - **Is a planner the binding constraint, or is single-task reliability?** (D28) Do not build the graph until single tasks pass reliably; a graph over an unreliable executor multiplies failures.
@@ -79,7 +81,7 @@ Every suite run. Append, never rewrite.
 | Date | Commit | Change | Success rate | Steps/task | Cost/task | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-02 | a481a0e | suite validity: 26 tasks, reference target | 100% (26/26) | 2.69 | n/a | AGENT-01. Reference solutions pass every task, so the criteria are reachable and we are not measuring agents against impossible work. No model involved, hence no cost. Raw: `results/baseline-reference.json`. |
-| 2026-09-02 | (this branch) | agent baseline attempt | **invalid** | — | ~$0.003 observed | Blocked on model credits: the OpenRouter key is exhausted, so 26/26 sessions failed with HTTP 402 before acting. The runner marks the run invalid and refuses to quote it. Raw: `results/agent-attempt-invalid.json`. Reproduce with credits: `npx tsx scripts/run-suite.ts --target agent --out results/baseline-agent.json`. Individually, before credits ran out, `apply-submit`, `noisy-page-save`, `fill-profile`, `dynamic-reveal`, and `combobox-unavailable` all passed, so the wiring works. |
+| 2026-09-02 | (this branch) | agent baseline attempt | **invalid** | — | ~$0.003 observed | Blocked on model credits: the OpenRouter key is exhausted, so 26/26 sessions failed with HTTP 402 before acting. The runner marks the run invalid and refuses to quote it. Raw: `results/agent-attempt-invalid.json`. Reproduce with credits: `npm run suite:live` (see docs/runtime.md). Individually, before credits ran out, `apply-submit`, `noisy-page-save`, `fill-profile`, `dynamic-reveal`, and `combobox-unavailable` all passed, so the wiring works. |
 
 ## Lessons
 
@@ -94,6 +96,8 @@ Written down so they are not relearned.
 - **A provider failure is indistinguishable from an agent doing nothing, unless you look.** The first agent run reported 15.4% success. Every one of those failures was HTTP 402: the credits were gone. Pi surfaces model failures as error assistant messages rather than thrown exceptions, so the driver saw a session that completed with no report and scored it as incompetence. Two fixes: the session now captures model errors, and provider failures are excluded from the success rate with the whole run marked invalid past a quarter lost. A scoreboard that silently blames the agent for the bill is worse than no scoreboard.
 - **Suite tasks can be passed by doing nothing.** Three "abandon" tasks had criteria satisfied on page load, so an agent that never acted scored them. Abandon tasks now need a criterion that proves engagement — an option list that only renders once opened, a field that must be filled before the refusal counts — and the one that could not be made observable was deleted rather than kept as noise.
 - **Running many model sessions back to back trips rate limits.** The suite paces itself between tasks for that reason. Measuring the provider's throttle instead of the agent is an easy and invisible mistake.
+- **A test that costs money gets run less, which is the opposite of what tests are for.** The first build could only exercise the agent loop by paying for it, so the loop was effectively untested whenever credits were short. Mocking at the model port fixed that: the same code path now runs free and deterministically. The lesson generalises — put the seam at the boundary you want to fake, and the expensive dependency stops dictating how often you can check your work.
+- **Aborting a loop you do not own may not stop it.** The turn cap called `abort()` from a `turn_end` listener and the run continued to 51 turns, because the signal only reaches a provider that chooses to honour it. Enforcing the budget at the port instead made it deterministic. Anything that "stops" a third-party loop deserves a test that proves it stopped.
 
 ## External evidence we are relying on
 

@@ -16,7 +16,7 @@ depends: AGENT-01-T01
 
 ## Possible
 
-- `scripts/run-suite.ts` from AGENT-01-T01
+- the suite CLI (`src/cli`) from AGENT-01-T01
 - `docs/autonomous-agent.md` — results log table
 
 ## Do

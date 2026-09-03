@@ -9,7 +9,7 @@ import {
   readSkillBody,
   retrieveSkills,
   type SkillMeta,
-} from "../../src/agent/skills.ts";
+} from "../../src/runtime/skills.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SKILLS_DIR = path.join(ROOT, "browser-skills");

@@ -19,7 +19,7 @@ not exist yet. Two conditions are open:
    runner marks such a run invalid and refuses to quote it (`results/agent-attempt-invalid.json`).
    Individual tasks pass when run with credit available, so the wiring is sound; the
    number is simply not measurable here. Reproduce with credits:
-   `npx tsx scripts/run-suite.ts --target agent --out results/baseline-agent.json`.
+   `npm run suite:live` (see docs/runtime.md).
 2. **No browser-port adapter over the kept CDP plumbing.** The new core drives Playwright
    through `LocalBrowser`, which launches its own browser. The product path needs a second
    `BrowserPort` implementation wrapping `src/worker/browser-worker.ts` so the persistent
@@ -37,7 +37,7 @@ The old default stands.
 
 ## Possible
 
-- `scripts/run-suite.ts` — target switch from AGENT-01-T01
+- the suite CLI (`src/cli`) — target switch from AGENT-01-T01
 - `src/hosts/web/runtime.ts` — where the shell selects an agent core
 - The rebuilt list in D34 — everything to be removed
 

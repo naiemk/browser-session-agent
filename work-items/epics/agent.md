@@ -56,7 +56,7 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 
 Also built beyond the original table, because the todo list called for them: the
 independent evaluator (`src/core/evaluator.ts`), the living task graph
-(`src/core/plan.ts`), and lazy skills (`src/agent/skills.ts`). These were gated behind
+(`src/core/plan.ts`), and lazy skills (`src/runtime/skills.ts`). These were gated behind
 measurement in AGENT-08; they exist and are tested, but the gate that would justify
 *relying* on them is still open.
 
