@@ -17,10 +17,11 @@ import { Ledger } from "../core/ledger.ts";
 import { coreRoot } from "../core/paths.ts";
 import { PlanStore } from "../core/plan.ts";
 import { parsePredicate } from "../core/predicates.ts";
+import { GoalStore } from "../core/state.ts";
 import { TaskStore } from "../core/task.ts";
 import type { Predicate } from "../core/types.ts";
 import { createLiveModel } from "../runtime/model.ts";
-import { runTask } from "../runtime/runtime.ts";
+import { runTaskWithDeclineRetry } from "../runtime/runtime.ts";
 
 export interface ParsedArgs {
   command: string;
@@ -137,6 +138,7 @@ async function commandRun(args: ParsedArgs): Promise<number> {
   const browser = await LocalBrowser.launch({ headless: !args.flags.headed });
   const ledger = await Ledger.open(root, goalId);
   const store = await TaskStore.open(root, goalId);
+  const goalStore = await GoalStore.open(root, goalId, goal);
 
   // A goal with no stated criteria still gets one, so "did it work" has an answer.
   const effective = criteria.length > 0 ? criteria : [{ kind: "url_includes" as const, text: "" }];
@@ -146,7 +148,7 @@ async function commandRun(args: ParsedArgs): Promise<number> {
     const tab = await browser.openTab(url);
     process.stderr.write(`goal ${goalId} — ${live.name}\nevidence ${root}/goals/${goalId}\n`);
 
-    const outcome = await runTask({
+    const attempt = await runTaskWithDeclineRetry({
       card: { objective: goal, criteria: effective, startUrl: url, policy },
       maxTurns,
       stream: live.stream,
@@ -157,6 +159,7 @@ async function commandRun(args: ParsedArgs): Promise<number> {
         ledger,
         goalRoot: root,
         goalId,
+        goalStore,
         policy,
         screenshotDir: ledger.artifactsDir,
         askUser: async (question) => {
@@ -171,7 +174,12 @@ async function commandRun(args: ParsedArgs): Promise<number> {
           return false;
         },
       },
+      // A refusal gets one more chance with whatever the agent established about the
+      // situation, in case it declined only because it could not tell where it stood.
+      factsOnRetry: async () => (await goalStore.goal()).facts,
     });
+
+    const outcome = attempt.outcome;
 
     const evaluation = await evaluateTask({
       store,
@@ -182,6 +190,7 @@ async function commandRun(args: ParsedArgs): Promise<number> {
       claim: outcome.report?.summary,
       capped: outcome.capped,
       sessionError: outcome.error ?? outcome.modelErrors[0],
+      declined: outcome.declined,
     });
 
     const result = {
@@ -206,6 +215,9 @@ async function commandRun(args: ParsedArgs): Promise<number> {
       }
       if (outcome.report) {
         process.stdout.write(`  agent said: ${outcome.report.status} — ${outcome.report.summary}\n`);
+      }
+      if (outcome.declined) {
+        process.stdout.write(`  the agent declined and took no action: ${outcome.declined}\n`);
       }
     }
 
