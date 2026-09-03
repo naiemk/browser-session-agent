@@ -66,8 +66,9 @@ Commands:
   npm run cli -- --headless   headed off (BSA_HEADLESS=1)
   npm run cli -- [pi args]    forwarded to Pi (e.g. --print, --model)
 
-The hosted VPS path (web chat + pair installer) is separate and UI-only.
-Do not run npm run start:node against the same profile while the CLI is open.
+For the chat UI on this machine instead of the TUI, use npm run web.
+The hosted VPS path stays UI-only for production.
+Do not run npm run web against the same profile while the CLI is open.
 `;
 }
 

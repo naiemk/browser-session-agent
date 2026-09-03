@@ -4,7 +4,7 @@ A browser agent that works the way a good coding agent works: look before acting
 every action, ask when something is genuinely unknown, and never claim success the page
 does not support.
 
-Two command line entry points, for two different jobs.
+Three local entry points, for three different jobs. None of them need the VPS.
 
 ## `browser-agent` — run a goal, get a verified answer
 
@@ -37,6 +37,26 @@ Needs a provider key for `run` and `suite:live`: export `OPENROUTER_API_KEY` (or
 
 Design and layering: [docs/runtime.md](docs/runtime.md).
 
+## `npm run web` — chat UI on this machine (dev, no VPS)
+
+Control the operator from the chat UI. Chromium runs here. Nothing pairs to the hosted API.
+
+```bash
+export OPENROUTER_API_KEY=...   # or ANTHROPIC_API_KEY / OPENAI_API_KEY
+npm run web
+```
+
+Open the printed URL (`http://127.0.0.1:8787/?token=dev`). The desktop node is already
+connected — no pair installer.
+
+In the chat: `/browser-start Apply to the example role on the open tab`.
+
+`npm run web -- --check` verifies Node and Playwright Chromium. `--headless` hides the
+window. `--port 8787` changes the listen port.
+
+Do not run `npm run cli` or `npm run agent` against the same profile while the web stack
+is open.
+
 ## `bsa` — interactive Pi session (dev, no VPS)
 
 An interactive Pi TUI with the in-repo browser extension, driving Chromium on this
@@ -60,7 +80,8 @@ export a key instead. Headed Chromium uses `~/.browser-session-agent/profile`; p
 `--headless` (or `BSA_HEADLESS=1`) to hide the window. Extra args after `--` go to Pi
 (`--print`, `--model`, …).
 
-Do not run `npm run start:node` against the same profile while this is open.
+Do not run `npm run web` or `npm run start:node` against the same profile while this is
+open.
 
 ## Hosted UI (VPS, optional)
 
