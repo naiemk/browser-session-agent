@@ -2,25 +2,48 @@
 
 Local Pi-powered browser operator: a CLI goal drives one visible persistent Chromium profile through bounded Playwright tools, pauses for the user, and resumes from observed browser state.
 
-## Status
+## Local CLI (dev, no VPS)
 
-MVP is being implemented from the work items in `work-items/`. Product boundary: `docs/mvp.md`. Runtime spec: `docs/architecture.md`.
-
-## Use with Pi
+This is the default development path. Chromium and Pi both run on your machine. Nothing pairs to the hosted API.
 
 ```bash
 npm install
 npx playwright install chromium
-pi install -l git:github.com/naiemk/browser-session-agent
-pi
-# /browser-start Apply to the example role on the open tab
+npm run cli
 ```
 
-For local checkout without `pi install`:
+`npm run cli -- --check` verifies Node, Pi, the extension, and Playwright Chromium.
+
+In the TUI:
+
+```
+/login
+/browser-start Apply to the example role on the open tab
+```
+
+`/login` is a one-time Pi provider login (OpenRouter, Anthropic, OpenAI, or ChatGPT). You can also export `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` instead.
+
+Headed Chromium uses `~/.browser-session-agent/profile`. Pass `--headless` (or `BSA_HEADLESS=1`) to hide the window. Extra args after `--` go to Pi (`--print`, `--model`, …).
+
+Do not run `npm run start:node` against the same profile while the CLI is open.
+
+## Hosted UI (VPS, optional)
+
+The VPS serves the web chat UI and API only. It never launches Chromium. Pair a desktop if you want that path:
 
 ```bash
-pi -e ./src/extension.ts
+curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
 ```
+
+Local one-machine UI trial (still not the CLI):
+
+```bash
+cp .env.example .env
+docker compose -f deploy/docker/compose.local.yml up --build
+# http://127.0.0.1:8080/ — register, then Pair this computer
+```
+
+Pre-V1 apply: `docs/pre-v1-runbook.md`. Operator notes: `docs/web-operator.md`.
 
 ## Development
 
@@ -30,20 +53,4 @@ npm run e2e:jsonlint          # same JSONLint prompt against the local fixture
 npm run e2e:jsonlint -- --live  # optional dry run against jsonlint.com
 ```
 
-Headed operator runs use `~/.browser-session-agent/profile`. Tests use a temp directory and headless Chromium. GitHub Actions workflow `.github/workflows/ci.yml` installs Playwright Chromium and runs `npm test`.
-
-## Web chat + desktop node
-
-CI builds Docker images. The desktop node is a Playwright container; the VPS API image has no Chrome.
-
-```bash
-# one-machine trial
-cp .env.example .env
-docker compose -f deploy/docker/compose.local.yml up --build
-# http://127.0.0.1:8080/ — register, then Pair this computer
-
-# desktop helper talking to the hosted API (no repo checkout)
-curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
-```
-
-Without Docker: `npm run start:api` on the VPS and `npm run start:node` on the desk. Pre-V1 apply: `docs/pre-v1-runbook.md`. Operator notes: `docs/web-operator.md`.
+Tests use a temp directory and headless Chromium. GitHub Actions workflow `.github/workflows/ci.yml` installs Playwright Chromium and runs `npm test`.
