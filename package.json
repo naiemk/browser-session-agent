@@ -12,6 +12,8 @@
   "main": "./src/index.ts",
   "bin": {
     "browser-agent": "./bin/browser-agent.mjs",
+    "bsa": "./bin/bsa-cli.mjs",
+    "browser-session-cli": "./bin/bsa-cli.mjs",
     "browser-session-api": "./bin/browser-session-api.mjs",
     "browser-session-node": "./bin/browser-session-node.mjs"
   },
@@ -35,6 +37,8 @@
     "suite:reference": "tsx src/cli/run.ts suite --target reference",
     "suite:live": "tsx src/cli/run.ts suite --target live",
     "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts",
+    "cli": "node bin/bsa-cli.mjs",
+    "dev": "node bin/bsa-cli.mjs",
     "start:api": "tsx src/hosts/web/cli.ts",
     "start:node": "tsx src/hosts/node-agent/cli.ts",
     "helper:pack": "node scripts/pack-helper.mjs",

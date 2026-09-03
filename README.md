@@ -1,49 +1,104 @@
 # browser-session-agent
 
-Local Pi-powered browser operator: a CLI goal drives one visible persistent Chromium profile through bounded Playwright tools, pauses for the user, and resumes from observed browser state.
+A browser agent that works the way a good coding agent works: look before acting, verify
+every action, ask when something is genuinely unknown, and never claim success the page
+does not support.
 
-## Status
+Two command line entry points, for two different jobs.
 
-MVP is being implemented from the work items in `work-items/`. Product boundary: `docs/mvp.md`. Runtime spec: `docs/architecture.md`.
+## `browser-agent` — run a goal, get a verified answer
 
-## Use with Pi
+Non-interactive. You state a goal and the criteria that decide whether it worked; the
+agent drives Chromium and the criteria are evaluated in code against the live page, not
+taken from the agent's report.
 
 ```bash
 npm install
 npx playwright install chromium
-pi install -l git:github.com/naiemk/browser-session-agent
-pi
-# /browser-start Apply to the example role on the open tab
+
+npm run agent -- run "apply for the staff engineer role" \
+  --url https://example.test/jobs \
+  --criterion "text_visible:Application submitted" \
+  --policy ask
 ```
 
-For local checkout without `pi install`:
+It exits non-zero unless the criteria pass, so it composes in a shell. Irreversible
+actions (submit, send, pay, delete) need approval by default, so an unattended run cannot
+commit something by surprise — pass `--policy auto` when you mean it.
 
 ```bash
-pi -e ./src/extension.ts
+npm run suite                 # 26-task regression suite, no tokens spent
+npm run suite:live            # paid competence check on a small subset
+npm run agent -- replay <goalId>   # read back what a run actually did
 ```
+
+Needs a provider key for `run` and `suite:live`: export `OPENROUTER_API_KEY` (or
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`). `npm run suite` needs none.
+
+Design and layering: [docs/runtime.md](docs/runtime.md).
+
+## `bsa` — interactive Pi session (dev, no VPS)
+
+An interactive Pi TUI with the in-repo browser extension, driving Chromium on this
+machine. Useful when you want to steer the agent yourself rather than hand it a goal.
+
+```bash
+npm run cli
+```
+
+`npm run cli -- --check` verifies Node, Pi, the extension, and Playwright Chromium.
+
+In the TUI:
+
+```
+/login
+/browser-start Apply to the example role on the open tab
+```
+
+`/login` is a one-time Pi provider login (OpenRouter, Anthropic, OpenAI, or ChatGPT), or
+export a key instead. Headed Chromium uses `~/.browser-session-agent/profile`; pass
+`--headless` (or `BSA_HEADLESS=1`) to hide the window. Extra args after `--` go to Pi
+(`--print`, `--model`, …).
+
+Do not run `npm run start:node` against the same profile while this is open.
+
+## Hosted UI (VPS, optional)
+
+The VPS serves the web chat UI and API only; it never launches Chromium. Pair a desktop
+for that:
+
+```bash
+curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
+```
+
+Local one-machine UI trial:
+
+```bash
+cp .env.example .env
+docker compose -f deploy/docker/compose.local.yml up --build
+# http://127.0.0.1:8080/ — register, then Pair this computer
+```
+
+Pre-V1 apply: [docs/pre-v1-runbook.md](docs/pre-v1-runbook.md). Operator notes:
+[docs/web-operator.md](docs/web-operator.md).
 
 ## Development
 
 ```bash
-npm test          # unit, integration, and prompt E2E (CI gate)
-npm run e2e:jsonlint          # same JSONLint prompt against the local fixture
-npm run e2e:jsonlint -- --live  # optional dry run against jsonlint.com
+npm test                  # unit, integration, and end-to-end
+npm run typecheck         # core, runtime, suite, and CLI
+npm run suite:reference   # validates the suite tasks themselves
+npm run suite             # the agent loop end to end, mock model, no tokens
 ```
 
-Headed operator runs use `~/.browser-session-agent/profile`. Tests use a temp directory and headless Chromium. GitHub Actions workflow `.github/workflows/ci.yml` installs Playwright Chromium and runs `npm test`.
+Tests never call a model. The agent loop is exercised through a mock that speaks the same
+stream protocol a provider does, so the real browser, real tools, real verification, and
+real commit gate are all covered for nothing — and CI asserts no provider key is present,
+so a green build cannot quietly depend on a paid call.
 
-## Web chat + desktop node
+Paid runs are deliberately separate: the **Live baseline** workflow is triggered by hand
+and reports tokens and cost per task.
 
-CI builds Docker images. The desktop node is a Playwright container; the VPS API image has no Chrome.
-
-```bash
-# one-machine trial
-cp .env.example .env
-docker compose -f deploy/docker/compose.local.yml up --build
-# http://127.0.0.1:8080/ — register, then Pair this computer
-
-# desktop helper talking to the hosted API (no repo checkout)
-curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=<code> bash
-```
-
-Without Docker: `npm run start:api` on the VPS and `npm run start:node` on the desk. Pre-V1 apply: `docs/pre-v1-runbook.md`. Operator notes: `docs/web-operator.md`.
+Design notes: [docs/runtime.md](docs/runtime.md) ·
+[docs/autonomous-agent.md](docs/autonomous-agent.md) ·
+[docs/decisions.md](docs/decisions.md)

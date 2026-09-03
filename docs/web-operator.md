@@ -6,9 +6,9 @@ The product stays one `BrowserSession` / `BrowserWorker` / evidence store. Two h
 
 | Host | Where | Role |
 | --- | --- | --- |
-| Pi TUI (`src/extension.ts`) | Desktop (optional) | Thin CLI adapter. Same tools, commands, profile. |
-| Web API (`src/hosts/web`) | Weak VPS | `createAgentSession`, chat WebSocket, static UI. **No Chromium.** |
-| Node agent (`src/hosts/node-agent`) | Desktop | Playwright Chromium + profile. Outbound WebSocket to the API. |
+| Pi TUI (`npm run cli`) | Laptop / desktop | Local-dev CLI. In-process Chromium. **No VPS, no pair.** |
+| Web API (`src/hosts/web`) | Weak VPS | `createAgentSession`, chat WebSocket, static UI. **No Chromium. UI-only.** |
+| Node agent (`src/hosts/node-agent`) | Desktop | Playwright Chromium + profile. Outbound WebSocket to the hosted API. |
 
 ```
 phone / laptop  →  gateway TLS  →  ui (static) + api (Pi SDK)
@@ -16,7 +16,9 @@ phone / laptop  →  gateway TLS  →  ui (static) + api (Pi SDK)
 desktop node agent  →  BrowserWorker  →  dedicated Playwright Chromium
 ```
 
-CLI on that same desktop can still attach to the same `worker.json` CDP endpoint. Do not run two Chromiums.
+Local checkout: `npm run cli` is the whole product (Pi TUI + Chromium). It does not connect to the VPS.
+
+CLI on a desktop that is already paired to the hosted UI can still attach to the same `worker.json` CDP endpoint. Do not run two Chromiums against one profile.
 
 ## Auth (Pre-V1 / V1)
 
