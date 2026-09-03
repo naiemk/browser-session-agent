@@ -1,4 +1,4 @@
-import { AuthStorage, createAgentSession, defineTool, getAgentDir, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { bindBrowserExtension } from "../../host/bind-extension.ts";
 import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../host/memory-host.ts";
 import { RpcSessionHandle } from "../../host/session-handle.ts";
@@ -168,9 +168,12 @@ export class OperatorRuntime {
       }
       await withPiStartLock(async () => {
         const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
-        const authStorage = AuthStorage.create();
-        applyHostedApiKeys(authStorage);
-        this.modelRegistry = ModelRegistry.create(authStorage);
+        // 0.84 replaced AuthStorage and the ModelRegistry factory with one ModelRuntime
+        // that owns credentials and the model catalog. ModelRegistry survives as a
+        // synchronous read facade over it, which is all this host wants it for.
+        const modelRuntime = await ModelRuntime.create();
+        await applyHostedApiKeys(modelRuntime);
+        this.modelRegistry = new ModelRegistry(modelRuntime);
         const extras = await resolveCostExtensions();
         const cwd = this.options.cwd ?? process.cwd();
         const agentDir = this.options.agentDir ?? getAgentDir();
@@ -187,8 +190,7 @@ export class OperatorRuntime {
         const result = await createAgentSession({
           cwd,
           agentDir,
-          authStorage,
-          modelRegistry: this.modelRegistry,
+          modelRuntime,
           resourceLoader: loader,
           sessionManager: this.options.sessionDir
             ? SessionManager.create(cwd, this.options.sessionDir)
