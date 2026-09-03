@@ -50,6 +50,7 @@ New core and runtime (D34, D36), built and tested against fixtures, not yet wire
 
 - `src/core/` — perception (semantic snapshot with stable refs), one action choke point that always evaluates a postcondition, read-only probe, code-only predicate engine, reversibility judgement, commit gate, append-only ledger, entity state with idempotency keys, task graph, evaluator. Imports only node builtins and Playwright, enforced by test.
 - `src/runtime/` — one bounded task on `pi-agent-core`'s loop with an injectable model port, plus the task card, tools, context pruning, and turn budget.
+- Situational awareness (D41): an isolated session-free tab, a comparison that reports differences and draws no conclusion, free-form facts carrying the evidence that established them, and a refusal recorded as a real outcome (D42).
 - `src/suite/` — 26 tasks with external criteria and three targets: `reference` (no model), `mock` (real loop, no tokens), `live` (paid).
 - `src/cli/` — the front door: `run`, `suite`, `replay`. No socket, no pairing (D40).
 - Tests never call a provider (D37). CI runs the mock target on every push and asserts no key is present; the live baseline is a manual workflow (D38).
@@ -73,6 +74,8 @@ Deliberately not decided yet: session strategy (D27), planner and graph, memory 
 - **Do page archetypes repeat enough for cross-session memory to pay?** (D28) Instrument archetype revisits, turns spent re-perceiving a known surface, and prediction hit rate. If repeats are rare, stop at the within-run fixes; that is a legitimate outcome, not a failure.
 - **What is the right scout budget?** (D24) A knob defaulted low; measure whether scouting reduced steps and failed commits on later tasks of the same archetype.
 - **How often was the approval gate unnecessary?** (D23) Log cases where a committing action's preconditions already passed, to judge whether auto-commit is ever safe per goal.
+- **Does the agent use the session-free view unprompted?** (D41) The mechanism is built and tested; whether a model reaches for it when the situation is genuinely ambiguous is a live-run question. Count how often it is called, and whether calls precede the tasks where standing actually mattered. If it goes unused, the fix is the card, not more tooling.
+- **How often is a decline correct?** (D42) Record every declined run with what the agent had observed at the time. If most declines happen when the agent could not establish its standing, that argues for making the situation available earlier; if most survive the retry with facts attached, they were judgement, and the right response is to stop asking.
 
 ## Results log
 
@@ -97,6 +100,8 @@ Written down so they are not relearned.
 - **Suite tasks can be passed by doing nothing.** Three "abandon" tasks had criteria satisfied on page load, so an agent that never acted scored them. Abandon tasks now need a criterion that proves engagement — an option list that only renders once opened, a field that must be filled before the refusal counts — and the one that could not be made observable was deleted rather than kept as noise.
 - **Running many model sessions back to back trips rate limits.** The suite paces itself between tasks for that reason. Measuring the provider's throttle instead of the agent is an easy and invisible mistake.
 - **A test that costs money gets run less, which is the opposite of what tests are for.** The first build could only exercise the agent loop by paying for it, so the loop was effectively untested whenever credits were short. Mocking at the model port fixed that: the same code path now runs free and deterministically. The lesson generalises — put the seam at the boundary you want to fake, and the expensive dependency stops dictating how often you can check your work.
+- **We started writing the taxonomy before we noticed we were writing one.** The first sketch of situational awareness had categories for whose data a page held and what a session implied, per site. Every category was a guess that would be wrong somewhere, and would need maintaining forever. One primitive — load it with no session and compare — answers the same questions on any site and needs no upkeep. When a design starts enumerating cases, check whether a single mechanism produces the evidence instead. Hence D41.
+- **Refusal looked like nothing happening.** A model that answers in prose and calls no tools produces a run with no report, which the loop had no way to distinguish from a task that stalled. Silence is a bad summary of "I decided not to". Hence D42.
 - **Aborting a loop you do not own may not stop it.** The turn cap called `abort()` from a `turn_end` listener and the run continued to 51 turns, because the signal only reaches a provider that chooses to honour it. Enforcing the budget at the port instead made it deterministic. Anything that "stops" a third-party loop deserves a test that proves it stopped.
 
 ## External evidence we are relying on
