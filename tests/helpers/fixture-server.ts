@@ -22,6 +22,45 @@ function hasSession(req: IncomingMessage): boolean {
   return (req.headers.cookie ?? "").includes("bsa_session=1");
 }
 
+const ROUTES: Record<string, string> = {
+  "/": "login.html",
+  "/login": "login.html",
+  "/jobs": "jobs.html",
+  "/apply": "apply.html",
+  "/dialog": "dialog.html",
+  "/error": "error.html",
+  "/dynamic": "dynamic.html",
+  "/jsonlint": "jsonlint.html",
+  "/dead-click": "dead-click.html",
+  "/combobox": "combobox.html",
+  "/plan-labeled": "plan-labeled.html",
+  "/fill": "fill.html",
+  "/upload": "upload.html",
+  "/list": "list.html",
+  "/ambiguous": "ambiguous.html",
+  "/noisy": "noisy.html",
+  "/once": "once.html",
+  "/draft": "draft.html",
+  "/tmpl-a": "tmpl-a.html",
+  "/tmpl-b": "tmpl-b.html",
+  "/secrets": "secrets.html",
+};
+
+/** Shared handler for the two hosts that render the same application template. */
+async function templatePost(
+  req: IncomingMessage,
+  res: ServerResponse,
+  file: string,
+): Promise<void> {
+  const body = await readBody(req);
+  const missing = ["firstName", "lastName", "email", "auth"].filter((field) => !body.get(field));
+  if (missing.length > 0) {
+    send(res, 200, await page(file, { error: "All fields are required" }));
+    return;
+  }
+  send(res, 200, await page("success.html", { name: `${body.get("firstName")} ${body.get("lastName")}` }));
+}
+
 export class FixtureServer {
   private server: Server | null = null;
   port = 0;
@@ -64,36 +103,19 @@ export class FixtureServer {
           send(res, 200, await page("success.html", { name: body.get("fullName") ?? "" }));
           return;
         }
+        if (req.method === "POST" && url.pathname === "/tmpl-a") {
+          await templatePost(req, res, "tmpl-a.html");
+          return;
+        }
+        if (req.method === "POST" && url.pathname === "/tmpl-b") {
+          await templatePost(req, res, "tmpl-b.html");
+          return;
+        }
         if (url.pathname === "/jobs" && !hasSession(req)) {
           send(res, 302, "", { location: "/login" });
           return;
         }
-        const file =
-          url.pathname === "/"
-            ? "login.html"
-            : url.pathname === "/login"
-              ? "login.html"
-              : url.pathname === "/jobs"
-                ? "jobs.html"
-                : url.pathname === "/apply"
-                  ? "apply.html"
-                  : url.pathname === "/dialog"
-                    ? "dialog.html"
-                    : url.pathname === "/error"
-                      ? "error.html"
-                      : url.pathname === "/dynamic"
-                        ? "dynamic.html"
-                      : url.pathname === "/jsonlint"
-                        ? "jsonlint.html"
-                        : url.pathname === "/dead-click"
-                          ? "dead-click.html"
-                          : url.pathname === "/combobox"
-                            ? "combobox.html"
-                            : url.pathname === "/plan-labeled"
-                              ? "plan-labeled.html"
-                              : url.pathname === "/fill"
-                                ? "fill.html"
-                          : "";
+        const file = ROUTES[url.pathname] ?? "";
         if (!file) {
           send(res, 404, "<h1>Not found</h1>");
           return;

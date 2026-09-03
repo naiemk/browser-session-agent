@@ -1,0 +1,78 @@
+name: Live baseline
+
+# Costs money, so it never runs automatically. Trigger it by hand when a change might
+# alter agent competence rather than plumbing, and read the numbers against the last
+# recorded baseline in docs/autonomous-agent.md.
+#
+# The default selection is a small subset chosen to cover distinct failure modes; the
+# full set is available but is roughly three times the spend for a similar signal.
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Task selection
+        type: choice
+        default: smoke
+        options: [smoke, all]
+      model:
+        description: "Model override, e.g. openrouter/google/gemini-2.5-flash"
+        type: string
+        required: false
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the live suite
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          npm run agent -- suite \
+            --target live \
+            ${{ inputs.scope == 'all' && '--all' || '' }} \
+            ${{ inputs.model && format('--model {0}', inputs.model) || '' }} \
+            --out results/live-baseline.json
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-baseline
+          path: results/live-baseline.json
+          if-no-files-found: warn
+
+      - name: Summarise
+        if: always()
+        run: |
+          if [ -f results/live-baseline.json ]; then
+            node -e "
+              const r = require('./results/live-baseline.json');
+              const pct = (r.successRate * 100).toFixed(1);
+              const lines = [
+                '## Live baseline',
+                '',
+                '- target: ' + r.target,
+                '- passed: ' + r.passed + '/' + r.scored + ' (' + pct + '%)',
+                '- steps per task: ' + r.stepsPerTask,
+                '- cost per task: ' + (r.costPerTask ? '\$' + r.costPerTask.toFixed(4) : 'n/a'),
+                '- lost to infrastructure: ' + r.errored,
+                '- valid: ' + r.valid,
+              ];
+              if (!r.valid) lines.push('', '**Invalid run — do not quote these numbers.**');
+              require('node:fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+            "
+          fi

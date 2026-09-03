@@ -1,0 +1,50 @@
+{
+  "target": "agent",
+  "startedAt": "2026-09-02T15:35:57.308Z",
+  "finishedAt": "2026-09-02T15:36:03.888Z",
+  "taskCount": 4,
+  "passed": 0,
+  "errored": 4,
+  "scored": 0,
+  "successRate": 0,
+  "stepsPerTask": 0,
+  "valid": false,
+  "runs": [
+    {
+      "id": "apply-submit",
+      "outcome": "error",
+      "steps": 0,
+      "durationMs": 265,
+      "detail": "infrastructure: 402 This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 3720. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
+      "checks": [],
+      "costUsd": 0
+    },
+    {
+      "id": "noisy-page-save",
+      "outcome": "error",
+      "steps": 0,
+      "durationMs": 87,
+      "detail": "infrastructure: 402 This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 3720. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
+      "checks": [],
+      "costUsd": 0
+    },
+    {
+      "id": "draft-publish",
+      "outcome": "error",
+      "steps": 0,
+      "durationMs": 73,
+      "detail": "infrastructure: 402 This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 3720. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
+      "checks": [],
+      "costUsd": 0
+    },
+    {
+      "id": "template-host-a",
+      "outcome": "error",
+      "steps": 0,
+      "durationMs": 67,
+      "detail": "infrastructure: 402 This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 3720. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
+      "checks": [],
+      "costUsd": 0
+    }
+  ]
+}

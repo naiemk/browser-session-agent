@@ -1,0 +1,5 @@
+Ada Lovelace
+Staff Engineer
+
+Skills: analytical engines, mathematics, note-taking at scale.
+This file exists so upload tasks in the browser task suite have something real to attach.

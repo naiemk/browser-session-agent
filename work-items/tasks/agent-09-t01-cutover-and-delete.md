@@ -1,0 +1,61 @@
+---
+id: AGENT-09-T01
+title: Cutover by measurement, then delete the old core
+story: AGENT-09
+epic: agent
+status: blocked
+depends: AGENT-07-T01
+---
+
+# AGENT-09-T01 — Cutover by measurement, then delete the old core
+
+## Blocked, deliberately
+
+D35 makes the flip conditional on beating a valid agent baseline, and that baseline does
+not exist yet. Two conditions are open:
+
+1. **No valid agent baseline.** The suite runs the real agent end to end, but every
+   session in the full run failed with HTTP 402: the model credits are exhausted. The
+   runner marks such a run invalid and refuses to quote it (`results/agent-attempt-invalid.json`).
+   Individual tasks pass when run with credit available, so the wiring is sound; the
+   number is simply not measurable here. Reproduce with credits:
+   `npm run suite:live` (see docs/runtime.md).
+2. **No browser-port adapter over the kept CDP plumbing.** The new core drives Playwright
+   through `LocalBrowser`, which launches its own browser. The product path needs a second
+   `BrowserPort` implementation wrapping `src/worker/browser-worker.ts` so the persistent
+   profile, CDP reconnect, and screencast are reused rather than rewritten. That worker
+   exposes no `Page` accessor today, so it needs one small addition.
+
+Deleting the old core before either is settled would break the shipping product with no
+evidence the replacement is better, which is the exact failure D35 exists to prevent.
+The old default stands.
+
+## Spec
+
+- [docs/decisions.md](../../docs/decisions.md) — D35 (cutover gate and deletion trigger), D19 (the baseline is the old agent's score), D34 (what stays)
+- [docs/autonomous-agent.md](../../docs/autonomous-agent.md) — results log
+
+## Possible
+
+- the suite CLI (`src/cli`) — target switch from AGENT-01-T01
+- `src/hosts/web/runtime.ts` — where the shell selects an agent core
+- The rebuilt list in D34 — everything to be removed
+
+## Do
+
+1. Run the full suite against both cores from the same commit and record both rows in the results log.
+2. Flip the default only if the new core matches or beats the baseline on success rate at equal or lower cost per task.
+3. In the same change: delete every path on D34's rebuilt list, remove the target switch, and delete tests that only covered the old core.
+4. Keep the kept list intact: transport, driver, product shell, `bin/`, `deploy/`.
+5. Update `docs/architecture.md` so it describes the new core rather than the old one, and add a Lessons line about what the rewrite cost and bought.
+6. If the new core loses on the suite, do not flip. Record the gap, keep the old default, and write down what would close it.
+
+## Tests
+
+- The existing suite, run twice, is the evidence. Both rows must exist in the results log before the flip.
+- `npm test` passes with the old core deleted and no skipped tests left behind.
+- A grep-style assertion that no source file references a deleted path.
+
+## Done when
+
+The new core is the default, every path on D34's rebuilt list is gone, `npm test` passes with no skips, the results log holds both comparison rows plus the decision, and `docs/architecture.md` describes what actually ships.

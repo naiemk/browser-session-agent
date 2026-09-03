@@ -1,0 +1,130 @@
+/**
+ * What the model actually sees.
+ *
+ * Observations are the dominant token cost of a browser agent: a snapshot goes to the
+ * model on every look, and a verbose one multiplies across every turn of every task.
+ * The core keeps the full truth; this trims it to the fields a decision needs, drops
+ * empty values rather than sending nulls, and caps the control list.
+ */
+
+import type { ActionResult, Observation, Verification } from "../core/types.ts";
+
+export const MAX_WIRE_CONTROLS = 40;
+export const MAX_WIRE_TEXT = 120;
+
+export interface WireControl {
+  ref: string;
+  role: string;
+  name: string;
+  value?: string;
+  /** Only present when true, so the common case costs nothing. */
+  required?: true;
+  disabled?: true;
+  checked?: true;
+  submits?: true;
+}
+
+export interface WireObservation {
+  url: string;
+  title: string;
+  controls: WireControl[];
+  dialogs?: string[];
+  errors?: string[];
+  consoleErrors?: string[];
+  failedRequests?: string[];
+  changes?: string[];
+  note?: string;
+}
+
+function clip(value: string, max = MAX_WIRE_TEXT): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function omitEmpty<T>(values: T[] | undefined): T[] | undefined {
+  return values && values.length > 0 ? values : undefined;
+}
+
+export function toWireObservation(observation: Observation): WireObservation {
+  const controls = observation.controls.slice(0, MAX_WIRE_CONTROLS).map((control) => {
+    const wire: WireControl = {
+      ref: control.ref,
+      role: control.role,
+      name: clip(control.name),
+    };
+    if (control.value) wire.value = clip(control.value);
+    if (control.required) wire.required = true;
+    if (control.disabled) wire.disabled = true;
+    if (control.checked) wire.checked = true;
+    if (control.submits) wire.submits = true;
+    return wire;
+  });
+
+  // Assigned conditionally rather than as undefined, so `"errors" in observation` means
+  // what it looks like it means.
+  const wire: WireObservation = { url: observation.url, title: clip(observation.title), controls };
+  const dialogs = omitEmpty(observation.dialogs.map((entry) => clip(entry)));
+  const errors = omitEmpty(observation.errors.map((entry) => clip(entry)));
+  const consoleErrors = omitEmpty(observation.consoleErrors.slice(-3).map((entry) => clip(entry)));
+  const failedRequests = omitEmpty(
+    observation.failedRequests.slice(-3).map((entry) => clip(entry)),
+  );
+  const changes = omitEmpty(observation.changes.slice(0, 6).map((entry) => clip(entry)));
+  const dropped = observation.controls.length - controls.length;
+
+  if (dialogs) wire.dialogs = dialogs;
+  if (errors) wire.errors = errors;
+  if (consoleErrors) wire.consoleErrors = consoleErrors;
+  if (failedRequests) wire.failedRequests = failedRequests;
+  if (changes) wire.changes = changes;
+  if (dropped > 0) {
+    wire.note = `${dropped} more controls not shown; probe with a selector to narrow down`;
+  }
+  return wire;
+}
+
+export interface WireActionResult {
+  ok: boolean;
+  reversibility: string;
+  /** Only the failing checks: a passing action needs no explanation. */
+  why?: string[];
+  recovery?: string;
+  consoleErrors?: string[];
+  failedRequests?: string[];
+  observation: WireObservation;
+}
+
+export function toWireActionResult(result: ActionResult): WireActionResult {
+  const failed = result.verification.checks.filter((check) => !check.passed);
+  const wire: WireActionResult = {
+    ok: result.ok,
+    reversibility: result.reversibility,
+    observation: toWireObservation(result.observation),
+  };
+
+  const why = omitEmpty(failed.map((check) => `${check.predicate}: ${check.detail}`));
+  const consoleErrors = omitEmpty(result.failure?.consoleErrors?.slice(-3));
+  const failedRequests = omitEmpty(result.failure?.failedRequests?.slice(-3));
+
+  if (why) wire.why = why;
+  if (result.failure?.recovery) wire.recovery = result.failure.recovery;
+  if (consoleErrors) wire.consoleErrors = consoleErrors;
+  if (failedRequests) wire.failedRequests = failedRequests;
+  return wire;
+}
+
+export function toWireVerification(verification: Verification): {
+  passed: boolean;
+  checks: string[];
+} {
+  return {
+    passed: verification.status === "passed",
+    checks: verification.checks.map(
+      (check) => `${check.passed ? "pass" : "FAIL"} ${check.predicate}: ${check.detail}`,
+    ),
+  };
+}
+
+/** Compact JSON: no indentation, because indentation is billed. */
+export function wireText(value: unknown): string {
+  return JSON.stringify(value);
+}

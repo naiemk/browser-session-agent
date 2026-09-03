@@ -80,3 +80,142 @@ The model understands a page once and writes a bounded path program (ordered att
 ## D13. Web UI is a view over a server-side Agent
 
 `@mariozechner/pi-web-ui`’s in-tab `Agent` cannot host Playwright. The VPS runs `createAgentSession()` and streams `agentEvent`s. The browser renders chat (messages, tool cards, model/thinking selectors) plus a live-view panel. `ctx.ui.input/confirm/select` become in-chat cards. Do not replace Pi with Vercel AI SDK `useChat`.
+
+---
+
+# Autonomous agent decisions (D19+)
+
+Context and open questions live in `docs/autonomous-agent.md`. Status is `accepted` unless marked. A `hypothesis` is not yet a decision: it names how it will be settled. Superseded entries stay, marked, so a later session does not rediscover the dead end.
+
+## D19. Measure before mechanism
+
+Pi is a turn engine; coding-agent competence comes from environment properties, not from harness cleverness. We cannot tell whether a mechanism helped without a scoreboard, so a browser task suite with deterministic per-task success checks is built first, and a baseline is recorded before any mechanism lands. Every run reports success rate, steps per task, and cost per task. Steps and cost are first-class because several candidate mechanisms add turns.
+
+## D20. Task success criteria come from outside the executor
+
+Extends D17 from per-action postconditions to task-level assertions. Coding validation works because tests exist independently of the agent and cannot be weakened by it. Task criteria therefore arrive with the task and are immutable; the agent may add its own step-level checks but never soften or replace the given ones. An agent that authors the criteria that judge it will author trivial ones.
+
+## D21. Read-only probing is open; mutation scripting stays excluded
+
+Amends D2. The useful half of a programmable browser is inspection, and inspection is idempotent, so it is safe to allow freely: a read-only page query returning JSON is the browser's `grep` and is how the agent tests a hypothesis without acting. Mutation through model-authored scripting remains excluded (D2, D18); actions stay on bounded tools and semantic refs (D5). Probe output must not become a selector channel for actions.
+
+## D22. Probe output is sensitive by default
+
+Read-only is not harmless. A probe runs inside the user's real authenticated browser, so it may not touch cookies, `localStorage`, `sessionStorage`, or auth headers; output is hard-capped and truncated; and results are redacted before entering model context, because context becomes transcripts, traces, and logs. The risk being managed is exfiltration, not mutation.
+
+## D23. Reversibility is judged per action, and unknown means committing
+
+"Show more" and "Submit" are the same verb, so reversibility cannot be a static property of a tool. It is judged per action from the affordance (accessible name, form context, destination) and is therefore fallible. Unknown defaults to `committing`. Over-asking is recoverable; an accidental submit is not. Committing actions require the task's given criteria to pass, evidence before and after, and an approval policy of auto, ask, or never.
+
+## D24. Bounded read-only scouting is allowed; site mapping ahead of need is not
+
+Supersedes the earlier blanket "never crawl" rule, which conflated three activities. Rejected: visiting pages because they exist (worst decay, lowest hit rate, highest anti-bot exposure). Allowed and budgeted: read-only scouting of a flow before an irreversible commit. Not exploration at all: enumeration such as pagination, which is the task. Justified only when read-only, bounded by a budget owned by the goal rather than the task, motivated by expected reuse or imminent risk, and revalidated on use. Anti-bot and rate limits are a hard external constraint: this runs on real logged-in accounts where the downside is a flagged account, not a slow run.
+
+## D25. Remembered or predicted knowledge may propose an action, never authorize one
+
+The dangerous cache entry is not the broken one but the plausible one: a selector that still resolves after a redesign while pointing at a different control converts explicit breakage into silent degradation. Any remembered affordance, expectation, or playbook may only seed a fresh perception pass that then passes a check. It may never drive a committing action. Corollary: memory decays by prediction error rather than by clock, and expected outcomes are stored as distributions with frequencies so one A/B variant cannot rewrite a good entry.
+
+## D26. Flow knowledge starts as a planner-emitted outline, not a schema store
+
+Status: accepted, revisit once corrections accumulate. Frontier models already hold the scripts for common flows; asked how to post a story they produce compose, choose media, arrange, publish, choose audience, cancel otherwise. So the planner emits a short stage outline into the task card, which costs nothing and needs no signatures, retrieval, store, or promotion pipeline. Its immediate value is gathering requirements early — asking for the image before opening the app instead of stalling mid-flow. A persistent store is justified only once we hold corrections the model does not already know.
+
+## D27. Session strategy is an open experiment
+
+Status: hypothesis. Fresh bounded sessions per task give clean context but discard what was learned about a site, while Pi's own answer to long context is compaction rather than amnesia, and accumulated understanding is part of why coding agents feel competent. Settled by running the suite both ways: one long compacted session per goal versus a fresh `SessionManager.inMemory()` session per task with a task card and a terminating result tool.
+
+## D28. Planner, task graph, and memory tiers are gated on single-task reliability
+
+Status: hypothesis. A graph over an unreliable executor multiplies failures instead of composing successes, and cross-session memory only pays when page archetypes actually repeat. Both wait for suite evidence: task reliability for the graph, and measured archetype repeat rate plus prediction hit rate for memory. Memory, when built, goes session tier first (never staler than the goal), then per-account (personalization makes shared entries wrong), then a small curated repo-file seed at lowest confidence. Knowledge stays opt-in per D8.
+
+## D29. Prefer mechanisms that reduce turns per task
+
+Probing, checks, and an approval gate can each add turns, and a browser step already costs a page load plus a model call. A change that raises success rate while tripling cost may be a regression in practice. Existing turn-reducers (batched fill, page plans per D18) are the model to follow, and cost per task is reported on every suite run per D19.
+
+## D31. Campaigns are the eventual target; the agent is built to yield
+
+Status: accepted as direction, out of scope to build. Real-world processes run on calendar time over many entities, mostly blocked on other people, where deliberate slowness is correct and volume is a liability (`docs/v2-campaigns.md`). A campaign layer will manage agent runs. We do not build it now, but three cheap choices keep it reachable and are hard to retrofit: `parked` is a normal task outcome carrying a reason, a wake condition, and a perishability flag; durable state is entity-oriented with idempotency keys rather than one run blob; and a task must resume cold, with no session context. Corollary for D27: session memory is a within-day optimization and never the source of truth.
+
+## D32. Human help is queued and batched, never interruptive
+
+A block parks one entity; the scheduler continues with work that is not blocked. Requests accumulate and are presented in one sitting, batched by interaction kind, because the cost being optimized is the human's context switching. Three kinds have different physics: durable decisions (approve a message, pick the matching option) are parkable indefinitely and answerable without the browser; perishable session-bound blocks (CAPTCHA, OTP, an open modal) cannot be held, so we park the intent and re-drive to the blocking point when the human is present rather than freezing a live modal; identity blocks (login, 2FA) need the live browser and existing takeover. This is why `awaiting_takeover` as a whole-run status is insufficient.
+
+## D33. Quality is the objective; throughput is not
+
+We are building a companion, not an automation bot. The objection to automated outreach is un-personalized volume wasting the recipient's time, not the fact that a machine typed it. So the campaign metric is response and acceptance rate, never messages sent — an objective under which spam is self-defeating — with a floor that pauses and replans instead of pushing volume. A committing outreach action additionally requires evidence of personalization: something specific, observed, and verifiable about the recipient. Content trust graduates like knowledge does (D8): individual approval first, batched once the human's edits stop changing the drafts. Separately and honestly, quality does not address platform policy, which measures automation rather than merit; approval at the commit point (D23) and human-like pacing (D24) are the mitigations for that distinct risk.
+
+## D34. The agent core is rebuilt from scratch; transport and product shell are kept
+
+The current agent core carries assumptions we have decided against: verification bolted onto actions, run-scoped rather than entity-scoped state, a closed plan DSL as the only escape hatch, and no oracle the executor cannot fake. It is replaced rather than refactored.
+
+**Kept** — Playwright connection and comms: `src/worker/browser-worker.ts` (persistent context, CDP connect and reconnect, screencast), `src/store/worker-info.ts`, `src/hosts/node-agent/client.ts`, `src/hosts/web/hub.ts` and `hub-registry.ts`, the envelope and framing in `src/hosts/shared/protocol.ts`, plus `bin/` and `deploy/`.
+
+**Kept** — product shell: accounts, sign-in, pairing, installer, the HTTP and WS server in `src/hosts/web/`, and the chat UI. Rebuilding auth and packaging would be waste. The chat UI is expected to change once the new interaction model (parked items, batched human queue, approvals) is settled, but not as part of the core rebuild.
+
+**Rebuilt**: `src/session.ts`, `src/domain/`, `src/plan/`, `src/tools/`, `src/host/`, `src/hosts/web/runtime.ts`, `src/store/run-store.ts`, `src/store/knowledge-store.ts`, `src/operator/`.
+
+Precision on "keep comms": the transport is reusable, the vocabulary is not. Today's RPC verbs (`startRun`, `act`, `inspect`) are shaped around the old primitives. The new core defines its own verb set over the same socket, auth, framing, screencast, and takeover-input path.
+
+Fixture HTML in `tests/fixtures/site/` is kept, and the behavioural expectations it encodes are **ported as new tests**: noop-click rejection, type and select read-back, combobox scroll variants, Monaco editor value extraction, password redaction. No implementation is reused. The point is to avoid rediscovering the same DOM bugs, not to preserve the code that found them.
+
+## D35. Cutover is decided by the suite, and the old core is deleted with it
+
+The old agent is the control group. The baseline row required by D19 is its score, so the rewrite is a measured swap rather than a leap: the new core becomes the default only when it matches or beats that baseline on success rate at equal or lower cost per task across the full suite. The suite runner therefore takes a target switch and can score either system.
+
+The old core is deleted in the same change that flips the default, along with its now-dead tests. Two agent cores may coexist only while that comparison is running, and a third is never allowed. Without this trigger the repo keeps both forever.
+
+## D36. The runtime builds on `pi-agent-core`, so the model can be replaced
+
+`createAgentSession` hardcodes its stream function: it always calls `streamSimple` with a
+real key, so there is no seam and every test of the loop would cost money and vary. It also
+brings a resource loader, on-disk sessions, settings, and auth that a bounded browser task
+does not need. `pi-agent-core`'s `Agent` takes `streamFn` as a first-class option, so the
+runtime uses it directly and keeps Pi's real loop — tool execution, errors-as-text,
+truncation, queueing — untouched. See `docs/runtime.md`.
+
+## D37. Tests use a mock model, never a live one
+
+Default CI must be free and deterministic, and a test that costs money gets run less, which
+is the opposite of what tests are for. The mock implements the same event protocol a
+provider does (`start`, content blocks, `done`), honours abort signals, and reports usage,
+so everything except the model's judgement is exercised for nothing: real browser, real
+loop, real tools, real verification, real commit gate, real criteria.
+
+Two modes. `plan` lists intended tool calls with targets named rather than ref'd, resolving
+refs at call time from the newest observation, which is what a real agent must do. `script`
+plays raw turns so awkward behaviour can be reproduced deliberately — a model that claims
+success without acting, one that repeats a failing click, one that fails with a 402.
+
+The suite's `mock` target reuses each task's reference steps, so no solution knowledge is
+duplicated. CI asserts that no provider key is present, because a green build that quietly
+depends on a paid call is not testing the guarantee.
+
+## D38. Live baseline runs by hand, on a subset
+
+Competence measurement costs money and is the only thing a live run buys; plumbing
+regressions are already caught by the mock target. So the live suite is a
+`workflow_dispatch` job, defaulting to a small subset chosen to cover distinct failure
+modes rather than to be thorough, with `--all` available. Every run reports tokens and cost
+per task so a change that improves success while tripling spend is visible.
+
+## D39. The turn budget is enforced at the model port
+
+Pi's engine has no step limit, and aborting from a `turn_end` listener only signals the
+provider — a stream that ignores the signal keeps the loop running, which is what happened
+the first time this was built. Capping at the port is simpler and engine-friendly: once the
+budget is spent the port returns a turn with no tool calls, so the loop ends because the
+model stopped asking for tools. It also costs nothing, since the capped turn never reaches
+a provider.
+
+## D40. The CLI is the primary surface
+
+The hosted chat transport was the least reliable part of the old product: sessions dropped
+and a disconnect was indistinguishable from a stalled agent. The CLI removes that class of
+failure entirely — no socket, no pairing, no background service — and is the easiest thing
+to debug when a run goes wrong. `run` exits non-zero unless the criteria pass, so it
+composes in a shell, and irreversible actions default to needing approval so an unattended
+run cannot submit something by surprise. Hosted use can adopt the same runtime later; it is
+a transport, not a different agent.
+
+## D30. Rehearsal is deferred, not rejected
+
+Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

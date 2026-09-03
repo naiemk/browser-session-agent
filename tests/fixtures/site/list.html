@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Catalogue</title>
+  </head>
+  <body>
+    <h1>Catalogue</h1>
+    <p>Page <span id="page">1</span> of 5</p>
+    <ul id="items"></ul>
+    <button type="button" id="prev">Previous page</button>
+    <button type="button" id="next">Next page</button>
+    <p>Opened: <span id="opened"></span></p>
+    <script>
+      const PER_PAGE = 10;
+      const TOTAL = 5;
+      let page = 1;
+
+      function render() {
+        document.getElementById("page").textContent = String(page);
+        const items = document.getElementById("items");
+        items.innerHTML = "";
+        for (let i = 0; i < PER_PAGE; i++) {
+          const n = (page - 1) * PER_PAGE + i + 1;
+          const li = document.createElement("li");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = "Item " + n;
+          button.addEventListener("click", () => {
+            document.getElementById("opened").textContent = "Item " + n;
+          });
+          li.appendChild(button);
+          items.appendChild(li);
+        }
+        document.getElementById("prev").disabled = page === 1;
+        document.getElementById("next").disabled = page === TOTAL;
+      }
+
+      document.getElementById("next").addEventListener("click", () => {
+        if (page < TOTAL) page += 1;
+        render();
+      });
+      document.getElementById("prev").addEventListener("click", () => {
+        if (page > 1) page -= 1;
+        render();
+      });
+      render();
+    </script>
+  </body>
+</html>

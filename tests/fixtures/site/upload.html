@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Upload</title>
+  </head>
+  <body>
+    <h1>Attach your CV</h1>
+    <form id="form">
+      <label>Resume <input id="file" name="resume" type="file" /></label>
+      <label>Note <input name="note" /></label>
+      <button type="submit">Attach</button>
+    </form>
+    <p>Attached: <span id="attached"></span></p>
+    <script>
+      document.getElementById("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = document.getElementById("file");
+        const name = input.files && input.files[0] ? input.files[0].name : "";
+        document.getElementById("attached").textContent = name || "nothing selected";
+      });
+    </script>
+  </body>
+</html>

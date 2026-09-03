@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Noisy</title>
+  </head>
+  <body>
+    <h1>Noisy page</h1>
+    <p>This page logs an error and issues a request that fails.</p>
+    <form id="form">
+      <label>Nickname <input name="nickname" /></label>
+      <button type="submit">Save</button>
+    </form>
+    <p>Saved: <span id="saved"></span></p>
+    <script>
+      console.error("widget bootstrap failed");
+      fetch("/missing-endpoint").catch(() => {});
+      document.getElementById("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = event.target.elements.nickname.value;
+        document.getElementById("saved").textContent = value || "";
+      });
+    </script>
+  </body>
+</html>

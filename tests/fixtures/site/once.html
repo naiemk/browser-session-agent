@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>One-shot</title>
+  </head>
+  <body>
+    <h1>Send invitation</h1>
+    <p>This send works exactly once. A second send is an error.</p>
+    <form id="form">
+      <label>Recipient <input name="recipient" required /></label>
+      <label>Message <textarea name="message" required></textarea></label>
+      <button type="submit">Send invitation</button>
+    </form>
+    <p role="alert" id="alert"></p>
+    <p>Sends: <span id="count">0</span></p>
+    <p id="confirm"></p>
+    <script>
+      let sends = 0;
+      document.getElementById("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const form = event.target;
+        const recipient = form.elements.recipient.value;
+        const message = form.elements.message.value;
+        if (!recipient || !message) {
+          document.getElementById("alert").textContent = "Recipient and message are required";
+          return;
+        }
+        sends += 1;
+        document.getElementById("count").textContent = String(sends);
+        if (sends > 1) {
+          document.getElementById("alert").textContent = "Duplicate send detected";
+          return;
+        }
+        document.getElementById("alert").textContent = "";
+        document.getElementById("confirm").textContent = "Invitation sent to " + recipient;
+        form.style.display = "none";
+      });
+    </script>
+  </body>
+</html>
