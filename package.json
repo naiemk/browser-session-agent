@@ -32,6 +32,7 @@
     "test": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/unit/*.test.ts tests/integration/*.test.ts tests/e2e/*.test.ts",
     "test:e2e": "tsx --test --test-concurrency=1 --test-timeout=120000 tests/e2e/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "precommit": "npm run typecheck && npm test && npm run suite:reference && npm run suite",
     "agent": "tsx src/cli/run.ts",
     "suite": "tsx src/cli/run.ts suite --target mock",
     "suite:reference": "tsx src/cli/run.ts suite --target reference",
@@ -50,6 +51,8 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.4",
+    "@earendil-works/pi-ai": "^0.84.4",
     "@earendil-works/pi-coding-agent": "^0.84.4",
     "@mariozechner/pi-web-ui": "^0.73.1",
     "pi-meter": "^0.1.1",
