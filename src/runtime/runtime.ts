@@ -52,6 +52,16 @@ export interface RunOutcome {
   modelErrors: string[];
   /** Set when the run itself threw. */
   error?: string;
+  /**
+   * The model answered in prose and took no action at all. Usually a refusal.
+   *
+   * Without this a decline is indistinguishable from conversation, and the human ends up
+   * arguing with a chatbot across many turns while the loop believes nothing happened.
+   * Naming it lets the caller respond once, deliberately.
+   */
+  declined?: string;
+  /** Tool calls executed across the whole run. Zero is what makes a decline detectable. */
+  toolCalls: number;
 }
 
 export const DEFAULT_MAX_TURNS = 16;
@@ -76,7 +86,9 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
 
   const meter = new UsageMeter();
   const modelErrors: string[] = [];
+  const assistantText: string[] = [];
   let turns = 0;
+  let toolCalls = 0;
 
   // Pi's engine has no step limit, so the budget is enforced at the model port.
   const { stream, state: cap } = withTurnCap(options.stream, maxTurns);
@@ -96,10 +108,20 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
   const unsubscribe = agent.subscribe((event) => {
     const value = event as {
       type?: string;
-      message?: { stopReason?: string; errorMessage?: string; usage?: unknown };
+      message?: {
+        role?: string;
+        stopReason?: string;
+        errorMessage?: string;
+        usage?: unknown;
+        content?: Array<{ type?: string; text?: string }>;
+      };
     };
     if (value.type === "turn_end") {
       turns += 1;
+      return;
+    }
+    if (value.type === "tool_execution_start") {
+      toolCalls += 1;
       return;
     }
     if (value.type === "message_end" && value.message) {
@@ -107,6 +129,11 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
       if (value.message.errorMessage) modelErrors.push(value.message.errorMessage);
       else if (value.message.stopReason === "error") {
         modelErrors.push("model returned an error with no message");
+      }
+      if (value.message.role === "assistant") {
+        for (const part of value.message.content ?? []) {
+          if (part?.type === "text" && part.text) assistantText.push(part.text);
+        }
       }
     }
   });
@@ -124,6 +151,13 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     unsubscribe();
   }
 
+  // Prose and no action: the model answered instead of working. Only meaningful when
+  // nothing went wrong technically, otherwise the error is the story.
+  const declined =
+    toolCalls === 0 && !report && !parked && !error && modelErrors.length === 0
+      ? assistantText.join("\n\n").trim() || undefined
+      : undefined;
+
   return {
     report,
     parked,
@@ -133,7 +167,47 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     costUsd: meter.costUsd,
     modelErrors,
     error,
+    declined,
+    toolCalls,
   };
+}
+
+export interface DeclineRetryOptions extends RuntimeOptions {
+  /**
+   * Facts to attach on a second attempt, usually whatever the agent has established about
+   * the situation so far.
+   */
+  factsOnRetry?: () => Promise<Record<string, unknown>>;
+}
+
+/**
+ * Run a task, and if the model declined without acting, try exactly once more with the
+ * established facts attached.
+ *
+ * Once, deliberately. A retry loop that keeps rephrasing until a model agrees is a machine
+ * for talking models out of correct refusals. If the facts do not change the answer, the
+ * answer stands and the caller tells the human.
+ */
+export async function runTaskWithDeclineRetry(
+  options: DeclineRetryOptions,
+): Promise<{ outcome: RunOutcome; attempts: number; firstDecline?: string }> {
+  const first = await runTask(options);
+  if (!first.declined) return { outcome: first, attempts: 1 };
+
+  const facts = (await options.factsOnRetry?.()) ?? {};
+  if (Object.keys(facts).length === 0) {
+    return { outcome: first, attempts: 1, firstDecline: first.declined };
+  }
+
+  const second = await runTask({
+    ...options,
+    card: {
+      ...options.card,
+      knownFacts: { ...options.card.knownFacts, ...facts },
+    },
+  });
+
+  return { outcome: second, attempts: 2, firstDecline: first.declined };
 }
 
 export { ZERO_USAGE };

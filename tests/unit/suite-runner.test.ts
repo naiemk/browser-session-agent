@@ -30,6 +30,10 @@ function stubBrowser(text = "Thanks Ada Lovelace"): BrowserPort {
   const facts: PageFacts = { url: obs.url, title: obs.title, text, observation: obs };
   return {
     openTab: async () => "tab_1",
+    openIsolatedTab: async () => {
+      throw new Error("stub has no isolated context");
+    },
+    closeTab: async () => undefined,
     pageFor: () => {
       throw new Error("stub has no page");
     },
