@@ -39,6 +39,10 @@ function recordingBrowser(text = "Application"): Recorder {
     acted,
     browser: {
       openTab: async () => "tab_1",
+      openIsolatedTab: async () => {
+        throw new Error("stub has no isolated context");
+      },
+      closeTab: async () => undefined,
       pageFor: () => {
         throw new Error("stub has no page");
       },

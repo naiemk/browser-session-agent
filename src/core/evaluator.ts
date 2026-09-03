@@ -41,6 +41,11 @@ export interface EvaluateInput {
   capped?: boolean;
   /** A session or provider failure, which is nobody's fault but ours. */
   sessionError?: string;
+  /**
+   * The model answered in prose and took no action. Reported so the human is told plainly
+   * rather than being left to argue with a chatbot.
+   */
+  declined?: string;
   /** How many identical failures count as a strategy problem rather than bad luck. */
   repeatThreshold?: number;
 }
@@ -72,6 +77,16 @@ export async function evaluateTask(input: EvaluateInput): Promise<Evaluation> {
       reason: input.sessionError,
       verification,
     } as Evaluation;
+  }
+
+  // The model declined and did nothing. That is a decision for the human — rephrase,
+  // authorise, or drop it — not something to retry differently.
+  if (input.declined) {
+    return {
+      status: "needs_user_input",
+      missingInputs: [`the agent declined and took no action: ${input.declined.slice(0, 400)}`],
+      verification,
+    };
   }
 
   // Somebody has to answer something before this can move.
