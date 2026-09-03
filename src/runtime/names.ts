@@ -5,6 +5,10 @@ export const TOOL_CHECK = "check";
 export const TOOL_ACT = "act";
 export const TOOL_ASK = "ask_user";
 export const TOOL_DONE = "report";
+/** Load a URL with no session, to find out what a stranger sees. */
+export const TOOL_STRANGER = "view_without_session";
+/** Record something established, with the evidence that established it. */
+export const TOOL_REMEMBER = "remember";
 
 export const ALL_TOOLS = [
   TOOL_OBSERVE,
@@ -12,6 +16,8 @@ export const ALL_TOOLS = [
   TOOL_CHECK,
   TOOL_ACT,
   TOOL_ASK,
+  TOOL_STRANGER,
+  TOOL_REMEMBER,
   TOOL_DONE,
 ] as const;
 
