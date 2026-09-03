@@ -44,6 +44,7 @@ const ROUTES: Record<string, string> = {
   "/tmpl-a": "tmpl-a.html",
   "/tmpl-b": "tmpl-b.html",
   "/secrets": "secrets.html",
+  "/account": "account.html",
 };
 
 /** Shared handler for the two hosts that render the same application template. */

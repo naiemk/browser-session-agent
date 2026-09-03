@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Home</title>
+  </head>
+  <body>
+    <h1>Home</h1>
+    <!-- Signed-in and signed-out views of the same URL differ, which is the whole point. -->
+    <div id="chrome"></div>
+    <p id="feed"></p>
+    <script>
+      const signedIn = document.cookie.includes("bsa_session=1");
+      const chrome = document.getElementById("chrome");
+      if (signedIn) {
+        chrome.innerHTML =
+          '<button type="button" aria-label="Account menu: ada">Account menu: ada</button>' +
+          '<a href="/ada/followers">Your followers</a>' +
+          '<button type="button">Log out</button>';
+        document.getElementById("feed").textContent = "Your private feed";
+      } else {
+        chrome.innerHTML =
+          '<a href="/login">Log in</a><button type="button">Sign up</button>';
+        document.getElementById("feed").textContent = "Log in to see your feed";
+      }
+    </script>
+  </body>
+</html>
