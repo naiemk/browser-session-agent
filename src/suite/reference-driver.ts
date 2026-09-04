@@ -7,6 +7,8 @@
  */
 
 import { act } from "../core/act.ts";
+import { Ledger } from "../core/ledger.ts";
+import { peek } from "../core/peek.ts";
 import { evaluatePredicate } from "../core/predicates.ts";
 import { CoreError, type ActionRequest } from "../core/types.ts";
 import type { AgentDriver, DriverContext, DriverOutcome, ReferenceStep } from "./types.ts";
@@ -40,13 +42,27 @@ function toRequest(step: ReferenceStep, ref: string | undefined, origin: string)
       return { kind: "upload", ref, files: step.files ?? [] };
     case "wait":
       return { kind: "wait", wait: step.wait ?? { kind: "timeout", timeoutMs: 250 } };
+    default:
+      throw new CoreError("reference_step_unsupported", `${step.do} is not an action`);
   }
+}
+
+function absolute(url: string | undefined, origin: string): string {
+  const value = url ?? "/";
+  return value.startsWith("http") ? value : `${origin}${value}`;
 }
 
 export class ReferenceDriver implements AgentDriver {
   readonly name = "reference";
 
   async runTask(context: DriverContext): Promise<DriverOutcome> {
+    // The reference has to be able to satisfy evidence checks too, or a task that requires
+    // surfacing an ambiguity would look unsolvable and we could never tell a broken task
+    // from an incompetent agent.
+    const ledger = context.evidence
+      ? await Ledger.open(context.evidence.root, context.evidence.goalId)
+      : undefined;
+
     for (const step of context.task.reference) {
       const limit = step.until ? (step.maxRepeat ?? 10) : 1;
       for (let attempt = 0; attempt < limit; attempt++) {
@@ -54,6 +70,40 @@ export class ReferenceDriver implements AgentDriver {
           const facts = await context.browser.facts(context.tabId);
           if (evaluatePredicate(step.until, facts).passed) break;
         }
+
+        if (step.do === "peek") {
+          context.step();
+          const result = await peek(context.browser, {
+            url: absolute(step.url, context.origin),
+            tabId: context.tabId,
+            ...(step.expect ? { expect: step.expect } : {}),
+            ...(ledger ? { ledger } : {}),
+            intent: `reference: peek ${step.url ?? ""}`.trim(),
+          });
+          if (!result.matched && !step.allowFailure) {
+            throw new CoreError(
+              "reference_step_failed",
+              `reference peek ${step.url} did not match: ${result.identity?.detail ?? "no expectation"}`,
+            );
+          }
+          continue;
+        }
+
+        if (step.do === "fork") {
+          await ledger?.append({
+            type: "fork",
+            intent: `"${step.term}" could mean ${(step.candidates ?? []).join(" or ")}`,
+            outcome: { ok: true, detail: step.resolution ?? "covered_all" },
+            payload: {
+              term: step.term,
+              candidates: step.candidates ?? [],
+              resolution: step.resolution ?? "covered_all",
+              why: "reference solution",
+            },
+          });
+          continue;
+        }
+
         const ref = step.name ? await resolveRef(context, step.name) : undefined;
         context.step();
         const result = await act(context.browser, {

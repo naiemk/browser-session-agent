@@ -260,6 +260,8 @@ async function commandSuite(args: ParsedArgs): Promise<number> {
       tasks,
       driver,
       origin,
+      // The runner reads evidence back itself, so it names where every run writes it.
+      evidenceRoot: root,
       headless: !args.flags.headed,
       pauseMs: Number(flagString(args.flags, "pause") ?? (target === "live" ? 2000 : 0)),
       onTask: (run) => {
