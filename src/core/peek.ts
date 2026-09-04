@@ -18,7 +18,7 @@
  */
 
 import type { BrowserPort } from "./browser.ts";
-import type { Ledger } from "./ledger.ts";
+import type { LedgerSink } from "./ledger.ts";
 import { evaluatePredicate } from "./predicates.ts";
 import { CoreError, type CheckResult, type Observation, type Predicate } from "./types.ts";
 
@@ -34,7 +34,7 @@ export interface PeekOptions {
    * nothing in particular.
    */
   expect?: Predicate;
-  ledger?: Ledger;
+  ledger?: LedgerSink;
   entityId?: string;
   intent?: string;
 }

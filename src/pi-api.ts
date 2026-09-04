@@ -4,6 +4,21 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/**
+ * All a terminal component is: something that can turn a width into lines.
+ *
+ * Declared here rather than imported from pi-tui so that drawing one line on screen does
+ * not put a TUI library in this package's dependency graph.
+ */
+export interface Component {
+  render(width: number): string[];
+}
+
+export interface ToolRenderResultOptions {
+  expanded: boolean;
+  isPartial: boolean;
+}
+
 export interface RegisteredTool {
   name: string;
   label?: string;
@@ -18,6 +33,18 @@ export interface RegisteredTool {
     onUpdate: unknown,
     ctx: ExtensionContext,
   ) => Promise<ToolResult>;
+  /**
+   * How the result is drawn, as opposed to what the model is told.
+   *
+   * Without this the host prints the model-facing text, which for a page snapshot is
+   * hundreds of characters of JSON. The payload is unchanged; only the drawing differs.
+   */
+  renderResult?: (
+    result: { content?: unknown; details?: unknown; isError?: boolean },
+    options: ToolRenderResultOptions,
+    theme: unknown,
+    context: unknown,
+  ) => Component;
 }
 
 export interface RegisteredCommand {

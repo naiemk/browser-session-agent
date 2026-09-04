@@ -21,6 +21,15 @@ export interface GoalPaths {
    * to join them.
    */
   metricsFile: string;
+  /**
+   * Every byte the model was sent, verbatim.
+   *
+   * Neither evidence nor metering: the ledger records what happened in a form meant to
+   * be read years later, and metrics record what it cost. This is the raw payload, kept
+   * so the screen can show one line without anything being lost. It is the largest file
+   * by far and the only one it is safe to delete.
+   */
+  payloadsFile: string;
   entitiesDir: string;
   tasksDir: string;
   artifactsDir: string;
@@ -34,6 +43,7 @@ export function goalPaths(root: string, goalId: string): GoalPaths {
     goalFile: path.join(dir, "goal.json"),
     eventsFile: path.join(dir, "events.jsonl"),
     metricsFile: path.join(dir, "metrics.jsonl"),
+    payloadsFile: path.join(dir, "payloads.jsonl"),
     entitiesDir: path.join(dir, "entities"),
     tasksDir: path.join(dir, "tasks"),
     artifactsDir: path.join(dir, "artifacts"),

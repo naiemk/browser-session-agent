@@ -17,7 +17,7 @@
  */
 
 import type { BrowserPort } from "./browser.ts";
-import type { Ledger } from "./ledger.ts";
+import type { LedgerSink } from "./ledger.ts";
 import type { Observation } from "./types.ts";
 
 export interface PerspectiveDelta {
@@ -75,7 +75,7 @@ export interface PerspectiveOptions {
   /** Defaults to the current tab's URL. */
   url?: string;
   tabId?: string;
-  ledger?: Ledger;
+  ledger?: LedgerSink;
   entityId?: string;
   intent?: string;
 }

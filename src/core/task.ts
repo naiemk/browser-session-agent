@@ -14,7 +14,7 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserPort } from "./browser.ts";
 import { shortId } from "./ids.ts";
-import type { Ledger } from "./ledger.ts";
+import type { LedgerSink } from "./ledger.ts";
 import { ensureGoalDirs, goalPaths, type GoalPaths } from "./paths.ts";
 import { parsePredicate, verify } from "./predicates.ts";
 import { redactDeep } from "./redact.ts";
@@ -137,7 +137,7 @@ export class TaskStore {
 export interface ResolveOptions {
   /** What the executor says it did. Recorded, never trusted. */
   claim?: string;
-  ledger?: Ledger;
+  ledger?: LedgerSink;
   tabId?: string;
   /** Set when the turn cap stopped the task rather than the task finishing. */
   capped?: boolean;
@@ -206,7 +206,7 @@ function summarize(verification: Verification): string {
 export async function stepCheck(
   browser: BrowserPort,
   rawPredicate: unknown,
-  options: { ledger?: Ledger; entityId?: string; intent?: string; tabId?: string } = {},
+  options: { ledger?: LedgerSink; entityId?: string; intent?: string; tabId?: string } = {},
 ): Promise<Verification> {
   const predicate = parsePredicate(rawPredicate);
   const facts = await browser.facts(options.tabId);

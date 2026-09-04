@@ -20,6 +20,8 @@ import { parsePredicate } from "../core/predicates.ts";
 import { GoalStore } from "../core/state.ts";
 import { TaskStore } from "../core/task.ts";
 import type { Predicate } from "../core/types.ts";
+import { evidenceForGoal } from "../host/evidence.ts";
+import { FilePayloadLog, FileRecorder } from "../optimize/recorder.ts";
 import { createLiveModel } from "../runtime/model.ts";
 import { runTaskWithDeclineRetry } from "../runtime/runtime.ts";
 
@@ -148,6 +150,8 @@ async function commandRun(args: ParsedArgs): Promise<number> {
   const live = await createLiveModel({ model: flagString(args.flags, "model") });
   const browser = await LocalBrowser.launch({ headless: !args.flags.headed });
   const ledger = await Ledger.open(root, goalId);
+  const metrics = await FileRecorder.open(goalPaths(root, goalId).metricsFile);
+  const payloads = await FilePayloadLog.open(goalPaths(root, goalId).payloadsFile);
   const store = await TaskStore.open(root, goalId);
   const goalStore = await GoalStore.open(root, goalId, goal);
 
@@ -167,12 +171,15 @@ async function commandRun(args: ParsedArgs): Promise<number> {
       tools: {
         browser,
         tabId: tab,
-        ledger,
-        goalRoot: root,
-        goalId,
-        goalStore,
+        evidence: evidenceForGoal({
+          root,
+          goalId,
+          ledger,
+          store: goalStore,
+          metrics,
+          payloads,
+        }),
         policy,
-        screenshotDir: ledger.artifactsDir,
         askUser: async (question) => {
           process.stderr.write(`\nThe agent needs an answer: ${question}\n`);
           return undefined;

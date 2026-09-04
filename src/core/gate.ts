@@ -15,7 +15,7 @@
 import { act, type ActOptions } from "./act.ts";
 import type { BrowserPort } from "./browser.ts";
 import { saveCheckpoint } from "./checkpoint.ts";
-import type { Ledger } from "./ledger.ts";
+import type { LedgerSink } from "./ledger.ts";
 import { evaluatePredicate } from "./predicates.ts";
 import type {
   ActionRequest,
@@ -41,7 +41,7 @@ export interface GateOptions extends ActOptions {
   precondition?: Predicate;
   /** Asked only under the "ask" policy. Returning false parks the action. */
   approve?: (request: ApprovalRequest) => Promise<boolean>;
-  ledger?: Ledger;
+  ledger?: LedgerSink;
   entityId?: string;
   /** Enables navigation checkpoints. */
   checkpoint?: { root: string; goalId: string; tag?: string };

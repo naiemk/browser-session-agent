@@ -13,8 +13,10 @@ import { Ledger } from "../core/ledger.ts";
 import type { ApprovalMode } from "../core/gate.ts";
 import { goalPaths } from "../core/paths.ts";
 import { GoalStore } from "../core/state.ts";
-import { FileRecorder } from "../optimize/recorder.ts";
+import { evidenceForGoal } from "../host/evidence.ts";
+import { FilePayloadLog, FileRecorder } from "../optimize/recorder.ts";
 import { rollup } from "../optimize/rollup.ts";
+import { NO_METRICS } from "../runtime/metrics.ts";
 import { runTask, type RunOutcome } from "../runtime/runtime.ts";
 import type { ModelPort } from "../runtime/model.ts";
 import type { ViewStrategy } from "../runtime/view/index.ts";
@@ -68,9 +70,9 @@ export class RuntimeDriver implements AgentDriver {
       this.options.meter === false
         ? undefined
         : await FileRecorder.open(goalPaths(root, goalId).metricsFile);
+    const payloads = await FilePayloadLog.open(goalPaths(root, goalId).payloadsFile);
 
     const outcome: RunOutcome = await runTask({
-      ...(metrics ? { metrics } : {}),
       card: {
         objective: context.task.goal,
         criteria: context.task.criteria,
@@ -83,13 +85,16 @@ export class RuntimeDriver implements AgentDriver {
       tools: {
         browser: context.browser,
         tabId: context.tabId,
-        ledger,
-        goalRoot: root,
-        goalId,
-        goalStore: await GoalStore.open(root, goalId, context.task.goal),
+        evidence: evidenceForGoal({
+          root,
+          goalId,
+          ledger,
+          store: await GoalStore.open(root, goalId, context.task.goal),
+          metrics: metrics ?? NO_METRICS,
+          payloads,
+        }),
         stepLimit: context.task.maxSteps,
         policy: this.options.policy ?? "auto",
-        screenshotDir: ledger.artifactsDir,
         approve: this.options.approve ?? (async () => true),
         askUser: async (question) =>
           Object.entries(this.options.answers ?? {}).find(([key]) =>

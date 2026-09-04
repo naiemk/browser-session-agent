@@ -19,6 +19,8 @@ import {
 } from "../../src/runtime/names.ts";
 import { runTask, runTaskWithDeclineRetry } from "../../src/runtime/runtime.ts";
 import { DEFAULT_STRANGER_VIEW_BUDGET } from "../../src/runtime/tools.ts";
+import { factsFrom, memoryEvidence } from "../../src/runtime/evidence.ts";
+import { ledgerEvidence } from "../helpers/evidence.ts";
 import { FixtureServer } from "../helpers/fixture-server.ts";
 
 const server = new FixtureServer();
@@ -61,7 +63,7 @@ describe("establishing the situation through the tools", () => {
           },
         ],
       }),
-      tools: { browser, tabId: tab, ledger, goalStore },
+      tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger, { store: goalStore }) },
     });
 
     assert.equal(outcome.report?.status, "success");
@@ -104,7 +106,7 @@ describe("establishing the situation through the tools", () => {
         browser,
         tabId: tab,
         strangerViewBudget: DEFAULT_STRANGER_VIEW_BUDGET,
-        ledger: await Ledger.open(root, "g_budget"),
+        evidence: ledgerEvidence(await Ledger.open(root, "g_budget")),
       },
     });
 
@@ -129,7 +131,7 @@ describe("establishing the situation through the tools", () => {
           { tool: TOOL_SURVEY, args: {} },
         ],
       }),
-      tools: { browser, tabId: tab, ledger },
+      tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger) },
     });
 
     const events = await ledger.read();
@@ -155,7 +157,7 @@ describe("establishing the situation through the tools", () => {
       stream: createMockModel({
         plan: [{ tool: TOOL_REMEMBER, args: { key: "", value: "" } }],
       }),
-      tools: { browser, tabId: tab, goalStore },
+      tools: { browser, tabId: tab, evidence: memoryEvidence({ facts: factsFrom(goalStore) }) },
     });
 
     assert.deepEqual((await goalStore.goal()).facts, {});
@@ -176,7 +178,7 @@ describe("a model that declines", () => {
     const outcome = await runTask({
       card: { objective: "Do the thing", criteria: CRITERIA },
       stream: decliningModel(1),
-      tools: { browser, tabId: tab },
+      tools: { browser, tabId: tab, evidence: memoryEvidence() },
     });
 
     assert.equal(outcome.toolCalls, 0);
@@ -190,7 +192,7 @@ describe("a model that declines", () => {
     const outcome = await runTask({
       card: { objective: "Do the thing", criteria: CRITERIA },
       stream: createMockModel({ script: [{ error: "402 out of credits" }] }),
-      tools: { browser, tabId: tab },
+      tools: { browser, tabId: tab, evidence: memoryEvidence() },
     });
 
     assert.equal(outcome.declined, undefined, "the error is the story, not a refusal");
@@ -202,7 +204,7 @@ describe("a model that declines", () => {
     const outcome = await runTask({
       card: { objective: "Look at the page", criteria: CRITERIA },
       stream: createMockModel({ plan: [{ tool: TOOL_OBSERVE }] }),
-      tools: { browser, tabId: tab },
+      tools: { browser, tabId: tab, evidence: memoryEvidence() },
     });
     assert.equal(outcome.declined, undefined);
     assert.ok(outcome.toolCalls > 0);
@@ -226,7 +228,7 @@ describe("a model that declines", () => {
     const result = await runTaskWithDeclineRetry({
       card: { objective: "Do the thing", criteria: CRITERIA },
       stream,
-      tools: { browser, tabId: tab },
+      tools: { browser, tabId: tab, evidence: memoryEvidence() },
       factsOnRetry: async () => {
         retrying = true;
         return { "operating-identity": "signed in as ada, observed in the account menu" };
@@ -257,7 +259,7 @@ describe("a model that declines", () => {
     const result = await runTaskWithDeclineRetry({
       card: { objective: "Do the thing", criteria: CRITERIA },
       stream,
-      tools: { browser, tabId: tab },
+      tools: { browser, tabId: tab, evidence: memoryEvidence() },
       factsOnRetry: async () => ({ "operating-identity": "signed in as ada" }),
     });
 
@@ -277,7 +279,7 @@ describe("a model that declines", () => {
     const result = await runTaskWithDeclineRetry({
       card: { objective: "Do the thing", criteria: CRITERIA },
       stream,
-      tools: { browser, tabId: tab },
+      tools: { browser, tabId: tab, evidence: memoryEvidence() },
       factsOnRetry: async () => ({}),
     });
 

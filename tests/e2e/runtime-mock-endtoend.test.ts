@@ -11,6 +11,7 @@ import { actStep, createMockModel } from "../../src/runtime/mock-model.ts";
 import { TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE, TOOL_PROBE } from "../../src/runtime/names.ts";
 import { runTask } from "../../src/runtime/runtime.ts";
 import { toWireObservation, wireText } from "../../src/runtime/wire.ts";
+import { ledgerEvidence } from "../helpers/evidence.ts";
 import { FixtureServer } from "../helpers/fixture-server.ts";
 
 /**
@@ -57,7 +58,7 @@ describe("runtime end to end with a mock model", () => {
           actStep("click", "Submit application"),
         ],
       }),
-      tools: { browser, tabId: tab, ledger, policy: "auto", screenshotDir: ledger.artifactsDir },
+      tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger), policy: "auto" },
     });
 
     assert.equal(outcome.report?.status, "success");
@@ -97,7 +98,7 @@ describe("runtime end to end with a mock model", () => {
           },
         ],
       }),
-      tools: { browser, tabId: tab, ledger, policy: "auto" },
+      tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger), policy: "auto" },
     });
 
     assert.equal(outcome.report?.status, "success", "the agent claimed success");
@@ -133,7 +134,7 @@ describe("runtime end to end with a mock model", () => {
       tools: {
         browser,
         tabId: tab,
-        ledger,
+        evidence: ledgerEvidence(ledger),
         policy: "ask",
         approve: async () => {
           asked += 1;
@@ -166,7 +167,7 @@ describe("runtime end to end with a mock model", () => {
         ],
         onTurn: (info) => seen.push(info.calls),
       }),
-      tools: { browser, tabId: tab, ledger },
+      tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger) },
     });
 
     assert.deepEqual(seen, [[TOOL_OBSERVE], [TOOL_PROBE], [TOOL_DONE]]);
@@ -188,7 +189,7 @@ describe("runtime end to end with a mock model", () => {
           { tool: TOOL_CHECK, args: { predicate: { kind: "control_exists", name: "Bouncer" } } },
         ],
       }),
-      tools: { browser, tabId: tab, ledger, policy: "auto" },
+      tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger), policy: "auto" },
     });
 
     assert.equal(outcome.report?.status, "success");
@@ -222,7 +223,7 @@ describe("runtime end to end with a mock model", () => {
             finalSize = JSON.stringify(context.messages).length;
           },
         }),
-        tools: { browser, tabId: tab, ledger },
+        tools: { browser, tabId: tab, evidence: ledgerEvidence(ledger) },
         prune,
       });
 
