@@ -16,7 +16,7 @@ phone / laptop  →  gateway TLS  →  ui (static) + api (Pi SDK)
 desktop node agent  →  BrowserWorker  →  dedicated Playwright Chromium
 ```
 
-Local checkout: `npm run cli` is the whole product (Pi TUI + Chromium). It does not connect to the VPS.
+Local checkout: `npm run web` is the chat UI + API + headed Chromium on this machine. `npm run cli` is the Pi TUI on the same core. Neither talks to the VPS.
 
 CLI on a desktop that is already paired to the hosted UI can still attach to the same `worker.json` CDP endpoint. Do not run two Chromiums against one profile.
 
@@ -60,16 +60,24 @@ First pull of the node image is large (Playwright’s Chromium). After CI has pu
 
 ## Run locally without Docker
 
-```bash
-# VPS-shaped API (no Chrome). BSA_NO_PI stubs chat for local protocol work only.
-BSA_NO_PI=1 npm run start:api
+Default local-dev web stack (UI + API + headed Chromium, already connected):
 
-# Desktop node (headed Chromium by default) — pair from the UI, or power-user:
+```bash
 npx playwright install chromium
-BSA_PAIR_CODE=<code> npm run start:node -- --api ws://127.0.0.1:8787/node
+npm run web
+# open http://127.0.0.1:8787/?token=dev
 ```
 
-Open `http://127.0.0.1:8787/`, create an account, then **Pair this computer**. Do not use `?token=` for the consumer path. `BSA_TOKEN=dev` remains a power-user escape (`/?token=dev`).
+Split processes if you want to debug them apart:
+
+```bash
+# API also serves the static UI. BSA_NO_PI stubs chat for protocol work only.
+BSA_TOKEN=dev npm run start:api
+npx playwright install chromium
+BSA_TOKEN=dev npm run start:node -- --api ws://127.0.0.1:8787/node
+```
+
+Open `http://127.0.0.1:8787/?token=dev`. Register + **Pair this computer** is the consumer path; `?token=dev` is the local power-user escape.
 
 ## Live view and takeover
 

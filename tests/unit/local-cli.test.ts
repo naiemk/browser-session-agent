@@ -69,7 +69,7 @@ describe("local CLI (no VPS)", () => {
     assert.match(text, /\/browser-start/);
     assert.match(text, /\/login/);
     assert.match(text, /no VPS|Nothing talks to the VPS/i);
-    assert.match(text, /UI-only/);
+    assert.match(text, /npm run web|UI-only/);
     assert.doesNotMatch(text, /BSA_PAIR_CODE/);
     assert.doesNotMatch(text, /install\.sh/);
   });

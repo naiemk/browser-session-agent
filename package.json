@@ -14,6 +14,7 @@
     "browser-agent": "./bin/browser-agent.mjs",
     "bsa": "./bin/bsa-cli.mjs",
     "browser-session-cli": "./bin/bsa-cli.mjs",
+    "browser-session-web": "./bin/bsa-web.mjs",
     "browser-session-api": "./bin/browser-session-api.mjs",
     "browser-session-node": "./bin/browser-session-node.mjs"
   },
@@ -38,6 +39,7 @@
     "suite:live": "tsx src/cli/run.ts suite --target live",
     "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts",
     "cli": "node bin/bsa-cli.mjs",
+    "web": "node bin/bsa-web.mjs",
     "dev": "node bin/bsa-cli.mjs",
     "start:api": "tsx src/hosts/web/cli.ts",
     "start:node": "tsx src/hosts/node-agent/cli.ts",
@@ -50,6 +52,8 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.4",
+    "@earendil-works/pi-ai": "^0.84.4",
     "@earendil-works/pi-coding-agent": "^0.84.4",
     "@mariozechner/pi-web-ui": "^0.73.1",
     "pi-meter": "^0.1.1",

@@ -59,7 +59,10 @@ export class NodeAgent {
       this.reconnectTimer = null;
     }
     this.stopScreenshotLoop();
-    await this.session.worker.stopScreencast().catch(() => undefined);
+    await Promise.race([
+      this.session.worker.stopScreencast(),
+      new Promise((resolve) => setTimeout(resolve, 300)),
+    ]).catch(() => undefined);
     this.screencastOn = false;
     this.socket?.close();
     this.socket = null;

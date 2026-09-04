@@ -155,7 +155,7 @@ export class BrowserWorker {
   }
 
   async stop(): Promise<void> {
-    await this.stopScreencast().catch(() => undefined);
+    await Promise.race([this.stopScreencast(), delay(300)]).catch(() => undefined);
     const pids = [...this.trackedPids, this.info?.pid ?? 0, chromePid(this.browser)].filter(
       (pid) => pid > 0 && pid !== process.pid,
     );
@@ -416,16 +416,21 @@ export class BrowserWorker {
     const current = this.screencast;
     this.screencast = null;
     if (!current) return;
-    try {
-      await current.client.send("Page.stopScreencast");
-    } catch {
-      // already stopped
-    }
-    try {
-      await current.client.detach();
-    } catch {
-      // already detached
-    }
+    await Promise.race([
+      (async () => {
+        try {
+          await current.client.send("Page.stopScreencast");
+        } catch {
+          // already stopped
+        }
+        try {
+          await current.client.detach();
+        } catch {
+          // already detached
+        }
+      })(),
+      delay(300),
+    ]);
   }
 
   async applyInput(event: WorkerInputEvent, tabId?: string): Promise<void> {

@@ -28,12 +28,12 @@ describe("hosted Pi helpers", () => {
     assert.match(err ?? "", /maximum context length/);
   });
 
-  it("applies OPENROUTER_API_KEY as a runtime override", () => {
+  it("applies OPENROUTER_API_KEY as a runtime override", async () => {
     const prev = process.env.OPENROUTER_API_KEY;
     process.env.OPENROUTER_API_KEY = "sk-or-test";
     const seen: Array<[string, string]> = [];
     try {
-      applyHostedApiKeys({
+      await applyHostedApiKeys({
         setRuntimeApiKey: (provider, key) => {
           seen.push([provider, key]);
         },

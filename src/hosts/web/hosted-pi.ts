@@ -11,9 +11,9 @@ export function capHostedModelOutput(
   }
 }
 
-export function applyHostedApiKeys(auth: {
-  setRuntimeApiKey?: (provider: string, key: string) => void;
-}): void {
+export async function applyHostedApiKeys(auth: {
+  setRuntimeApiKey?: (provider: string, key: string) => void | Promise<void>;
+}): Promise<void> {
   if (typeof auth.setRuntimeApiKey !== "function") return;
   const keys: Array<[string, string | undefined]> = [
     ["openrouter", process.env.OPENROUTER_API_KEY],
@@ -23,7 +23,7 @@ export function applyHostedApiKeys(auth: {
     ["ai-gateway", process.env.AI_GATEWAY_API_KEY],
   ];
   for (const [provider, key] of keys) {
-    if (key) auth.setRuntimeApiKey(provider, key);
+    if (key) await auth.setRuntimeApiKey(provider, key);
   }
 }
 
