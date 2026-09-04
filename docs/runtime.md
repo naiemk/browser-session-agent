@@ -47,6 +47,52 @@ about the situation stays auditable and a later task does not repeat the investi
 Session-free views are budgeted like any other exploration, because each one is a real
 anonymous request to somebody's site.
 
+## Reading without going there
+
+In a repository a read does not move you: fifty files later you are where you started. In a
+browser a read moves you and you may not get back, because leaving a paginated list costs
+the page you were on, the scroll offset, and whatever it had lazily loaded. Inspecting
+forty items then costs open, read, back and re-paginate each time, and the budget is gone
+by the third one. That is the fourth gap in the diagnosis, and it is a missing action
+rather than poor judgement — a planner would have chosen the same route, because it was
+the only traversal available.
+
+`peek` in [src/core/peek.ts](src/core/peek.ts) opens the target in a side tab that shares
+our session, reads it, closes it, and confirms the origin did not move. Sharing the session
+is the whole point and was subtly broken: `browser.newPage()` creates a page in a *new*
+context, so a side tab would have been signed out and we would have read a stranger's view
+of the user's own account. `LocalBrowser` now holds one shared context, and
+`openIsolatedTab` still makes its own, which is what makes the stranger view mean
+something.
+
+An identifier can be wrong, and wrongness comes in two flavours: a 404 is cheap and
+obvious, while a URL that resolves to the *wrong* entity is silent and poisons everything
+read from it. So a peek carries an optional expectation and reports whether it held. When
+reading is not enough — searching, filling something in — `side_tab_open` makes the side
+tab the active tab so `act` works there with no special casing, and the primary is never
+navigated by side work. One side tab at a time: concurrency would be faster and would look
+far more like scraping.
+
+There is deliberately no cost model. Making the good route the easy route means the model
+does not have to reason about cost to find it, and `roster-cheap-traversal` measures
+whether that holds: its budget fits the peeking route and not the navigating one, with
+nothing telling the agent which to take.
+
+## Choosing what the answer is, versus how to get it
+
+`survey` reads what a page advertises — navigation, tabs, search boxes, content links,
+buttons — grouped and deduped, following none of them. It needs no stored knowledge of any
+site, because interfaces publish their own capabilities so that humans can find them. That
+is one of the few places the browser is easier than a repository, which has no nav bar
+listing what you can do with it.
+
+`note_fork` records that a word in the task matched more than one thing here. It has its
+own ledger type because silently choosing a meaning is a distinct failure from getting the
+work wrong, and because the suite has to be able to find it: `SuiteTask.evidence` scores a
+run from the ledger, which is the only way to see procedure at all. A page cannot show the
+difference between an agent that weighed two readings and one that guessed, since both end
+up somewhere valid.
+
 ## When the model says no
 
 A model that answers in prose and calls no tools is otherwise indistinguishable from a task
