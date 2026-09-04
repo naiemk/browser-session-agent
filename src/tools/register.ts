@@ -340,19 +340,16 @@ export function registerBrowserCommands(pi: ExtensionAPI, session: SessionHandle
     ctx.ui.notify(message, "info");
   };
 
-  const enterBrowserTools = () => {
-    if (!session.previousActiveTools) {
-      session.previousActiveTools = pi.getActiveTools();
-    }
-    pi.setActiveTools(session.browserToolNames());
-  };
-
-  const restoreTools = () => {
-    if (session.previousActiveTools) {
-      pi.setActiveTools(session.previousActiveTools);
-      session.previousActiveTools = null;
-    }
-  };
+  /*
+   * There is no tool swap any more, and removing it was overdue.
+   *
+   * Starting a run used to switch the active tools to the browser set and switch back on
+   * stop, because the agent was a coding agent that needed its coding tools hidden. The
+   * agent is now a browser agent whose tools are always the right ones - and worse, the
+   * swap named the *old* tools, so after the cutover starting a run set the active list
+   * to thirteen names that no longer existed and left the model with nothing. It then
+   * said, correctly, that it could not open a browser.
+   */
 
   pi.registerCommand("browser-start", {
     description: "Start a browser run. Usage: /browser-start [--url URL] <goal>",
@@ -362,7 +359,6 @@ export function registerBrowserCommands(pi: ExtensionAPI, session: SessionHandle
         notify(ctx, "Usage: /browser-start [--url URL] <goal>");
         return;
       }
-      enterBrowserTools();
       const state = await session.startRun(goal, url);
       notify(ctx, `Started ${state.runId} on ${state.currentTabId}`);
     },
@@ -395,7 +391,6 @@ export function registerBrowserCommands(pi: ExtensionAPI, session: SessionHandle
   pi.registerCommand("browser-resume", {
     description: "Resume after pause or takeover",
     handler: async (_args, ctx) => {
-      enterBrowserTools();
       const { observation } = await session.resume();
       notify(ctx, `Resumed at ${observation.url}`);
     },
@@ -415,7 +410,6 @@ export function registerBrowserCommands(pi: ExtensionAPI, session: SessionHandle
       if (session.currentRunId) {
         await session.stopRun(session.currentRunId, "completed");
       }
-      restoreTools();
       if (args.includes("--browser")) {
         await session.worker.stop();
       }

@@ -282,8 +282,30 @@ describe("the local extension registers the agent, not a coding agent with a hat
       const observed = await runTool(pi, TOOL_OBSERVE, {});
       assert.equal(Boolean(observed.isError), false, JSON.stringify(observed));
 
+      // Every active tool must be a tool that exists. Starting a run used to select the
+      // legacy browser_* names, so after the cutover the model was left holding thirteen
+      // tools that had been deleted - and said, correctly, that it could not open a
+      // browser. A live agent with no callable tools is the worst kind of broken,
+      // because nothing errors.
+      const active = pi.getActiveTools();
+      assert.ok(active.length > 0, "the agent must have tools");
+      for (const name of active) {
+        assert.ok(pi.tools.has(name), `active tool ${name} is not registered`);
+      }
+      assert.equal(active.includes("bash"), false, "and no coding tools, ever");
+
       await runCommand(pi, "browser-start", `--url ${origin}/apply Apply to the role`);
+      const afterStart = pi.getActiveTools();
+      for (const name of afterStart) {
+        assert.ok(pi.tools.has(name), `starting a run broke ${name}`);
+      }
+      assert.ok(afterStart.includes(TOOL_OBSERVE), "and left the agent able to look");
+
       await runCommand(pi, "browser-stop", "--browser");
+      assert.ok(
+        pi.getActiveTools().includes(TOOL_OBSERVE),
+        "stopping a run must not take the agent's tools away either",
+      );
     } finally {
       const info = await readWorkerInfo(home).catch(() => null);
       if (info?.pid) {
