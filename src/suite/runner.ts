@@ -8,11 +8,14 @@
  */
 
 import { LocalBrowser, type BrowserPort } from "../core/browser.ts";
+import { Ledger } from "../core/ledger.ts";
 import { verify } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
+import { evaluateAllEvidence } from "./evidence.ts";
 import {
   StepCapExceeded,
   type AgentDriver,
+  type EvidenceCheck,
   type SuiteReport,
   type SuiteTask,
   type TaskRun,
@@ -31,6 +34,10 @@ function snapshotCriteria(task: SuiteTask): Predicate[] {
   return structuredClone(task.criteria) as Predicate[];
 }
 
+function snapshotEvidence(task: SuiteTask): EvidenceCheck[] {
+  return structuredClone(task.evidence ?? []) as EvidenceCheck[];
+}
+
 export interface RunSuiteOptions {
   tasks: SuiteTask[];
   driver: AgentDriver;
@@ -39,6 +46,11 @@ export interface RunSuiteOptions {
   headless?: boolean;
   only?: string[];
   onTask?: (run: TaskRun) => void;
+  /**
+   * Where runs write their evidence. Required for tasks that carry evidence checks; the
+   * runner names the goal so a driver cannot point it elsewhere.
+   */
+  evidenceRoot?: string;
   /**
    * Gap between tasks. Running many model-backed sessions back to back trips provider
    * rate limits, and a throttled request looks exactly like an agent that did nothing.
@@ -107,9 +119,11 @@ async function runOne(
   options: RunSuiteOptions,
 ): Promise<TaskRun> {
   const criteria = snapshotCriteria(task);
+  const evidenceChecks = snapshotEvidence(task);
   const startedAt = Date.now();
   let steps = 0;
 
+  const goalId = `suite-${task.id}`;
   const context = {
     task: deepFreeze({ ...task }),
     browser,
@@ -120,6 +134,7 @@ async function runOne(
       steps += 1;
       if (steps > task.maxSteps) throw new StepCapExceeded(steps);
     },
+    ...(options.evidenceRoot ? { evidence: { root: options.evidenceRoot, goalId } } : {}),
   };
 
   let outcome: TaskRun["outcome"] = "failed";
@@ -162,16 +177,29 @@ async function runOne(
 
   // The verdict never comes from the driver.
   let checks: TaskRun["checks"] = [];
+  let evidence: TaskRun["checks"] | undefined;
   try {
     const facts = await browser.facts(context.tabId || undefined);
     const verification = verify(criteria, facts);
     checks = verification.checks;
-    if (verification.status === "passed") {
+
+    // How the run went, when the task cares. A page can look right for the wrong reasons.
+    if (evidenceChecks.length > 0) {
+      if (!options.evidenceRoot) {
+        throw new Error(
+          `task ${task.id} has evidence checks but the suite was run without an evidenceRoot`,
+        );
+      }
+      evidence = evaluateAllEvidence(evidenceChecks, await Ledger.readFrom(options.evidenceRoot, goalId));
+    }
+
+    const evidencePassed = (evidence ?? []).every((check) => check.passed);
+    if (verification.status === "passed" && evidencePassed) {
       outcome = capped ? "capped" : "passed";
       if (capped) detail = `${detail} (criteria met but step cap exceeded)`;
     } else {
       outcome = capped ? "capped" : "failed";
-      const failed = checks.filter((check) => !check.passed);
+      const failed = [...checks, ...(evidence ?? [])].filter((check) => !check.passed);
       detail = [detail, failed.map((check) => `${check.predicate}: ${check.detail}`).join("; ")]
         .filter(Boolean)
         .join(" — ");
@@ -188,6 +216,7 @@ async function runOne(
     durationMs: Date.now() - startedAt,
     detail,
     checks,
+    ...(evidence ? { evidenceChecks: evidence } : {}),
     tokens,
     costUsd,
   };

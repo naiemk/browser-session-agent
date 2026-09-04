@@ -11,6 +11,7 @@
 
 import { Ledger } from "../core/ledger.ts";
 import type { ApprovalMode } from "../core/gate.ts";
+import { GoalStore } from "../core/state.ts";
 import { runTask, type RunOutcome } from "../runtime/runtime.ts";
 import type { ModelPort } from "../runtime/model.ts";
 import type { Model } from "@earendil-works/pi-ai";
@@ -50,8 +51,11 @@ export class RuntimeDriver implements AgentDriver {
   }
 
   async runTask(context: DriverContext): Promise<DriverOutcome> {
-    const goalId = `suite-${context.task.id}`;
-    const ledger = await Ledger.open(this.options.root, goalId);
+    // The runner names the evidence goal when it intends to read it back, so the driver
+    // cannot write somewhere the checks will not look.
+    const root = context.evidence?.root ?? this.options.root;
+    const goalId = context.evidence?.goalId ?? `suite-${context.task.id}`;
+    const ledger = await Ledger.open(root, goalId);
 
     const outcome: RunOutcome = await runTask({
       card: {
@@ -67,8 +71,10 @@ export class RuntimeDriver implements AgentDriver {
         browser: context.browser,
         tabId: context.tabId,
         ledger,
-        goalRoot: this.options.root,
+        goalRoot: root,
         goalId,
+        goalStore: await GoalStore.open(root, goalId, context.task.goal),
+        stepLimit: context.task.maxSteps,
         policy: this.options.policy ?? "auto",
         screenshotDir: ledger.artifactsDir,
         approve: this.options.approve ?? (async () => true),
@@ -93,6 +99,8 @@ function describe(outcome: RunOutcome): string {
   if (outcome.error) return `run error: ${outcome.error}`;
   if (outcome.modelErrors.length > 0) return `model error: ${outcome.modelErrors.join(" | ")}`;
   if (outcome.parked) return `parked: ${outcome.parked.reason}`;
+  // Distinguished from "no report filed", which otherwise hides a refusal as a mystery.
+  if (outcome.declined) return `declined without acting: ${outcome.declined.slice(0, 200)}`;
   if (outcome.capped) return `capped after ${outcome.turns} turns`;
   if (outcome.report) return `${outcome.report.status}: ${outcome.report.summary}`;
   return "no report filed";

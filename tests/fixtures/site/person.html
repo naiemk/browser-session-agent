@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{name}}</title>
+  </head>
+  <body>
+    <nav>
+      <a href="/roster">Roster</a>
+      <a href="/guests">Guests</a>
+    </nav>
+    <main>
+      <h1>{{name}}</h1>
+      <p>Handle: @{{handle}}</p>
+      <!-- The city lives only here, so the list cannot answer the question. -->
+      <p>City: {{city}}</p>
+      <form action="/found" method="get">
+        <input type="hidden" name="who" value="{{handle}}" />
+        <button type="submit">Mark this one</button>
+      </form>
+    </main>
+  </body>
+</html>

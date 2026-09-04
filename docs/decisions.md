@@ -216,6 +216,88 @@ composes in a shell, and irreversible actions default to needing approval so an 
 run cannot submit something by surprise. Hosted use can adopt the same runtime later; it is
 a transport, not a different agent.
 
+## D41. Situational awareness is a primitive, not a taxonomy
+
+The agent needs to know where it stands: who it is acting as, what its session grants,
+whether what it is reading is reachable by anyone. The tempting fix is to declare the
+answers — flags for "own data" and "public data", a list of site categories, a policy table.
+Every version of that is wrong for the next site, because the same URL means different
+things depending on who is signed in, and the taxonomy has to be maintained per site
+forever.
+
+So we give one mechanism instead: load the same URL with no session and compare. It needs
+no knowledge of any particular site, and it answers all three questions at once. A redirect
+to a login wall, a shorter control list, an identical page — each is a fact the model can
+reason from. `compareObservations` deliberately returns differences and never a verdict:
+there is no `isPublic` field, because "public" is a conclusion and conclusions belong to
+whoever has the task in front of them. A difference is evidence and not proof, since A/B
+tests, geography, and consent walls all change an anonymous view for reasons unrelated to
+authorization, and the card says so.
+
+The same reasoning governs `remember`: free-form keys chosen by the agent, rather than a
+schema of fields we predicted it would need. Each fact carries the ledger event that
+established it, so a claim about the situation can always be traced to what was observed.
+
+## D42. A refusal is an outcome, not silence
+
+A model that answers in prose and calls no tools is invisible to a loop that only watches
+for reports: it looks identical to a task where nothing happened. That is how a human ends
+up arguing with a chatbot for twenty turns while the system believes it is working. So a
+run with zero tool calls, no report, and no transport error is recorded as `declined`, and
+the evaluator maps a persistent decline to `needs_user_input` — a decision for the human to
+rephrase, authorise, or drop.
+
+There is exactly one retry, and only when there are newly established facts to attach. A
+refusal is often correct, and a loop that keeps rephrasing until the model agrees is a
+machine for talking models out of correct refusals. One retry covers the case worth
+covering: the agent declined because it could not tell where it stood, and now it can.
+
+## D43. What counts as the answer is asked; how to get it is chosen
+
+Two failures in the same run looked like one problem called "needs better planning", and
+treating them alike would have produced the wrong fix for both. Picking `Following` when
+"friend list" also matched `Followers` changes *which entities end up in the result*, so it
+is not the agent's to decide. Walking a list by navigating to each item and back rather
+than reading each in a side tab changes only the cost, so it is entirely the agent's and
+asking about it would be noise.
+
+So: fork on referent, never on route. `note_fork` records that a word in the task matched
+more than one thing here, with its own ledger type, because silently choosing a meaning is
+a distinct failure from getting the work wrong. Resolution is decided on cost — cover every
+branch and label results by source when that is cheap and bounded, ask when it is not —
+which also respects the case where the operator does not know either, since a term like
+"friends" may not name anything the site actually has.
+
+The tool does not gate acting. Deciding in code whether a goal contains an ambiguous
+referent is exactly the kind of cleverness that misfires; the card asks for it and the
+suite measures whether it happened.
+
+## D44. Make the cheap route cheap instead of teaching cost
+
+The agent chose an expensive traversal because in its action vocabulary it was the only
+traversal. A planner added on top would have chosen the same one, since it would have been
+optimising over the same impoverished set. Widen the actions before building machinery to
+choose among them.
+
+This is the fourth environment gap, alongside the three in D19's diagnosis: in a repository
+a read does not move you, and in a browser it does, and you may not get back. `peek` closes
+it — open in a side tab that shares the session, read, close, and nothing moved. There is
+deliberately no cost model: making the good route the easy route means the model does not
+need to reason about cost to find it. The falsification is explicit, in
+`docs/autonomous-agent.md`: if the suite shows the agent still taking the expensive route
+with peek available, this was wrong and measure-one-item-then-commit is justified.
+
+The budget rides on action results rather than the card, because the system prompt is set
+once and resent verbatim. The nudge lands past halfway, while there is still budget to
+change route, and suggests rather than instructs, since we do not know how many items are
+left and so cannot say the pace is actually wrong.
+
+Two supporting decisions. Affordances are read, not cached (`survey`): interfaces advertise
+their own capabilities because humans must be able to find them, which is one of the few
+places the browser is easier than a repository, and it works on a site nobody has seen.
+Side tabs stay at one: concurrency would be faster and would look far more like scraping,
+and sequential peeking already removes every round trip.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

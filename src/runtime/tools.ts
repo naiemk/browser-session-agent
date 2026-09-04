@@ -11,10 +11,28 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import type { Ledger } from "../core/ledger.ts";
+import { peek } from "../core/peek.ts";
+import { viewWithoutSession } from "../core/perspective.ts";
 import { probe } from "../core/probe.ts";
+import type { GoalStore } from "../core/state.ts";
+import { surveyAffordances } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
-import { TOOL_ACT, TOOL_ASK, TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE, TOOL_PROBE } from "./names.ts";
+import {
+  TOOL_ACT,
+  TOOL_ASK,
+  TOOL_CHECK,
+  TOOL_DONE,
+  TOOL_FORK,
+  TOOL_OBSERVE,
+  TOOL_PEEK,
+  TOOL_PROBE,
+  TOOL_REMEMBER,
+  TOOL_SIDE_CLOSE,
+  TOOL_SIDE_OPEN,
+  TOOL_STRANGER,
+  TOOL_SURVEY,
+} from "./names.ts";
 import {
   toWireActionResult,
   toWireObservation,
@@ -42,7 +60,24 @@ export interface ToolContext {
   onParked?: (parked: ParkedOutcome) => void;
   /** Counts one browser action against the task budget. */
   onStep?: () => void;
+  /**
+   * The action budget, so results can say how much is left.
+   *
+   * The system prompt is set once and resent verbatim, so a live counter cannot live in
+   * the task card. Riding on action results instead costs nothing: the model already
+   * reads them, and it currently cannot tell it is losing until it is cut off.
+   */
+  stepLimit?: number;
+  /** Where established facts are kept, so they survive the task that found them. */
+  goalStore?: GoalStore;
+  /**
+   * Cap on session-free views. Each one is a real anonymous request to the site, so it is
+   * budgeted like any other read-only exploration rather than being free.
+   */
+  strangerViewBudget?: number;
 }
+
+export const DEFAULT_STRANGER_VIEW_BUDGET = 3;
 
 type Result = { content: Array<{ type: "text"; text: string }>; details: unknown; terminate?: boolean };
 
@@ -69,7 +104,39 @@ function describeError(err: unknown): string {
 }
 
 export function buildTools(context: ToolContext): AgentTool[] {
-  const tab = () => context.tabId;
+  let strangerViews = 0;
+  let steps = 0;
+
+  // The primary tab is the one the task is anchored to. A side tab makes the *active* tab
+  // something else for a while, and every tool follows it, so `act` works in the side tab
+  // with no special casing. The primary is never navigated by side work, which is the
+  // whole point: there is no position to restore because nothing moved.
+  let sideTab: string | undefined;
+  const tab = () => sideTab ?? context.tabId;
+
+  const countStep = () => {
+    steps += 1;
+    context.onStep?.();
+  };
+
+  /**
+   * How much of the budget is gone.
+   *
+   * The nudge past halfway exists because a bad route is only worth knowing about while
+   * there is still budget to change it. It suggests rather than instructs: we do not know
+   * how many items are left, so we cannot say whether the pace is actually wrong.
+   */
+  const budget = (): Record<string, unknown> | undefined => {
+    if (!context.stepLimit) return undefined;
+    const spent = { spent: steps, limit: context.stepLimit };
+    if (steps * 2 < context.stepLimit) return spent;
+    return {
+      ...spent,
+      note:
+        "Over half the action budget is gone. If you are working through a list, check you " +
+        `are on the cheap route: ${TOOL_PEEK} reads an item without leaving the list.`,
+    };
+  };
 
   const tools: RuntimeTool[] = [
     {
@@ -141,7 +208,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       execute: async (_id: string, params: unknown) => {
         const request = params as unknown as ActionRequest;
         try {
-          context.onStep?.();
+          countStep();
           const outcome = await guardedAct(
             context.browser,
             { ...request, tabId: tab() },
@@ -175,7 +242,11 @@ export function buildTools(context: ToolContext): AgentTool[] {
               note: "The action did not happen. Fix the precondition or take another route.",
             });
           }
-          return reply(toWireActionResult(outcome.result));
+          const spent = budget();
+          return reply({
+            ...toWireActionResult(outcome.result),
+            ...(spent ? { budget: spent } : {}),
+          });
         } catch (err) {
           return reply({ error: describeError(err) });
         }
@@ -199,6 +270,230 @@ export function buildTools(context: ToolContext): AgentTool[] {
         return answer === undefined
           ? reply({ answered: false, note: "Nobody available. Report what you are missing." })
           : reply({ answered: true, answer });
+      },
+    },
+    {
+      name: TOOL_STRANGER,
+      label: "View without session",
+      description:
+        "Load a URL with no cookies and no session, and compare it with the same URL as you. Use it when it matters who can see something, or to find out what your session grants. Returns what a stranger sees plus the differences; it draws no conclusion, and a difference can also come from A/B tests or geography. Each call is a real anonymous request, so it is budgeted.",
+      promptSnippet: "See a page as an anonymous visitor, and how that differs.",
+      parameters: Type.Object({
+        url: Type.Optional(Type.String({ description: "Defaults to the current page" })),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const budget = context.strangerViewBudget ?? DEFAULT_STRANGER_VIEW_BUDGET;
+        if (strangerViews >= budget) {
+          return reply({
+            error: `session-free view budget of ${budget} is spent`,
+            note: "Reason from what you already observed, or ask the operator.",
+          });
+        }
+        strangerViews += 1;
+        try {
+          const result = await viewWithoutSession(context.browser, {
+            url: (params as { url?: string }).url,
+            tabId: tab(),
+            ledger: context.ledger,
+            entityId: context.entityId,
+          });
+          return reply({
+            asStranger: toWireObservation(result.signedOut),
+            differences: result.delta,
+          });
+        } catch (err) {
+          return reply({ error: describeError(err) });
+        }
+      },
+    },
+    {
+      name: TOOL_REMEMBER,
+      label: "Remember",
+      description:
+        "Record something you established, in your own words, so it outlives this task. Use it for what you worked out about the situation: who you are acting as, what your session grants, what you confirmed about a page. Free-form: pick your own keys.",
+      promptSnippet: "Record what you established, with the evidence for it.",
+      parameters: Type.Object({
+        key: Type.String({ description: "Short name, e.g. operating-identity" }),
+        value: Type.String({ description: "What you established, and what you saw" }),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const raw = params as { key?: unknown; value?: unknown };
+        const key = String(raw.key ?? "").trim();
+        const value = String(raw.value ?? "").trim();
+        if (!key || !value) return reply({ error: "remember needs a key and a value" });
+
+        // The ledger event is the provenance: the fact points at what established it.
+        const event = await context.ledger?.append({
+          type: "note",
+          entityId: context.entityId,
+          intent: `established: ${key}`,
+          outcome: { ok: true, detail: value },
+        });
+        await context.goalStore?.mergeGoalFacts({
+          [key]: { value, evidence: event?.id, at: new Date().toISOString() },
+        });
+        return reply({ remembered: key, evidence: event?.id ?? null });
+      },
+    },
+    {
+      name: TOOL_SURVEY,
+      label: "Survey",
+      description:
+        "List what this page offers — navigation, tabs, search boxes, content links, buttons — grouped and deduped, following none of them. Use it before choosing a route, so you weigh the options against each other instead of taking the first that could work. It changes nothing.",
+      promptSnippet: "See the routes on offer before picking one.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        try {
+          return reply(
+            await surveyAffordances(context.browser.pageFor(tab()), {
+              ledger: context.ledger,
+              entityId: context.entityId,
+            }),
+          );
+        } catch (err) {
+          return reply({ error: describeError(err) });
+        }
+      },
+    },
+    {
+      name: TOOL_PEEK,
+      label: "Peek",
+      description:
+        `Read a URL in a side tab and come straight back, without leaving the page you are on. Use it to inspect items in a list: navigating away loses your place in the list, and peeking does not. Give expect (a predicate) when you built the URL from a name or id, so a URL that resolves to the wrong thing is caught instead of believed. The page is closed again, so refs from it cannot be acted on — use ${TOOL_SIDE_OPEN} when you need to do something there. Costs one action.`,
+      promptSnippet: "Read something elsewhere without losing your place.",
+      parameters: Type.Object({
+        url: Type.String(),
+        expect: Type.Optional(
+          Type.Object({}, { additionalProperties: true, description: "Predicate proving identity" }),
+        ),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const raw = params as { url?: unknown; expect?: unknown };
+        try {
+          countStep();
+          const result = await peek(context.browser, {
+            url: String(raw.url ?? ""),
+            tabId: tab(),
+            ...(raw.expect ? { expect: raw.expect as Predicate } : {}),
+            ledger: context.ledger,
+            entityId: context.entityId,
+          });
+          const spent = budget();
+          return reply({
+            page: toWireObservation(result.observation),
+            matched: result.matched,
+            ...(result.identity ? { identity: result.identity.detail } : {}),
+            ...(result.matched
+              ? {}
+              : { note: "This is not what you asked for. Do not read anything into it." }),
+            stillOn: result.origin.url,
+            ...(spent ? { budget: spent } : {}),
+          });
+        } catch (err) {
+          return reply({ error: describeError(err) });
+        }
+      },
+    },
+    {
+      name: TOOL_SIDE_OPEN,
+      label: "Open side tab",
+      description:
+        `Open a side tab and work in it. Use it when reading is not enough — searching for something, filling a form — and you must not lose the page you are on. Every tool then targets the side tab until ${TOOL_SIDE_CLOSE}. One at a time.`,
+      promptSnippet: "Work somewhere else without losing your place.",
+      parameters: Type.Object({ url: Type.String() }),
+      execute: async (_id: string, params: unknown) => {
+        if (sideTab) {
+          return reply({
+            error: "a side tab is already open",
+            note: `Close it with ${TOOL_SIDE_CLOSE} first. Only one at a time.`,
+          });
+        }
+        try {
+          countStep();
+          const primary = await context.browser.observe(context.tabId);
+          sideTab = await context.browser.openTab(String((params as { url?: unknown }).url ?? ""));
+          const observation = await context.browser.observe(sideTab);
+          await context.ledger?.append({
+            type: "note",
+            entityId: context.entityId,
+            intent: `open side tab at ${observation.url}`,
+            outcome: { ok: true, detail: `still on ${primary.url}` },
+          });
+          return reply({
+            page: toWireObservation(observation),
+            stillOn: primary.url,
+            note: `You are now working in the side tab. ${TOOL_SIDE_CLOSE} returns you.`,
+          });
+        } catch (err) {
+          // A failed open must not leave the active tab pointing at nothing.
+          sideTab = undefined;
+          return reply({ error: describeError(err) });
+        }
+      },
+    },
+    {
+      name: TOOL_SIDE_CLOSE,
+      label: "Close side tab",
+      description: "Close the side tab and go back to working on the page you left.",
+      promptSnippet: "Return to the page you left.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        if (!sideTab) return reply({ error: "no side tab is open" });
+        const closing = sideTab;
+        sideTab = undefined;
+        try {
+          await context.browser.closeTab(closing);
+        } catch (err) {
+          return reply({ error: describeError(err) });
+        }
+        return reply({ page: toWireObservation(await context.browser.observe(context.tabId)) });
+      },
+    },
+    {
+      name: TOOL_FORK,
+      label: "Note fork",
+      description:
+        "Record that a word in the task matched more than one thing on this site, and what you did about it. Cover every branch and label results by source when that is cheap and bounded; ask the operator when it is not. Either way record it, because choosing one meaning silently gives a confident answer to a question nobody asked.",
+      promptSnippet: "Record an ambiguity instead of silently resolving it.",
+      parameters: Type.Object({
+        term: Type.String({ description: 'The word from the task, e.g. "friend list"' }),
+        candidates: Type.Array(Type.String(), { description: "What it could mean here" }),
+        resolution: Type.String({ description: "covered_all | asked | chose" }),
+        why: Type.String(),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const raw = params as {
+          term?: unknown;
+          candidates?: unknown;
+          resolution?: unknown;
+          why?: unknown;
+        };
+        const term = String(raw.term ?? "").trim();
+        const candidates = Array.isArray(raw.candidates)
+          ? raw.candidates.map((entry) => String(entry).trim()).filter(Boolean)
+          : [];
+        if (!term || candidates.length < 2) {
+          return reply({
+            error: "a fork needs a term and at least two candidates",
+            note: "If only one thing matched, there is no fork to record.",
+          });
+        }
+        const resolution = ["covered_all", "asked", "chose"].includes(String(raw.resolution))
+          ? String(raw.resolution)
+          : "chose";
+        const why = String(raw.why ?? "").trim();
+
+        const event = await context.ledger?.append({
+          type: "fork",
+          entityId: context.entityId,
+          intent: `"${term}" could mean ${candidates.join(" or ")}`,
+          outcome: { ok: true, detail: `${resolution}: ${why}` },
+          payload: { term, candidates, resolution, why },
+        });
+        await context.goalStore?.mergeGoalFacts({
+          [`fork:${term}`]: { candidates, resolution, why, evidence: event?.id },
+        });
+        return reply({ recorded: term, candidates: candidates.length, resolution });
       },
     },
     {

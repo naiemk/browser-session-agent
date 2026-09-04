@@ -41,7 +41,32 @@ describe("task card", () => {
 
   it("stays short, because the prompt is resent every turn", () => {
     const card = buildTaskCard({ ...CARD, maxTurns: 12 });
-    assert.ok(card.length < 1600, `card is ${card.length} chars; trim it`);
+    assert.ok(card.length < 3400, `card is ${card.length} chars; trim it`);
     assert.match(card, /about 12 turns/);
+  });
+
+  it("separates what counts as the answer from how to go and get it", () => {
+    const card = buildTaskCard(CARD);
+
+    // A word that means two things changes the answer, so it is surfaced.
+    assert.match(card, /matches more than one thing/);
+    assert.match(card, /note_fork/);
+
+    // The route only changes the cost, so it is chosen and not asked about.
+    assert.match(card, /take the cheap one and do not ask about it/);
+    assert.match(card, /navigating away loses your place/);
+  });
+
+  it("teaches a method for establishing standing, and asserts no situation", () => {
+    const card = buildTaskCard(CARD);
+    assert.match(card, /Who are you acting as/);
+    assert.match(card, /What does your session grant/);
+    assert.match(card, /evidence, not proof/);
+
+    // The card must not tell the agent a story about whose data this is: that varies by
+    // site, session, and task, and a fixed answer is wrong for the next case.
+    assert.doesNotMatch(card, /your own account/i);
+    assert.doesNotMatch(card, /you are the signed-in user/i);
+    assert.doesNotMatch(card, /public data/i);
   });
 });

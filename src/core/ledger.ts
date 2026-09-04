@@ -24,6 +24,12 @@ export type LedgerEventType =
   | "resumed"
   | "probe"
   | "approval"
+  /**
+   * A word in the goal matched more than one thing here, and this is what was done about
+   * it. Its own type because silently picking one meaning is a distinct failure from
+   * getting the work wrong, and it has to be findable to be measurable.
+   */
+  | "fork"
   | "note";
 
 export interface LedgerEvent {

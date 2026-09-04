@@ -11,7 +11,18 @@ import type { CheckResult, Predicate, WaitSpec } from "../core/types.ts";
 
 /** One step of a reference solution, addressing controls by name rather than ref. */
 export interface ReferenceStep {
-  do: "navigate" | "click" | "type" | "select" | "scroll" | "wait" | "upload";
+  do:
+    | "navigate"
+    | "click"
+    | "type"
+    | "select"
+    | "scroll"
+    | "wait"
+    | "upload"
+    /** Read a URL in a side tab without leaving the page. */
+    | "peek"
+    /** Record that a word in the task matched more than one thing here. */
+    | "fork";
   /** Substring of the control's accessible name. */
   name?: string;
   url?: string;
@@ -20,12 +31,32 @@ export interface ReferenceStep {
   dy?: number;
   files?: string[];
   wait?: WaitSpec;
+  /** For `peek`: what must be true of the page for it to be the thing meant. */
+  expect?: Predicate;
+  /** For `fork`: the ambiguous term and what it could mean here. */
+  term?: string;
+  candidates?: string[];
+  resolution?: "covered_all" | "asked" | "chose";
   /** Repeat this step until the predicate holds. Used for pagination. */
   until?: Predicate;
   maxRepeat?: number;
   /** Expected to fail; the point of the step is the failure. */
   allowFailure?: boolean;
 }
+
+/**
+ * A check against the evidence a run left behind, rather than against the page.
+ *
+ * Page criteria cannot see procedure. An agent that silently resolves "my contacts" to one
+ * of two lists reaches a perfectly good page, so nothing in the DOM distinguishes it from
+ * an agent that surfaced the ambiguity first — which is exactly the failure we set out to
+ * catch. The ledger can see it, so that is where these are evaluated.
+ *
+ * Kept separate from `criteria` so `Predicate` stays a statement about a page.
+ */
+export type EvidenceCheck =
+  | { kind: "fork_recorded"; term?: string; minCandidates?: number }
+  | { kind: "peeked"; minCount: number };
 
 export interface SuiteTask {
   id: string;
@@ -35,6 +66,8 @@ export interface SuiteTask {
   path: string;
   /** External success criteria. Immutable, evaluated in code. */
   criteria: Predicate[];
+  /** Criteria about how the run went, read from the ledger. Optional. */
+  evidence?: EvidenceCheck[];
   maxSteps: number;
   tags: string[];
   /**
@@ -53,6 +86,8 @@ export interface TaskRun {
   durationMs: number;
   detail: string;
   checks: CheckResult[];
+  /** Results of the task's evidence checks, when it has any. */
+  evidenceChecks?: CheckResult[];
   tokens?: number;
   costUsd?: number;
 }
@@ -84,6 +119,14 @@ export interface DriverContext {
   maxSteps: number;
   /** Called once per browser action. Throws once the cap is exceeded. */
   step(): void;
+  /**
+   * Where this run must write its evidence.
+   *
+   * The runner chooses it and reads it back itself, so a driver cannot decide what gets
+   * evaluated — the same reason criteria are snapshotted before the driver is handed
+   * anything.
+   */
+  evidence?: { root: string; goalId: string };
 }
 
 export interface DriverOutcome {

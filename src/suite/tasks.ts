@@ -372,6 +372,81 @@ export const SUITE_TASKS: SuiteTask[] = [
     criteria: [{ kind: "text_visible", text: "All fields are required" }],
     reference: [{ do: "click", name: "Submit application" }],
   },
+  {
+    /**
+     * Cost sensitivity, measured by the step cap rather than by a new score.
+     *
+     * The city lives only on a person's own page, so candidates have to be looked at one
+     * by one, and the roster builds its rows in script for the current page only — so
+     * navigating away really does cost the clicks to page back. Peeking each candidate
+     * fits in the budget; navigating to each one and back does not. Nothing tells the
+     * agent which route to take, which is the point: the cheap route has to be the one it
+     * reaches for.
+     */
+    id: "roster-cheap-traversal",
+    goal: "Someone in the roster lives in Minsk. Find them and mark them.",
+    path: "/roster",
+    tags: ["traversal", "cost", "enumeration"],
+    maxSteps: 12,
+    criteria: [{ kind: "text_visible", text: "Found: Dana Ivanova" }],
+    reference: [
+      { do: "peek", url: "/p/ada", expect: { kind: "text_visible", text: "London" } },
+      { do: "peek", url: "/p/grace", expect: { kind: "text_visible", text: "New York" } },
+      { do: "peek", url: "/p/alan", expect: { kind: "text_visible", text: "Manchester" } },
+      { do: "peek", url: "/p/katherine", expect: { kind: "text_visible", text: "Hampton" } },
+      { do: "click", name: "Next page" },
+      { do: "peek", url: "/p/barbara", expect: { kind: "text_visible", text: "Boston" } },
+      { do: "peek", url: "/p/edsger", expect: { kind: "text_visible", text: "Austin" } },
+      { do: "peek", url: "/p/dana", expect: { kind: "text_visible", text: "Minsk" } },
+      { do: "navigate", url: "/p/dana" },
+      { do: "click", name: "Mark this one" },
+    ],
+  },
+  {
+    /**
+     * The same traversal with nothing to click. Rows hand over a name and a handle as
+     * text, so reaching a person needs a built URL or the search page — which is the
+     * common case on real sites, where list rows are not anchors.
+     */
+    id: "roster-no-links",
+    goal: "Dana Ivanova is in the roster. Open her page and mark her.",
+    path: "/roster-plain",
+    tags: ["traversal", "identity", "search"],
+    maxSteps: 10,
+    criteria: [{ kind: "text_visible", text: "Found: Dana Ivanova" }],
+    evidence: [{ kind: "peeked", minCount: 1 }],
+    reference: [
+      // Confirm the built URL is the right person before trusting anything on it.
+      { do: "peek", url: "/p/dana", expect: { kind: "text_visible", text: "Dana Ivanova" } },
+      { do: "navigate", url: "/p/dana" },
+      { do: "click", name: "Mark this one" },
+    ],
+  },
+  {
+    /**
+     * A word in the task that matches two things here. "Contacts" is the roster and it is
+     * the guest list, each holding someone from Minsk, so choosing one silently gives a
+     * confident answer to a question nobody asked.
+     *
+     * Scored on evidence, because the page cannot show the difference: an agent that
+     * picked a list at random lands somewhere perfectly valid. This is the first
+     * procedural failure the suite can see.
+     */
+    id: "roster-ambiguous-referent",
+    goal: "One of my contacts lives in Minsk. Find them and mark them.",
+    path: "/roster",
+    tags: ["ambiguous", "referent", "planning"],
+    maxSteps: 16,
+    criteria: [{ kind: "text_visible", text: "City: Minsk" }],
+    evidence: [{ kind: "fork_recorded", term: "contacts", minCandidates: 2 }],
+    reference: [
+      { do: "fork", term: "contacts", candidates: ["Roster", "Guests"], resolution: "covered_all" },
+      { do: "peek", url: "/p/dana", expect: { kind: "text_visible", text: "Minsk" } },
+      { do: "peek", url: "/p/boris", expect: { kind: "text_visible", text: "Minsk" } },
+      { do: "navigate", url: "/p/dana" },
+      { do: "click", name: "Mark this one" },
+    ],
+  },
 ];
 
 export function taskById(id: string): SuiteTask | undefined {

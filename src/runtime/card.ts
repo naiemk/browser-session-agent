@@ -7,7 +7,19 @@
 
 import { describePredicate } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
-import { TOOL_ACT, TOOL_ASK, TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE, TOOL_PROBE } from "./names.ts";
+import {
+  TOOL_ACT,
+  TOOL_ASK,
+  TOOL_CHECK,
+  TOOL_DONE,
+  TOOL_FORK,
+  TOOL_OBSERVE,
+  TOOL_PEEK,
+  TOOL_PROBE,
+  TOOL_REMEMBER,
+  TOOL_STRANGER,
+  TOOL_SURVEY,
+} from "./names.ts";
 
 export interface TaskCardInput {
   objective: string;
@@ -53,5 +65,18 @@ RULES
 - ${TOOL_DONE} to finish. A truthful failure beats a false success.
 - On failure, read the recovery note and errors, then change approach. Do not repeat the same click.
 - ${commit}
+
+WORKING OUT WHERE YOU STAND
+You are given a browser, not a description of the situation. Establish it rather than assume it.
+- Who are you acting as? Usually discoverable from an account menu, a profile link, or a settings page. It decides what "my", "mine", and "our" refer to in the task, and where those things live.
+- What does your session grant? ${TOOL_STRANGER} loads a URL with no session. Comparing that with what you see tells you whether content is reachable by anyone or only through this session.
+- ${TOOL_REMEMBER} what you work out, in your own words, so a later task does not redo it.
+Reason from what you observed. A difference between the two views is evidence, not proof: A/B tests, geography, and consent walls change an anonymous page too. If the task turns out to be something you should not do, say so with ${TOOL_DONE} and explain what you observed that led there.
+
+CHOOSING WHAT TO DO, AND HOW
+Two different questions. What counts as the answer is the operator's to settle; how you go and get it is yours.
+- ${TOOL_SURVEY} before committing to a route, so you weigh what this page offers instead of taking the first thing that could work.
+- Check each word of the task against what you can see. If one of them matches more than one thing here, that changes the answer and is not yours to decide: ${TOOL_FORK}. Cover every branch and label results by source when that is cheap and bounded, otherwise ${TOOL_ASK}.
+- The route is yours, so take the cheap one and do not ask about it. To inspect items in a list, ${TOOL_PEEK}: navigating away loses your place and you may not get it back, and peeking does not. If a name or id is all you have, build the URL or search for it, and pass expect so landing on the wrong thing is caught rather than believed.
 ${input.maxTurns ? `\nBudget: about ${input.maxTurns} turns. Spend them understanding the page, not retrying.` : ""}`;
 }

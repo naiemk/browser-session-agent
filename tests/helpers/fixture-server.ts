@@ -44,6 +44,29 @@ const ROUTES: Record<string, string> = {
   "/tmpl-a": "tmpl-a.html",
   "/tmpl-b": "tmpl-b.html",
   "/secrets": "secrets.html",
+  "/account": "account.html",
+  "/roster": "roster.html",
+  "/guests": "guests.html",
+};
+
+/**
+ * People for the roster fixtures. The city lives only on a person's own page, so the list
+ * cannot answer "who is from Minsk" and each candidate has to be looked at.
+ */
+const PEOPLE: Record<string, { name: string; city: string }> = {
+  ada: { name: "Ada Lovelace", city: "London" },
+  grace: { name: "Grace Hopper", city: "New York" },
+  alan: { name: "Alan Turing", city: "Manchester" },
+  katherine: { name: "Katherine Johnson", city: "Hampton" },
+  barbara: { name: "Barbara Liskov", city: "Boston" },
+  edsger: { name: "Edsger Dijkstra", city: "Austin" },
+  dana: { name: "Dana Ivanova", city: "Minsk" },
+  linus: { name: "Linus Torvalds", city: "Portland" },
+  // Guests. Boris is also from Minsk, which is what makes "my contacts" a fork rather
+  // than a wording problem: the two readings give different answers.
+  boris: { name: "Boris Petrov", city: "Minsk" },
+  carla: { name: "Carla Mendes", city: "Lisbon" },
+  nadia: { name: "Nadia Haddad", city: "Beirut" },
 };
 
 /** Shared handler for the two hosts that render the same application template. */
@@ -115,6 +138,47 @@ export class FixtureServer {
           send(res, 302, "", { location: "/login" });
           return;
         }
+        // The plain roster shows handles as text with nothing to click, so reaching a
+        // person needs a built URL or the search page.
+        if (url.pathname === "/roster-plain") {
+          const html = await page("roster.html");
+          send(res, 200, html.replace("<body>", '<body data-plain="1">'));
+          return;
+        }
+        if (url.pathname.startsWith("/p/")) {
+          const handle = url.pathname.slice("/p/".length);
+          const person = PEOPLE[handle];
+          if (!person) {
+            send(res, 404, "<h1>No such person</h1>");
+            return;
+          }
+          send(res, 200, await page("person.html", { ...person, handle }));
+          return;
+        }
+        if (url.pathname === "/found") {
+          const handle = url.searchParams.get("who") ?? "";
+          const person = PEOPLE[handle];
+          if (!person) {
+            send(res, 404, "<h1>No such person</h1>");
+            return;
+          }
+          send(res, 200, await page("found.html", person));
+          return;
+        }
+        if (url.pathname === "/find") {
+          const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+          const results = q
+            ? Object.entries(PEOPLE)
+                .filter(
+                  ([handle, person]) =>
+                    handle.includes(q) || person.name.toLowerCase().includes(q),
+                )
+                .map(([handle, person]) => `<li><a href="/p/${handle}">${person.name}</a></li>`)
+                .join("\n")
+            : "";
+          send(res, 200, await page("find.html", { q, results }));
+          return;
+        }
         const file = ROUTES[url.pathname] ?? "";
         if (!file) {
           send(res, 404, "<h1>Not found</h1>");
@@ -150,8 +214,8 @@ export class FixtureServer {
 }
 
 async function page(file: string, vars: Record<string, string> = {}): Promise<string> {
-  let html = await readFile(path.join(SITE_DIR, file), "utf8");
-  html = html.replace("{{error}}", vars.error ?? "");
-  html = html.replace("{{name}}", vars.name ?? "");
-  return html;
+  const html = await readFile(path.join(SITE_DIR, file), "utf8");
+  // Every placeholder, not two named ones: the roster fixtures need name, handle, city,
+  // and a results list. Unsupplied placeholders still blank out as they always did.
+  return html.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => vars[key] ?? "");
 }
