@@ -38,6 +38,8 @@
     "suite": "tsx src/cli/run.ts suite --target mock",
     "suite:reference": "tsx src/cli/run.ts suite --target reference",
     "suite:live": "tsx src/cli/run.ts suite --target live",
+    "optimize:baseline": "tsx src/cli/run.ts suite --target mock --all --optimize-out optimize/baseline.json",
+    "optimize:check": "tsx src/cli/run.ts suite --target mock --all --optimize-out /tmp/optimize-current.json && tsx src/cli/run.ts compare optimize/baseline.json /tmp/optimize-current.json",
     "e2e:jsonlint": "tsx scripts/e2e-jsonlint.ts",
     "cli": "node bin/bsa-cli.mjs",
     "web": "node bin/bsa-web.mjs",

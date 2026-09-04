@@ -13,9 +13,8 @@ import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gat
 import type { Ledger } from "../core/ledger.ts";
 import { peek } from "../core/peek.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
-import { probe } from "../core/probe.ts";
 import type { GoalStore } from "../core/state.ts";
-import { surveyAffordances } from "../core/survey.ts";
+import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
 import {
@@ -33,12 +32,9 @@ import {
   TOOL_STRANGER,
   TOOL_SURVEY,
 } from "./names.ts";
-import {
-  toWireActionResult,
-  toWireObservation,
-  toWireVerification,
-  wireText,
-} from "./wire.ts";
+import { hashOf, observationStats, type MetricsSink } from "./metrics.ts";
+import { findWireObservation, wireText } from "./wire.ts";
+import { flatView, type ViewStrategy } from "./view/index.ts";
 
 export interface ReportPayload {
   status: "success" | "blocked" | "failed";
@@ -75,6 +71,12 @@ export interface ToolContext {
    * budgeted like any other read-only exploration rather than being free.
    */
   strangerViewBudget?: number;
+  /** Where per-result size and duplicate-work metering goes. Defaults to nowhere. */
+  metrics?: MetricsSink;
+  /** The current turn, so a result can be joined to the turn that paid for it. */
+  turn?: () => number;
+  /** How the page is described to the model. Defaults to the flat control list. */
+  view?: ViewStrategy;
 }
 
 export const DEFAULT_STRANGER_VIEW_BUDGET = 3;
@@ -98,12 +100,59 @@ function reply(value: unknown, details: unknown = value): Result {
   return { content: [{ type: "text", text: wireText(value) }], details };
 }
 
+/**
+ * Measure every tool result at the one place they all pass through.
+ *
+ * Wrapping `execute` rather than `reply` keeps the tool name available and means a tool
+ * added later is measured without touching it. The text measured here is exactly the
+ * string the model receives, so the bytes are the real bytes rather than an estimate.
+ */
+function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
+  const metrics = context.metrics;
+  if (!metrics) return tool;
+
+  return {
+    ...tool,
+    execute: async (toolCallId: string, params: unknown) => {
+      const result = await tool.execute(toolCallId, params);
+      const turn = context.turn?.() ?? 0;
+      const text = result.content.map((part) => part.text).join("");
+
+      metrics.record({
+        kind: "tool_result",
+        turn,
+        tool: tool.name,
+        bytes: text.length,
+        hash: hashOf(text),
+      });
+
+      // Snapshots dominate the bill, so they are counted in their own right wherever
+      // they turn up rather than only when `observe` produced them.
+      const observation = findWireObservation(result.details);
+      if (observation) {
+        const stats = observationStats(observation);
+        metrics.record({
+          kind: "observation",
+          turn,
+          tool: tool.name,
+          bytes: wireText(observation).length,
+          hash: hashOf(wireText(observation)),
+          ...stats,
+        });
+      }
+
+      return result;
+    },
+  };
+}
+
 function describeError(err: unknown): string {
   if (err instanceof CoreError) return `${err.code}: ${err.message}`;
   return err instanceof Error ? err.message : String(err);
 }
 
 export function buildTools(context: ToolContext): AgentTool[] {
+  const view = context.view ?? flatView;
   let strangerViews = 0;
   let steps = 0;
 
@@ -146,7 +195,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
         "Snapshot the page: url, title, controls with refs and values, dialogs, page errors, and what changed since the last look.",
       promptSnippet: "Look at the page. Refs come from here.",
       parameters: Type.Object({}),
-      execute: async () => reply(toWireObservation(await context.browser.observe(tab()))),
+      execute: async () => reply(view.observation(await context.browser.observe(tab()))),
     },
     {
       name: TOOL_PROBE,
@@ -156,10 +205,15 @@ export function buildTools(context: ToolContext): AgentTool[] {
       promptSnippet: "Read anything about the page without touching it.",
       parameters: Type.Object({ query: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
+        const query = (params as { query: unknown }).query;
         try {
-          const result = await probe(context.browser.pageFor(tab()), (params as { query: unknown }).query, {
-            ledger: context.ledger,
+          const result = await context.browser.probe(query, tab());
+          // The probe answers; recording is ours, so evidence has one owner.
+          await context.ledger?.append({
+            type: "probe",
             entityId: context.entityId,
+            intent: `probe ${(query as { kind?: string })?.kind ?? "?"}`,
+            payload: { query, truncated: result.truncated },
           });
           return reply(result.truncated ? { data: result.data, note: result.note } : result.data);
         } catch (err) {
@@ -181,7 +235,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
             (params as { predicate: unknown }).predicate,
             { ledger: context.ledger, entityId: context.entityId, tabId: tab() },
           );
-          return reply(toWireVerification(verification));
+          return reply(view.verification(verification));
         } catch (err) {
           return reply({ error: describeError(err) });
         }
@@ -244,7 +298,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           }
           const spent = budget();
           return reply({
-            ...toWireActionResult(outcome.result),
+            ...view.actionResult(outcome.result),
             ...(spent ? { budget: spent } : {}),
           });
         } catch (err) {
@@ -298,7 +352,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
             entityId: context.entityId,
           });
           return reply({
-            asStranger: toWireObservation(result.signedOut),
+            asStranger: view.observation(result.signedOut),
             differences: result.delta,
           });
         } catch (err) {
@@ -344,12 +398,14 @@ export function buildTools(context: ToolContext): AgentTool[] {
       parameters: Type.Object({}),
       execute: async () => {
         try {
-          return reply(
-            await surveyAffordances(context.browser.pageFor(tab()), {
-              ledger: context.ledger,
-              entityId: context.entityId,
-            }),
-          );
+          const survey = await context.browser.survey(tab());
+          await context.ledger?.append({
+            type: "probe",
+            entityId: context.entityId,
+            intent: `survey what ${survey.url} offers`,
+            payload: { counts: surveyCounts(survey) },
+          });
+          return reply(survey);
         } catch (err) {
           return reply({ error: describeError(err) });
         }
@@ -380,7 +436,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           });
           const spent = budget();
           return reply({
-            page: toWireObservation(result.observation),
+            page: view.observation(result.observation),
             matched: result.matched,
             ...(result.identity ? { identity: result.identity.detail } : {}),
             ...(result.matched
@@ -420,7 +476,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
             outcome: { ok: true, detail: `still on ${primary.url}` },
           });
           return reply({
-            page: toWireObservation(observation),
+            page: view.observation(observation),
             stillOn: primary.url,
             note: `You are now working in the side tab. ${TOOL_SIDE_CLOSE} returns you.`,
           });
@@ -446,7 +502,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
         } catch (err) {
           return reply({ error: describeError(err) });
         }
-        return reply({ page: toWireObservation(await context.browser.observe(context.tabId)) });
+        return reply({ page: view.observation(await context.browser.observe(context.tabId)) });
       },
     },
     {
@@ -520,5 +576,5 @@ export function buildTools(context: ToolContext): AgentTool[] {
   ];
 
   // One cast, at the boundary where the engine takes over.
-  return tools as unknown as AgentTool[];
+  return tools.map((tool) => measured(tool, context)) as unknown as AgentTool[];
 }

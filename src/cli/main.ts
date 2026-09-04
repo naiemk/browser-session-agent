@@ -8,13 +8,13 @@
  * something goes wrong.
  */
 
-import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { LocalBrowser } from "../core/browser.ts";
 import { evaluateTask } from "../core/evaluator.ts";
 import { Ledger } from "../core/ledger.ts";
-import { coreRoot } from "../core/paths.ts";
+import { coreRoot, goalPaths } from "../core/paths.ts";
 import { PlanStore } from "../core/plan.ts";
 import { parsePredicate } from "../core/predicates.ts";
 import { GoalStore } from "../core/state.ts";
@@ -92,6 +92,8 @@ Usage:
   browser-agent run "<goal>" --url <url> [options]
   browser-agent suite [--target mock|reference|live] [options]
   browser-agent replay <goalId> [--root <dir>]
+  browser-agent metrics <goalId> [--root <dir>] [--json]
+  browser-agent compare <baseline.json> <current.json>
 
 run options:
   --url <url>              page to start from (required)
@@ -114,10 +116,19 @@ suite options:
   --only <id,id>           specific task ids
   --tags <tag,tag>         tasks carrying any of these tags
   --out <file>             write the JSON report
+  --optimize-out <file>    write just the cost summary, for a committed baseline
   --pause <ms>             gap between tasks (live default: 2000)
 
 replay options:
   --root <dir>             evidence root
+
+metrics options:
+  --root <dir>             evidence root
+  --json                   the full rollup as JSON
+
+compare takes two suite reports and explains what moved, attributed by payload.
+It never exits non-zero for a regression: a rise with a named cause is a
+decision to make, not a build to break.
 `;
 
 async function commandRun(args: ParsedArgs): Promise<number> {
@@ -280,6 +291,29 @@ async function commandSuite(args: ParsedArgs): Promise<number> {
       process.stderr.write(`wrote ${out}\n`);
     }
 
+    // Just the cost summary, which is what a committed baseline wants: the full report
+    // carries per-run detail that churns on every commit and buries the numbers.
+    const optimizeOut = flagString(args.flags, "optimize-out");
+    if (optimizeOut && report.optimize) {
+      await mkdir(path.dirname(optimizeOut), { recursive: true });
+      await writeFile(
+        optimizeOut,
+        `${JSON.stringify(
+          {
+            note: "Structural cost of the token-free suite. Regenerate with npm run optimize:baseline.",
+            recordedAt: report.finishedAt,
+            target: report.target,
+            taskCount: report.taskCount,
+            optimize: report.optimize,
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+      process.stderr.write(`wrote ${optimizeOut}\n`);
+    }
+
     process.stdout.write(`${formatReport(report)}\n`);
     return report.valid ? 0 : 1;
   } finally {
@@ -347,6 +381,57 @@ async function commandReplay(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+async function commandMetrics(args: ParsedArgs): Promise<number> {
+  const goalId = args.positional[0];
+  if (!goalId) {
+    process.stderr.write("metrics needs a goal id\n");
+    return 2;
+  }
+  const [{ readMetrics }, { rollup, formatRollup }] = await Promise.all([
+    import("../optimize/recorder.ts"),
+    import("../optimize/rollup.ts"),
+  ]);
+
+  const root = flagString(args.flags, "root") ?? coreRoot();
+  const records = await readMetrics(goalPaths(root, goalId).metricsFile);
+  if (records.length === 0) {
+    process.stderr.write(
+      `no metrics for ${goalId} under ${root}. Runs record them only when a metrics sink is set.\n`,
+    );
+    return 1;
+  }
+
+  // The ledger answers repeat visits and repeat probes better than the metrics do, so
+  // both are read when it is there.
+  const events = await Ledger.readFrom(root, goalId).catch(() => []);
+  const summary = rollup({ records, events, goalId });
+
+  process.stdout.write(
+    args.flags.json ? `${JSON.stringify(summary, null, 2)}\n` : `${formatRollup(summary)}\n`,
+  );
+  return 0;
+}
+
+async function commandCompare(args: ParsedArgs): Promise<number> {
+  const [baselineFile, currentFile] = args.positional;
+  if (!baselineFile || !currentFile) {
+    process.stderr.write("compare needs a baseline file and a current file\n");
+    return 2;
+  }
+  const { compareReports, formatComparison } = await import("../optimize/regress.ts");
+  const read = async (file: string) => JSON.parse(await readFile(file, "utf8"));
+
+  const comparison = compareReports(await read(baselineFile), await read(currentFile));
+  process.stdout.write(
+    args.flags.json
+      ? `${JSON.stringify(comparison, null, 2)}\n`
+      : `${formatComparison(comparison)}\n`,
+  );
+  // Deliberately always zero. A regression is reported so it can be judged, never
+  // enforced: shipping the job matters more than the token bill.
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   switch (args.command) {
@@ -356,6 +441,10 @@ export async function main(argv: string[]): Promise<number> {
       return commandSuite(args);
     case "replay":
       return commandReplay(args);
+    case "metrics":
+      return commandMetrics(args);
+    case "compare":
+      return commandCompare(args);
     case "help":
     case "--help":
     case "-h":

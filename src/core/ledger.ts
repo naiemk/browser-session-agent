@@ -39,7 +39,19 @@ export interface LedgerEvent {
   ts: string;
   type: LedgerEventType;
   intent?: string;
-  before?: { url: string; title: string; controls: number };
+  before?: {
+    url: string;
+    title: string;
+    controls: number;
+    /**
+     * Whether the snapshot was cut short.
+     *
+     * A third of the observations in a real failing run were truncated and the evidence
+     * log could not show it, so the agent looked incompetent when it was reasoning from
+     * a fragment. Cheap to record, and it changes the reading of everything around it.
+     */
+    truncated?: true;
+  };
   action?: {
     kind: string;
     ref?: string;

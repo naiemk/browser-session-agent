@@ -18,7 +18,6 @@
  */
 
 import type { Page } from "playwright";
-import type { Ledger } from "./ledger.ts";
 import { probe } from "./probe.ts";
 
 export interface Affordance {
@@ -103,11 +102,11 @@ function toAffordances(raw: RawElement[]): Affordance[] {
 
 /**
  * Read the routes this page offers, following none of them.
+ *
+ * Records nothing: like `probe`, this answers a question and leaves what is worth
+ * remembering to the caller, so evidence has one owner rather than one per primitive.
  */
-export async function surveyAffordances(
-  page: Page,
-  options: { ledger?: Ledger; entityId?: string } = {},
-): Promise<AffordanceSurvey> {
+export async function surveyAffordances(page: Page): Promise<AffordanceSurvey> {
   const meta = (await probe(page, { kind: "page_meta" })).data as { url: string; title: string };
 
   const navLinks = await read(
@@ -148,20 +147,16 @@ export async function surveyAffordances(
       actions.truncated,
   };
 
-  await options.ledger?.append({
-    type: "probe",
-    entityId: options.entityId,
-    intent: `survey what ${meta.url} offers`,
-    payload: {
-      counts: {
-        navigation: survey.navigation.length,
-        tabs: survey.tabs.length,
-        search: survey.search.length,
-        content: survey.content.length,
-        actions: survey.actions.length,
-      },
-    },
-  });
-
   return survey;
+}
+
+/** Counts worth recording, so a caller can log a survey without re-deriving them. */
+export function surveyCounts(survey: AffordanceSurvey): Record<string, number> {
+  return {
+    navigation: survey.navigation.length,
+    tabs: survey.tabs.length,
+    search: survey.search.length,
+    content: survey.content.length,
+    actions: survey.actions.length,
+  };
 }

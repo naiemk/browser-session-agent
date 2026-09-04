@@ -298,6 +298,69 @@ places the browser is easier than a repository, and it works on a site nobody ha
 Side tabs stay at one: concurrency would be faster and would look far more like scraping,
 and sequential peeking already removes every round trip.
 
+## D45. Perishability is a property of the payload, not of the tool name
+
+Pruning matched a list of tool names and so covered `observe` and `probe` and silently
+missed every other tool that returns a page: `act` embeds a snapshot in its result, and
+`peek` and the stranger view each return one under their own key. Those snapshots
+accumulated untouched and were resent on every subsequent turn, which is the leak the
+mechanism existed to prevent.
+
+Deciding by shape — does this result carry a snapshot — fixes the three that were missed
+and, more importantly, covers the next tool without anyone remembering to register it. A
+list you must maintain is a list that will be wrong, and this one was wrong within two
+features of being written.
+
+The newest snapshot per tool still survives, because it is not merely the freshest
+information: refs go stale on every action, so the latest action result is where the model
+gets the refs for its next one. That is also why dropping the snapshot from a successful
+action is a candidate behind the view seam rather than the default — removing it forces an
+extra `observe` turn, and a turn costs the card and every schema again, which can exceed
+the snapshot it saved. Which way that lands is a measurement, not an argument.
+
+## D46. Delta keys must be unique, and position is the last resort
+
+Keying the page delta on `role:name` looked like React's keyed reconciliation and behaved
+like its index-key anti-pattern, only worse: a `Map` silently kept the last of any
+duplicate group. On a table of fifty identical `Select` checkboxes, checking any row but
+the last compared the survivor against itself and reported nothing, and because a click's
+default postcondition is "did the delta change", the harness called a working click a noop
+failure and the agent went looking for another route. Appending rows to such a table was
+equally invisible. Verified against the old code before the fix: checking row 3 of 50
+produced `[]`, and so did adding three rows.
+
+`href` discriminates links cheaply. Beyond that, controls that are genuinely
+indistinguishable are separated by their position within the duplicate group, so row three
+compares with row three. Mid-list insertions shift those positions and over-report change,
+which is the tradeoff React makes with index keys and is the right way round: over-reporting
+is recoverable and silently reporting nothing is not.
+
+No existing fixture could reproduce this, because `list.html` labels its rows `Item 1`
+through `Item 10`. `rows.html` exists to be the shape that breaks it — identical controls
+per row, with the identifying text in a table cell, which is not interactive and so never
+reaches a snapshot at all.
+
+## D47. Cost is reported and attributed, never gated
+
+Shipping the job matters more than the token bill, so nothing about cost fails a build. A
+gate teaches people to raise the budget, and a bare percentage is noise they learn to
+ignore. What survives contact with a busy week is a rise with a cause attached: "context is
+up 18%, and 15 of those points are peek results carrying snapshots" is a decision — the new
+tool earns its cost or it does not.
+
+So the mechanism is a committed structural baseline, recomputed by the token-free mock
+target on every push, and a delta report in the job summary that attributes the movement by
+payload. Attribution is scaled by task count first, so adding tasks does not read as a
+regression. Token and cache figures stay in the manual live workflow because they cost
+money, and a metric present on only one side is skipped rather than compared against zero.
+
+Two supporting boundaries. Metering writes `metrics.jsonl` beside the ledger rather than
+into it: the ledger is evidence, redacted and capped and meant to be read years later,
+while metering is high-volume and disposable, and mixing them spoils both. And the emit
+side is a port in `src/runtime`, so no production code imports `src/optimize` — in
+particular the view strategy seam lives in the runtime, because a hot path filed under
+"optimize" invites being treated as optional.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

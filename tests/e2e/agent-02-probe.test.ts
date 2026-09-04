@@ -141,17 +141,26 @@ describe("AGENT-02-T01 read-only probe", () => {
     assert.equal((narrow.data as { count: number }).count, 10);
   });
 
-  it("records every probe in the evidence ledger", async () => {
+  it("records nothing itself, because evidence has one owner", async () => {
+    // A probe used to append to the ledger, which put an evidence concern inside the
+    // substrate and meant every new primitive had to remember to log. The primitive now
+    // answers the question and the tool layer decides what is worth recording; that the
+    // recording still happens is asserted in tests/e2e/runtime-situation.test.ts.
     const ledger = await Ledger.open(root, "goal_probe");
     const tab = await browser.openTab(`${origin}/apply`);
-    await probe(browser.pageFor(tab), { kind: "page_meta" }, { ledger, intent: "where am I" });
-    await probe(browser.pageFor(tab), { kind: "count", select: "input" }, { ledger });
 
-    const events = await ledger.read();
-    assert.equal(events.length, 2);
-    assert.equal(events[0]?.type, "probe");
-    assert.equal(events[0]?.intent, "where am I");
-    assert.equal((events[1]?.payload?.query as { kind: string }).kind, "count");
+    await probe(browser.pageFor(tab), { kind: "page_meta" });
+    await probe(browser.pageFor(tab), { kind: "count", select: "input" });
+
+    assert.deepEqual(await ledger.read(), []);
+  });
+
+  it("is reachable through the port without handing out a live page", async () => {
+    // The port is the seam a remote browser has to fit through, so the probe has to be
+    // callable with data alone.
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await browser.probe({ kind: "count", select: "input" }, tab);
+    assert.ok((result.data as { count: number }).count > 0);
   });
 
   it("reports an invalid selector instead of silently returning nothing", async () => {

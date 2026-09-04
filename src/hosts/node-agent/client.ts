@@ -4,7 +4,9 @@ import { AgentError } from "../../domain/types.ts";
 import { BrowserSession } from "../../session.ts";
 import type { ApiToNode, NodeToApi } from "../shared/protocol.ts";
 import { parseJsonMessage } from "../shared/protocol.ts";
+import { dispatchPortRpc } from "../shared/port-rpc.ts";
 import { applyTakeoverInput, dispatchSessionRpc } from "../shared/rpc-dispatch.ts";
+import { WorkerBrowserPort } from "../../host/worker-browser-port.ts";
 
 export interface NodeAgentOptions {
   apiUrl: string;
@@ -30,6 +32,13 @@ export class NodeAgent {
   private attempt = 0;
   private screencastOn = false;
   private screenshotTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * The operator's browser behind the agent's port.
+   *
+   * Built on first use rather than at construction, because it adopts the tabs the worker
+   * is tracking and the worker has not started yet when this object is made.
+   */
+  private browserPort: WorkerBrowserPort | null = null;
 
   constructor(options: NodeAgentOptions) {
     this.apiUrl = options.apiUrl;
@@ -147,13 +156,22 @@ export class NodeAgent {
     }
     if (message.type === "rpc") {
       try {
-        const result = await dispatchSessionRpc(this.session, message.method, message.args);
+        // Port calls first: this is how the new agent reaches the operator's browser.
+        // Anything else falls through to the session dispatcher, so both work during the
+        // cutover rather than the flip being all-or-nothing.
+        const asPort = message.method.startsWith("port.")
+          ? await dispatchPortRpc(this.port(), message.method, message.args)
+          : ({ handled: false } as const);
+        const result = asPort.handled
+          ? asPort.result
+          : await dispatchSessionRpc(this.session, message.method, message.args);
         this.send({ type: "rpc_result", id: message.id, ok: true, result });
         if (
           message.method === "startRun" ||
           message.method === "takeover" ||
           message.method === "resume" ||
-          message.method === "inspect"
+          message.method === "inspect" ||
+          message.method === "port.openTab"
         ) {
           await this.beginScreencast();
         }
@@ -167,6 +185,18 @@ export class NodeAgent {
         });
       }
     }
+  }
+
+  /**
+   * The operator's browser as a port, adopting whatever tabs the worker already tracks.
+   *
+   * Built once and kept, so tab identity stays stable across calls; the worker remains
+   * the owner of the browser process, the profile, and the screencast.
+   */
+  private port(): WorkerBrowserPort {
+    // Lazy: the port starts the worker itself the first time the agent wants a page.
+    this.browserPort ??= WorkerBrowserPort.lazy(this.session.worker);
+    return this.browserPort;
   }
 
   private async beginScreencast(): Promise<void> {

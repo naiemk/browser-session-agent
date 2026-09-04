@@ -13,7 +13,6 @@
  */
 
 import type { Page } from "playwright";
-import type { Ledger } from "./ledger.ts";
 import { redactDeep } from "./redact.ts";
 import { CoreError } from "./types.ts";
 
@@ -272,10 +271,14 @@ const READER = `({ query, limits }) => {
   return { error: "unsupported query" };
 }`;
 
+/**
+ * No ledger here on purpose.
+ *
+ * A probe used to record its own evidence, which put an evidence concern inside the
+ * substrate. Now the substrate answers questions and the caller decides what is worth
+ * remembering, so there is one place that writes evidence rather than one per primitive.
+ */
 export interface ProbeOptions {
-  ledger?: Ledger;
-  entityId?: string;
-  intent?: string;
   timeoutMs?: number;
   /** Tighter result budget than the default. Callers with small context windows want this. */
   maxResultChars?: number;
@@ -321,13 +324,6 @@ export async function probe(
     result.data = { head: serialized.slice(0, budget) };
     result.note = `probe result exceeded ${budget} chars and was trimmed; narrow the query`;
   }
-
-  await options.ledger?.append({
-    type: "probe",
-    entityId: options.entityId,
-    intent: options.intent ?? `probe ${query.kind}`,
-    payload: { query, truncated: result.truncated },
-  });
 
   return result;
 }

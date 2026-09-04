@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Records</title>
+  </head>
+  <body>
+    <h1>Records</h1>
+    <!--
+      Every row's controls are identically labelled and the only thing that tells rows
+      apart is a table cell, which is not an interactive element and so never appears in
+      a snapshot. That is the shape that defeated a role:name page delta: checking one
+      box changed nothing the diff could see, and the click was reported as a noop.
+    -->
+    <table>
+      <thead>
+        <tr><th>Name</th><th>City</th><th>Select</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p>Selected: <span id="count">0</span></p>
+    <button type="button" id="archive" disabled>Archive selected</button>
+    <p id="status"></p>
+    <script>
+      const PEOPLE = [
+        ["Ada Lovelace", "London"],
+        ["Boris Ivanov", "Minsk"],
+        ["Clara Diaz", "Madrid"],
+        ["Dmitri Petrov", "Minsk"],
+        ["Elena Rossi", "Rome"],
+      ];
+
+      const body = document.getElementById("rows");
+      for (const [name, city] of PEOPLE) {
+        const tr = document.createElement("tr");
+
+        const nameCell = document.createElement("td");
+        nameCell.textContent = name;
+        const cityCell = document.createElement("td");
+        cityCell.textContent = city;
+
+        const selectCell = document.createElement("td");
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.setAttribute("aria-label", "Select");
+        box.addEventListener("change", refresh);
+        selectCell.appendChild(box);
+
+        const actionCell = document.createElement("td");
+        for (const label of ["Edit", "Delete"]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          actionCell.appendChild(button);
+        }
+
+        tr.append(nameCell, cityCell, selectCell, actionCell);
+        body.appendChild(tr);
+      }
+
+      function refresh() {
+        const boxes = [...document.querySelectorAll('input[type="checkbox"]')];
+        const selected = boxes.filter((box) => box.checked).length;
+        document.getElementById("count").textContent = String(selected);
+        document.getElementById("archive").disabled = selected === 0;
+      }
+
+      document.getElementById("archive").addEventListener("click", () => {
+        document.getElementById("status").textContent = "Archived";
+      });
+    </script>
+  </body>
+</html>

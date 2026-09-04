@@ -1,5 +1,8 @@
 import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
-import { bindBrowserExtension } from "../../host/bind-extension.ts";
+import { bindBrowserCommands } from "../../host/bind-extension.ts";
+import { composeAgent } from "../../runtime/agent.ts";
+import { TOOL_OBSERVE } from "../../runtime/names.ts";
+import { RpcBrowserPort } from "../shared/port-rpc.ts";
 import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../host/memory-host.ts";
 import { RpcSessionHandle } from "../../host/session-handle.ts";
 import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
@@ -38,6 +41,13 @@ function sleep(ms: number): Promise<void> {
 
 export class OperatorRuntime {
   readonly host = new MemoryOperatorHost();
+  /**
+   * The browser agent's system prompt, replacing the coding identity rather than being
+   * appended to it. Set when the session boots, because it is composed there.
+   */
+  private browserPrompt: string | null = null;
+  /** The composed tools, by name, so the CI double drives the same agent. */
+  private browserTools = new Map<string, { name: string; execute: (id: string, params: unknown) => Promise<unknown> }>();
   readonly api: ExtensionAPI & {
     tools: Map<string, import("../../pi-api.ts").RegisteredTool>;
     commands: Map<string, import("../../pi-api.ts").RegisteredCommand>;
@@ -80,7 +90,12 @@ export class OperatorRuntime {
       return startRun(goal, startUrl);
     };
     this.api = createExtensionApi(this.host);
-    bindBrowserExtension(this.api, this.handle);
+    // Commands only. The tools come from composeAgent when the session boots, so the
+    // chat runs the same agent as the CLI and the suite rather than a parallel one.
+    bindBrowserCommands(this.api, this.handle);
+    this.api.on("before_agent_start", () =>
+      this.browserPrompt ? { systemPrompt: this.browserPrompt } : undefined,
+    );
     this.host.listeners = {
       onNotify: (message, level) => this.send({ type: "notify", message, level }),
       onUiRequest: (request) => this.send({ type: "ui_request", ...request }),
@@ -126,6 +141,9 @@ export class OperatorRuntime {
       return;
     }
     if (process.env.BSA_FAKE_PI === "1") {
+      // Compose first: the double calls the real tools, so it exercises the agent the
+      // operator gets rather than a stub that only resembles one.
+      this.composeBrowserAgent();
       this.pi = this.createFakePi();
       this.piReady = true;
       this.piReason = null;
@@ -176,16 +194,22 @@ export class OperatorRuntime {
         const extras = await resolveCostExtensions();
         const cwd = this.options.cwd ?? process.cwd();
         const agentDir = this.options.agentDir ?? getAgentDir();
-        const loader = new DefaultResourceLoader({
-          cwd,
-          agentDir,
-          additionalExtensionPaths: extras,
-          appendSystemPrompt: [
-            "You operate a remote headed Chromium on the operator's desktop through browser_* tools. If the browser node is disconnected, say so and do not invent page state.",
-          ],
-        });
+        const loader = new DefaultResourceLoader({ cwd, agentDir, additionalExtensionPaths: extras });
         await loader.reload();
-        const customTools = [...this.api.tools.values()].map((tool) => this.toPiTool(tool));
+
+        /*
+         * The same agent the CLI and the suite run.
+         *
+         * This used to be a coding agent with a browser paragraph appended and its own
+         * parallel `browser_*` tools. The identity is now replaced rather than extended
+         * (see the before_agent_start hook), and the tools come from `composeAgent`, so
+         * perception, verification, peeking and forks are the ones that are measured.
+         *
+         * `createAgentSession` stays as the *engine*: it brings the model registry,
+         * thinking levels, compaction and session files, which a chat needs and a bounded
+         * task does not. What the agent is, and what drives it, are different questions.
+         */
+        const customTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
         const result = await createAgentSession({
           cwd,
           agentDir,
@@ -393,6 +417,39 @@ export class OperatorRuntime {
     }
   }
 
+  /**
+   * The agent the operator talks to: the same tools and the same prompt the CLI and the
+   * suite use, pointed at the browser on their desktop over RPC.
+   */
+  private composeBrowserAgent() {
+    const composed = composeAgent({
+      card: {
+        objective:
+          "Help the operator with what they ask, in their browser. They judge whether it " +
+          "worked, so report truthfully and never claim more than you verified.",
+        criteria: [],
+        policy: "ask",
+      },
+      tools: {
+        browser: new RpcBrowserPort({ call: (method, args) => this.hub.call(method, args) }),
+        askUser: async (question) => this.host.input(question),
+      },
+    });
+    this.browserPrompt = composed.systemPrompt;
+    this.browserTools = new Map(
+      composed.tools.map((tool) => [
+        (tool as { name: string }).name,
+        tool as unknown as { name: string; execute: (id: string, params: unknown) => Promise<unknown> },
+      ]),
+    );
+    return composed.tools;
+  }
+
+  /** The agent's tool names, for the chat UI and for tests that assert the surface. */
+  browserToolNames(): string[] {
+    return [...this.browserTools.keys()];
+  }
+
   private createFakePi(): PiLike {
     return {
       model: { provider: "fake", id: "scripted" },
@@ -403,33 +460,32 @@ export class OperatorRuntime {
       setThinkingLevel: () => undefined,
       setModel: async () => undefined,
       prompt: async (text: string) => {
-        const tools = [...this.api.tools.keys()];
+        const tools = [...this.browserTools.keys()];
         this.send({
           type: "agentEvent",
           event: { type: "text_delta", text: `Pi: ${text}` },
         });
         if (looksLikeBrowserWork(text)) {
-          const inspect = this.api.tools.get("browser_inspect");
+          // The double drives the real composed tool, so a test that says "the chat can
+          // look at a page" is testing the agent the operator gets.
+          const observe = this.browserTools.get(TOOL_OBSERVE);
           this.send({
             type: "agentEvent",
-            event: { type: "tool_call", toolName: "browser_inspect", tools },
+            event: { type: "tool_call", toolName: TOOL_OBSERVE, tools },
           });
-          if (inspect) {
+          if (observe) {
             try {
-              const result = await inspect.execute(
-                "fake-pi",
-                { runId: this.handle.currentRunId ?? undefined },
-                undefined,
-                undefined,
-                extensionContext(this.host),
-              );
+              const result = (await observe.execute("fake-pi", {})) as {
+                isError?: boolean;
+                content: Array<{ text?: string }>;
+              };
               this.send({
                 type: "agentEvent",
                 event: {
                   type: "tool_result",
-                  toolName: "browser_inspect",
+                  toolName: TOOL_OBSERVE,
                   isError: Boolean(result.isError),
-                  text: result.content.map((part) => ("text" in part ? part.text : "")).join(""),
+                  text: result.content.map((part) => part.text ?? "").join(""),
                 },
               });
             } catch (err) {
@@ -437,7 +493,7 @@ export class OperatorRuntime {
                 type: "agentEvent",
                 event: {
                   type: "tool_result",
-                  toolName: "browser_inspect",
+                  toolName: TOOL_OBSERVE,
                   isError: true,
                   text: err instanceof Error ? err.message : String(err),
                 },

@@ -14,10 +14,12 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ParkedOutcome } from "../core/types.ts";
-import { buildTaskCard, type TaskCardInput } from "./card.ts";
-import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort } from "./model.ts";
-import { pruneMessages, type PruneOptions } from "./prune.ts";
-import { buildTools, type ReportPayload, type ToolContext } from "./tools.ts";
+import { composeAgent } from "./agent.ts";
+import type { TaskCardInput } from "./card.ts";
+import { NO_METRICS, type MetricsSink } from "./metrics.ts";
+import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort, type UsageSplit } from "./model.ts";
+import { PLACEHOLDER, pruneMessages, type PrunableMessage, type PruneOptions } from "./prune.ts";
+import type { ReportPayload, ToolContext } from "./tools.ts";
 
 /** Placeholder model descriptor for the mock port, which never calls a provider. */
 export const MOCK_MODEL = {
@@ -39,6 +41,38 @@ export interface RuntimeOptions {
   model?: Model<never>;
   maxTurns?: number;
   prune?: PruneOptions | false;
+  /** Where cost and duplicate-work metering goes. Defaults to nowhere. */
+  metrics?: MetricsSink;
+}
+
+/**
+ * Bytes of context for one turn, and where the prompt cache was invalidated.
+ *
+ * Exported so the accounting is testable without running an agent.
+ */
+export function measureContext(
+  before: readonly PrunableMessage[],
+  after: readonly PrunableMessage[],
+): { bytes: number; liveBytes: number; placeholderBytes: number; rewrittenFrom: number } {
+  let bytes = 0;
+  let liveBytes = 0;
+  let placeholderBytes = 0;
+  let rewrittenFrom = -1;
+
+  for (const [index, message] of after.entries()) {
+    const size = JSON.stringify(message ?? null).length;
+    bytes += size;
+    if (message?.content === PLACEHOLDER) placeholderBytes += size;
+    else liveBytes += size;
+
+    // Providers cache on an exact prefix, so the earliest rewrite is where the cache
+    // stops being usable for this request.
+    if (rewrittenFrom < 0 && before[index] && before[index]!.content !== message?.content) {
+      rewrittenFrom = index;
+    }
+  }
+
+  return { bytes, liveBytes, placeholderBytes, rewrittenFrom };
 }
 
 export interface RunOutcome {
@@ -48,6 +82,8 @@ export interface RunOutcome {
   capped: boolean;
   tokens: number;
   costUsd: number;
+  /** The same spend, split, because cache reads and fresh input are not billed alike. */
+  usage: UsageSplit;
   /** Model or transport failures. Pi surfaces these as error messages, not throws. */
   modelErrors: string[];
   /** Set when the run itself threw. */
@@ -66,23 +102,48 @@ export interface RunOutcome {
 
 export const DEFAULT_MAX_TURNS = 16;
 
+/** The record wants the split without the run-level total, which it does not use. */
+function splitFields(split: UsageSplit): Omit<UsageSplit, "totalTokens"> {
+  return {
+    inputTokens: split.inputTokens,
+    outputTokens: split.outputTokens,
+    cacheReadTokens: split.cacheReadTokens,
+    cacheWriteTokens: split.cacheWriteTokens,
+    costUsd: split.costUsd,
+  };
+}
+
 export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
   const maxTurns = options.maxTurns ?? options.card.maxTurns ?? DEFAULT_MAX_TURNS;
 
   let report: ReportPayload | undefined;
   let parked: ParkedOutcome | undefined;
 
-  const tools = buildTools({
-    ...options.tools,
-    onReport: (value) => {
-      report = value;
-      options.tools.onReport?.(value);
-    },
-    onParked: (value) => {
-      parked = value;
-      options.tools.onParked?.(value);
+  const metrics = options.metrics ?? NO_METRICS;
+  // Incremented when the context is built, which is the start of a turn, so tool results
+  // and provider usage from the same turn share an index and the rollup can join them.
+  let currentTurn = 0;
+
+  // Composed, not assembled here: the product builds the same agent from the same call,
+  // so the two cannot drift apart again.
+  const composed = composeAgent({
+    card: options.card,
+    maxTurns,
+    tools: {
+      ...options.tools,
+      metrics,
+      turn: () => currentTurn,
+      onReport: (value) => {
+        report = value;
+        options.tools.onReport?.(value);
+      },
+      onParked: (value) => {
+        parked = value;
+        options.tools.onParked?.(value);
+      },
     },
   });
+  const tools = composed.tools;
 
   const meter = new UsageMeter();
   const modelErrors: string[] = [];
@@ -93,16 +154,49 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
   // Pi's engine has no step limit, so the budget is enforced at the model port.
   const { stream, state: cap } = withTurnCap(options.stream, maxTurns);
 
+  const card = composed.systemPrompt;
+  const model = options.model ?? MOCK_MODEL;
+
+  // The card and the schemas are resent on every turn, so their size is a per-turn cost
+  // rather than a one-off. Recorded once because it does not change during a run.
+  metrics.record({
+    kind: "run",
+    at: new Date().toISOString(),
+    model: `${(model as { provider?: string }).provider ?? "?"}/${(model as { id?: string }).id ?? "?"}`,
+    cardBytes: card.length,
+    toolSchemaBytes: JSON.stringify(
+      tools.map((tool) => {
+        const entry = tool as unknown as { name: string; description: string; parameters: unknown };
+        return {
+          name: entry.name,
+          description: entry.description,
+          parameters: entry.parameters,
+        };
+      }),
+    ).length,
+    toolCount: tools.length,
+    maxTurns,
+  });
+
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildTaskCard({ ...options.card, maxTurns }),
-      model: options.model ?? MOCK_MODEL,
+      systemPrompt: card,
+      model,
       thinkingLevel: "minimal",
       tools: tools as AgentTool[],
     },
     streamFn: stream,
-    transformContext: async (messages) =>
-      options.prune === false ? messages : pruneMessages(messages as never[], options.prune),
+    transformContext: async (messages) => {
+      currentTurn += 1;
+      const pruned =
+        options.prune === false ? messages : pruneMessages(messages as never[], options.prune);
+      const measured = measureContext(
+        messages as unknown as PrunableMessage[],
+        pruned as unknown as PrunableMessage[],
+      );
+      metrics.record({ kind: "context", turn: currentTurn, ...measured, messages: pruned.length });
+      return pruned;
+    },
   });
 
   const unsubscribe = agent.subscribe((event) => {
@@ -125,7 +219,8 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
       return;
     }
     if (value.type === "message_end" && value.message) {
-      meter.add(value.message as never);
+      const split = meter.add(value.message as never);
+      if (split) metrics.record({ kind: "turn", turn: currentTurn, ...splitFields(split) });
       if (value.message.errorMessage) modelErrors.push(value.message.errorMessage);
       else if (value.message.stopReason === "error") {
         modelErrors.push("model returned an error with no message");
@@ -149,6 +244,7 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     error = err instanceof Error ? err.message : String(err);
   } finally {
     unsubscribe();
+    await metrics.flush();
   }
 
   // Prose and no action: the model answered instead of working. Only meaningful when
@@ -165,6 +261,7 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     capped: cap.capped,
     tokens: meter.tokens,
     costUsd: meter.costUsd,
+    usage: meter.split,
     modelErrors,
     error,
     declined,

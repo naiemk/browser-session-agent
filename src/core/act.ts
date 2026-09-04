@@ -6,7 +6,7 @@
  * code path that performs an action without checking whether it did anything.
  */
 
-import { refSelector, visibleText } from "./perceive.ts";
+import { visibleText } from "./perceive.ts";
 import { evaluatePredicate, verify } from "./predicates.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { Ledger } from "./ledger.ts";
@@ -44,7 +44,6 @@ export async function act(
 ): Promise<ActionResult> {
   const classify = options.classify ?? classifyAction;
   const timeout = options.timeoutMs ?? 10_000;
-  const page = browser.pageFor(request.tabId);
 
   const before = await browser.observe(request.tabId);
   const control = request.ref
@@ -60,50 +59,37 @@ export async function act(
 
   const classification = classify(request, control);
 
+  // Perform, through the port's primitives. Everything that decides *meaning* stays
+  // here; the port only knows how to poke a browser.
   switch (request.kind) {
     case "navigate": {
       if (!request.url) throw new CoreError("bad_request", "navigate needs a url");
-      await page.goto(request.url, { waitUntil: "domcontentloaded", timeout });
+      await browser.navigate(request.tabId, request.url, timeout);
       break;
     }
     case "click": {
-      await page.locator(refSelector(request.ref!)).first().click({ timeout });
+      await browser.click(request.tabId, request.ref!, timeout);
       break;
     }
     case "type": {
-      const locator = page.locator(refSelector(request.ref!)).first();
-      await locator.fill(request.text ?? "", { timeout });
+      await browser.fill(request.tabId, request.ref!, request.text ?? "", timeout);
       break;
     }
     case "select": {
-      await page
-        .locator(refSelector(request.ref!))
-        .first()
-        .selectOption(request.value ?? "", { timeout });
+      await browser.selectOption(request.tabId, request.ref!, request.value ?? "", timeout);
       break;
     }
     case "scroll": {
-      if (request.ref && request.dy) {
-        // Scroll *within* the referenced container: hover it, then wheel. This is what
-        // a virtualized listbox needs; scrollIntoViewIfNeeded cannot reach unrendered rows.
-        await page.locator(refSelector(request.ref)).first().hover({ timeout });
-        await page.mouse.wheel(0, request.dy);
-      } else if (request.ref) {
-        await page.locator(refSelector(request.ref)).first().scrollIntoViewIfNeeded({ timeout });
-      } else {
-        await page.mouse.wheel(0, request.dy ?? 600);
-      }
+      await browser.scroll(request.tabId, request.ref, request.dy, timeout);
       break;
     }
     case "upload": {
-      await page
-        .locator(refSelector(request.ref!))
-        .first()
-        .setInputFiles(request.files ?? [], { timeout });
+      await browser.setInputFiles(request.tabId, request.ref!, request.files ?? [], timeout);
       break;
     }
     case "wait": {
-      await performWait(page, request, timeout);
+      const spec = request.wait ?? { kind: "timeout", timeoutMs: 500 };
+      await browser.waitFor(request.tabId, spec, Math.min(spec.timeoutMs ?? timeout, 15_000));
       break;
     }
     case "check": {
@@ -136,7 +122,12 @@ export async function act(
     type: result.ok ? "action" : "failure",
     entityId: options.entityId,
     intent: request.intent ?? `${request.kind} ${request.ref ?? request.url ?? ""}`.trim(),
-    before: { url: before.url, title: before.title, controls: before.controls.length },
+    before: {
+      url: before.url,
+      title: before.title,
+      controls: before.controls.length,
+      ...(before.truncated ? { truncated: true as const } : {}),
+    },
     action: {
       kind: request.kind,
       ref: request.ref,
@@ -158,32 +149,6 @@ export async function act(
   });
 
   return result;
-}
-
-async function performWait(
-  page: import("playwright").Page,
-  request: ActionRequest,
-  timeout: number,
-): Promise<void> {
-  const spec = request.wait ?? { kind: "timeout", timeoutMs: 500 };
-  const waitMs = Math.min(spec.timeoutMs ?? timeout, 15_000);
-  switch (spec.kind) {
-    case "load":
-      await page.waitForLoadState("domcontentloaded", { timeout: waitMs });
-      return;
-    case "url":
-      await page.waitForURL((url) => url.href.includes(spec.value ?? ""), { timeout: waitMs });
-      return;
-    case "text":
-      await page.getByText(spec.value ?? "", { exact: false }).first().waitFor({ timeout: waitMs });
-      return;
-    case "ref":
-      await page.locator(refSelector(spec.value ?? "")).first().waitFor({ timeout: waitMs });
-      return;
-    case "timeout":
-      await page.waitForTimeout(waitMs);
-      return;
-  }
 }
 
 /**

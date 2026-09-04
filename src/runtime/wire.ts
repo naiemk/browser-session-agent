@@ -17,6 +17,8 @@ export interface WireControl {
   role: string;
   name: string;
   value?: string;
+  /** The rest of the row, when the name alone does not identify the thing. */
+  row?: string;
   /** Only present when true, so the common case costs nothing. */
   required?: true;
   disabled?: true;
@@ -52,6 +54,9 @@ export function toWireObservation(observation: Observation): WireObservation {
       name: clip(control.name),
     };
     if (control.value) wire.value = clip(control.value);
+    // The rest of the row, when the name alone does not identify the thing. Costs tokens
+    // and earns them: without it a display name and a handle never appear together.
+    if (control.row) wire.row = clip(control.row);
     if (control.required) wire.required = true;
     if (control.disabled) wire.disabled = true;
     if (control.checked) wire.checked = true;
@@ -127,4 +132,55 @@ export function toWireVerification(verification: Verification): {
 /** Compact JSON: no indentation, because indentation is billed. */
 export function wireText(value: unknown): string {
   return JSON.stringify(value);
+}
+
+/** Tool result content, which providers model as text parts rather than a bare string. */
+export function extractText(content: unknown): string | undefined {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return undefined;
+  const parts = content
+    .filter((part): part is { type: string; text: string } =>
+      Boolean(part && typeof part === "object" && (part as { type?: string }).type === "text"),
+    )
+    .map((part) => part.text);
+  return parts.length > 0 ? parts.join("") : undefined;
+}
+
+function looksLikeObservation(value: unknown): value is WireObservation {
+  const candidate = value as WireObservation | undefined;
+  return Boolean(
+    candidate &&
+      typeof candidate === "object" &&
+      typeof candidate.url === "string" &&
+      Array.isArray(candidate.controls),
+  );
+}
+
+/**
+ * Find a page snapshot anywhere in a tool result.
+ *
+ * Snapshots are the dominant token cost, and four tools return one under four different
+ * keys: `observe` at the top level, `act` under `observation`, `peek` under `page`, and
+ * the stranger view under `asStranger`. Matching on shape rather than on a list of key
+ * or tool names means a tool added later is covered without anyone remembering to
+ * register it, which is exactly the mistake the name-based version made.
+ */
+export function findWireObservation(value: unknown): WireObservation | undefined {
+  if (looksLikeObservation(value)) return value;
+  if (!value || typeof value !== "object") return undefined;
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    if (looksLikeObservation(nested)) return nested;
+  }
+  return undefined;
+}
+
+/** The same, from serialized tool result content. Returns undefined when it is not JSON. */
+export function observationInContent(content: unknown): WireObservation | undefined {
+  const text = extractText(content);
+  if (!text || !text.startsWith("{")) return undefined;
+  try {
+    return findWireObservation(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
 }

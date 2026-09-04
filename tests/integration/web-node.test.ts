@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import WebSocket from "ws";
+import { act } from "../../src/core/act.ts";
+import { peek } from "../../src/core/peek.ts";
 import { AgentError } from "../../src/domain/types.ts";
+import { RpcBrowserPort } from "../../src/hosts/shared/port-rpc.ts";
 import { startOperatorApi, type OperatorApi } from "../../src/hosts/web/server.ts";
 import { NodeAgent } from "../../src/hosts/node-agent/client.ts";
 import type { ChatServerMessage } from "../../src/hosts/shared/protocol.ts";
@@ -144,6 +147,57 @@ describe("web host + desktop node", () => {
       chat.send({ type: "command", name: "browser-takeover", args: "" });
       await waitFor(chat.inbox, (m) => m.type === "notify" && m.message.includes("Takeover"));
       api.hub.forwardTakeoverInput({ kind: "mouse", action: "move", x: 0.2, y: 0.2 });
+    } finally {
+      chat.close();
+    }
+  });
+
+  it("lets the agent drive the desktop browser over the real wire", async () => {
+    // The topology the product actually has: agent on the server, browser on the desktop,
+    // a websocket in between. Nothing before this exercised the agent's core against it,
+    // which is why the port handing out a live Playwright page went unnoticed for so long.
+    process.env.BSA_NO_PI = "1";
+    const { home, cleanup } = await tempHome();
+    const server = new FixtureServer();
+    const origin = await server.start();
+    const api = await startOperatorApi({ host: "127.0.0.1", token: "secret", agentDir: home });
+    const node = new NodeAgent({
+      apiUrl: `ws://127.0.0.1:${api.port}/node`,
+      token: "secret",
+      home,
+      headless: true,
+    });
+    node.start();
+    worlds.push({ api, node, server, cleanupHome: cleanup });
+
+    const chat = await chatClient(api.port, "secret");
+    try {
+      await waitFor(chat.inbox, (m) => m.type === "nodeStatus" && m.connected);
+
+      const remote = new RpcBrowserPort({
+        call: (method, args) => api.hub.call(method, args as unknown[]),
+      });
+
+      const tab = await remote.openTab(`${origin}/apply`);
+      const observation = await remote.observe(tab);
+      assert.match(observation.url, /\/apply$/);
+      assert.ok(observation.controls.length > 0, "core perception, over a websocket");
+
+      // The whole choke point, run from here against a browser in another process.
+      const name = observation.controls.find((control) => control.name.includes("Full name"))!;
+      const typed = await act(remote, {
+        kind: "type",
+        tabId: tab,
+        ref: name.ref,
+        text: "Ada Lovelace",
+      });
+      assert.equal(typed.ok, true, JSON.stringify(typed.verification));
+
+      // And a read that must not move the tab, which is the point of peeking.
+      const peeked = await peek(remote, { url: `${origin}/p/dana`, tabId: tab });
+      assert.match(peeked.observation.title, /Dana/);
+      assert.equal(peeked.origin.unchanged, true);
+      assert.match((await remote.observe(tab)).url, /\/apply$/);
     } finally {
       chat.close();
     }

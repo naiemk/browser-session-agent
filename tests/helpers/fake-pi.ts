@@ -7,12 +7,21 @@ export interface FakePi extends ExtensionAPI {
   answers: string[];
   notifications: string[];
   ctx: ExtensionContext;
+  /**
+   * Event handlers, recorded rather than discarded.
+   *
+   * The extension's most consequential behaviour is a `before_agent_start` hook that
+   * replaces the system prompt, and a no-op `on()` made that untestable - which is part
+   * of why "the agent is a coding agent wearing a browser hat" survived so long.
+   */
+  handlers: Map<string, (event: unknown) => unknown>;
 }
 
 export function createFakePi(answers: string[] = []): FakePi {
   const tools = new Map<string, RegisteredTool>();
   const commands = new Map<string, RegisteredCommand>();
   const notifications: string[] = [];
+  const handlers = new Map<string, (event: unknown) => unknown>();
   const pending = [...answers];
   let active = ["read", "bash", "write", "edit"];
 
@@ -45,6 +54,7 @@ export function createFakePi(answers: string[] = []): FakePi {
     },
     answers: pending,
     notifications,
+    handlers,
     ctx,
     registerTool(tool) {
       tools.set(tool.name, tool);
@@ -52,7 +62,9 @@ export function createFakePi(answers: string[] = []): FakePi {
     registerCommand(name, command) {
       commands.set(name, command);
     },
-    on() {},
+    on(event, handler) {
+      handlers.set(event as string, handler as (value: unknown) => unknown);
+    },
     getActiveTools() {
       return [...active];
     },
