@@ -92,8 +92,6 @@ export interface BrowserPort {
 
   // Evidence and lifecycle.
   screenshot(tabId: string | undefined, path: string): Promise<void>;
-  consoleErrors(tabId?: string): string[];
-  failedRequests(tabId?: string): string[];
   close(): Promise<void>;
 }
 
@@ -124,23 +122,31 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   private readonly observations = new Map<string, Observation>();
   private readonly owned = new Map<string, () => Promise<void>>();
 
-  /** Open a tab in the shared session. */
-  protected abstract acquireTab(url?: string): Promise<AcquiredTab>;
-  /** Open a tab that carries no cookies and no storage. */
-  protected abstract acquireIsolatedTab(url: string): Promise<AcquiredTab>;
+  /**
+   * Open a blank tab in the shared session.
+   *
+   * Deliberately without a URL: this port navigates only after its listeners are
+   * attached. Doing it the other way round loses every console error and failed request
+   * the page emits while loading, which is exactly the evidence a failure bundle needs.
+   */
+  protected abstract acquireTab(): Promise<AcquiredTab>;
+  /** Open a blank tab that carries no cookies and no storage. */
+  protected abstract acquireIsolatedTab(): Promise<AcquiredTab>;
   abstract close(): Promise<void>;
 
   async openTab(url?: string): Promise<string> {
-    return this.adopt(await this.acquireTab(url));
+    return this.adopt(await this.acquireTab(), url);
   }
 
   async openIsolatedTab(url: string): Promise<string> {
-    return this.adopt(await this.acquireIsolatedTab(url));
+    return this.adopt(await this.acquireIsolatedTab(), url);
   }
 
-  private async adopt(tab: AcquiredTab): Promise<string> {
+  private async adopt(tab: AcquiredTab, url?: string): Promise<string> {
     this.register(tab.tabId, tab.page);
     if (tab.dispose) this.owned.set(tab.tabId, tab.dispose);
+    // Listeners first, then go. See acquireTab.
+    if (url) await tab.page.goto(url, { waitUntil: "domcontentloaded" });
     return tab.tabId;
   }
 
@@ -319,14 +325,6 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     await this.pageFor(tabId).screenshot({ path, fullPage: false });
   }
 
-  consoleErrors(tabId?: string): string[] {
-    return [...(this.consoleByTab.get(this.tabIdFor(tabId)) ?? [])];
-  }
-
-  failedRequests(tabId?: string): string[] {
-    return [...(this.failedByTab.get(this.tabIdFor(tabId)) ?? [])];
-  }
-
   protected firstTabId(): string | undefined {
     return this.pages.keys().next().value as string | undefined;
   }
@@ -367,19 +365,19 @@ export class LocalBrowser extends PlaywrightBrowserPort {
     return new LocalBrowser(browser, await browser.newContext());
   }
 
-  protected async acquireTab(url?: string): Promise<AcquiredTab> {
-    const page = await this.shared.newPage();
-    if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
-    return { tabId: `tab_${++this.seq}`, page };
+  protected async acquireTab(): Promise<AcquiredTab> {
+    return { tabId: `tab_${++this.seq}`, page: await this.shared.newPage() };
   }
 
-  protected async acquireIsolatedTab(url: string): Promise<AcquiredTab> {
+  protected async acquireIsolatedTab(): Promise<AcquiredTab> {
     // A fresh context, so nothing from the signed-in session comes with it. Disposed with
     // the tab, so a comparison cannot quietly become a second session.
     const context = await this.browser.newContext();
-    const page = await context.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    return { tabId: `tab_${++this.seq}`, page, dispose: () => context.close() };
+    return {
+      tabId: `tab_${++this.seq}`,
+      page: await context.newPage(),
+      dispose: () => context.close(),
+    };
   }
 
   async close(): Promise<void> {

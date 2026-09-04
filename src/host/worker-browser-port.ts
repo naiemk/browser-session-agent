@@ -35,15 +35,15 @@ export class WorkerBrowserPort extends PlaywrightBrowserPort {
     return port;
   }
 
-  protected async acquireTab(url?: string): Promise<AcquiredTab> {
+  protected async acquireTab(): Promise<AcquiredTab> {
     // The worker mints the id, because the product's run and tab state is written against
-    // its scheme and the operator's screencast targets it.
-    const tabId = await this.worker.openTab(url);
-    const page = this.pageOf(tabId);
-    return { tabId, page };
+    // its scheme and the operator's screencast targets it. No URL: the base navigates
+    // once its listeners are attached.
+    const tabId = await this.worker.openTab();
+    return { tabId, page: this.pageOf(tabId) };
   }
 
-  protected async acquireIsolatedTab(url: string): Promise<AcquiredTab> {
+  protected async acquireIsolatedTab(): Promise<AcquiredTab> {
     // A session-free view needs a context with no cookies, which a persistent profile
     // cannot give us - so borrow the browser behind it and make a throwaway one.
     const browser = this.worker.sharedContext().browser();
@@ -51,11 +51,9 @@ export class WorkerBrowserPort extends PlaywrightBrowserPort {
       throw new Error("this browser cannot open an isolated context");
     }
     const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded" });
     return {
       tabId: `anon_${Date.now().toString(36)}`,
-      page,
+      page: await context.newPage(),
       dispose: () => context.close(),
     };
   }
