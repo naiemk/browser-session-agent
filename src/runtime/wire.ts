@@ -17,6 +17,8 @@ export interface WireControl {
   role: string;
   name: string;
   value?: string;
+  /** The rest of the row, when the name alone does not identify the thing. */
+  row?: string;
   /** Only present when true, so the common case costs nothing. */
   required?: true;
   disabled?: true;
@@ -52,6 +54,9 @@ export function toWireObservation(observation: Observation): WireObservation {
       name: clip(control.name),
     };
     if (control.value) wire.value = clip(control.value);
+    // The rest of the row, when the name alone does not identify the thing. Costs tokens
+    // and earns them: without it a display name and a handle never appear together.
+    if (control.row) wire.row = clip(control.row);
     if (control.required) wire.required = true;
     if (control.disabled) wire.disabled = true;
     if (control.checked) wire.checked = true;

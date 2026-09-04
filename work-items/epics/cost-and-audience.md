@@ -75,6 +75,15 @@ Facts already carry provenance through `remember`, so the shape is there. Instru
 if the same expensive surface is not actually re-encountered across tasks, this does not pay
 and not building it is the correct outcome.
 
+**A gap that already exists, found while deleting the legacy knowledge store.** `remember`
+is goal-scoped, and a personal fact is not: an email address does not change per goal, so
+the agent cannot currently remember one across tasks and will ask again. The old
+`KnowledgeStore` covered this, and porting it was rejected because it carried an approval
+workflow and lexical search that a handful of personal facts do not need — but the need it
+served is real. The fix belongs here: a cross-goal scope for `remember`, in `GoalStore` and
+`src/core/paths.ts`, alongside URL schemes and traversal costs. The store file itself stays
+on disk unread, so nothing recorded is destroyed in the meantime.
+
 ### COST-03: The rungs below forking
 
 The ladder this build starts — read the DOM free, fork the situation cheaply — has one rung

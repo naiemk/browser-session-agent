@@ -84,7 +84,12 @@ export async function peek(browser: BrowserPort, options: PeekOptions): Promise<
     type: "probe",
     entityId: options.entityId,
     intent: options.intent ?? `peek ${options.url}`,
-    before: { url: before.url, title: before.title, controls: before.controls.length },
+    before: {
+      url: before.url,
+      title: before.title,
+      controls: before.controls.length,
+      ...(before.truncated ? { truncated: true as const } : {}),
+    },
     after: { url: observation.url, title: observation.title, changes: [] },
     payload: {
       peek: options.url,

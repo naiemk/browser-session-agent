@@ -18,6 +18,15 @@ export interface Control {
   submits?: boolean;
   /** Resolved destination for links, used by reversibility judgment. */
   href?: string;
+  /**
+   * The text of the list row this control sits in, when it says more than the name does.
+   *
+   * A row routinely spreads one thing's identity across siblings - a handle in the
+   * anchor, a display name beside it - and reading only the control's own text loses
+   * half of it. That is how "find Varya" failed against a row whose anchor said
+   * "v_varvar": the two never appeared together anywhere the agent could see.
+   */
+  row?: string;
 }
 
 /** One compact, ephemeral view of a page. Never persisted into model context long-term. */

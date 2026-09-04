@@ -69,6 +69,29 @@ const COLLECT = `(() => {
     return clean(copy.textContent);
   };
 
+  /*
+   * The text of the row a control sits in.
+   *
+   * A list row routinely spreads one thing's identity across siblings: an anchor holding
+   * a handle, a span beside it holding the display name. Reading only the anchor's own
+   * text throws half of it away, and then a task like "find Varya" cannot be matched
+   * against a row whose anchor says "v_varvar" - the two never appear together anywhere
+   * the agent can see.
+   *
+   * Row containers, not arbitrary ancestors: going up until the text got long would pick
+   * up the whole list. This is a structural property of lists rather than a fact about
+   * any site.
+   */
+  const ROW = "li, tr, [role='listitem'], [role='row'], [role='option'], [role='treeitem']";
+  const rowTextFor = (el, name) => {
+    const row = el.closest ? el.closest(ROW) : null;
+    if (!row) return undefined;
+    const text = clean(row.innerText || row.textContent).slice(0, 120);
+    if (!text || text === name) return undefined;
+    // Only when it adds something the control's own name does not already carry.
+    return text.includes(name) && text.length <= name.length + 2 ? undefined : text;
+  };
+
   const monacoValue = () => {
     const api = window.monaco && window.monaco.editor && window.monaco.editor.getEditors
       ? window.monaco.editor.getEditors()[0]
@@ -140,9 +163,18 @@ const COLLECT = `(() => {
       inputType,
       submits: submits || undefined,
       href: tag === "a" ? el.href || undefined : undefined,
+      row: rowTextFor(el, name),
     };
   });
 
+  /*
+   * A short summary, not the content.
+   *
+   * This used to be the only place a modal's text appeared, truncated to 160 characters -
+   * so a follower list of hundreds of rows arrived as one clipped string and the agent
+   * reasoned from a fragment. The rows inside a dialog are ordinary controls and are
+   * enumerated above, each now carrying its own row text, so this can stay a summary.
+   */
   const dialogs = [...document.querySelectorAll("dialog[open], [role='dialog'], [role='alertdialog']")]
     .filter(visible)
     .map((el) => clean(el.textContent).slice(0, 160))

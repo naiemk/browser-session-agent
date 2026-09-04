@@ -122,7 +122,12 @@ export async function act(
     type: result.ok ? "action" : "failure",
     entityId: options.entityId,
     intent: request.intent ?? `${request.kind} ${request.ref ?? request.url ?? ""}`.trim(),
-    before: { url: before.url, title: before.title, controls: before.controls.length },
+    before: {
+      url: before.url,
+      title: before.title,
+      controls: before.controls.length,
+      ...(before.truncated ? { truncated: true as const } : {}),
+    },
     action: {
       kind: request.kind,
       ref: request.ref,
