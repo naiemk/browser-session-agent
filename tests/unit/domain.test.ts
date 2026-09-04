@@ -232,14 +232,29 @@ describe("Pi package and extension contract", () => {
     assert.match(pi.notifications.at(-1) ?? "", /currentRun/);
   });
 
+  it("activates the browser tools once the session starts, not while loading", async () => {
+    const pi = createFakePi();
+
+    // Loading must not touch action methods. Pi hands extensions throwing stubs until
+    // the session is bound, so doing this at load time refused to start the CLI at all.
+    browserSessionAgent(pi);
+    assert.deepEqual(pi.active, ["read", "bash", "write", "edit"], "untouched during load");
+
+    await pi.startSession();
+    assert.deepEqual(
+      pi.active.slice().sort(),
+      [...pi.tools.keys()].sort(),
+      "the browser tools, and only those: the coding tools are never active",
+    );
+  });
+
   it("replaces the coding identity rather than appending to it", async () => {
     const pi = createFakePi();
     browserSessionAgent(pi);
 
-    const hook = pi.handlers.get("before_agent_start");
-    const result = (await hook?.({ systemPrompt: "You are a coding agent." })) as {
-      systemPrompt?: string;
-    };
+    const [result] = (await pi.emit("before_agent_start", {
+      systemPrompt: "You are a coding agent.",
+    })) as Array<{ systemPrompt?: string }>;
 
     assert.ok(result?.systemPrompt, "the hook must supply a prompt");
     assert.doesNotMatch(
