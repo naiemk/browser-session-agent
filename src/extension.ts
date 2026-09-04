@@ -36,9 +36,22 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     },
   });
 
+  const names: string[] = [];
   for (const tool of composed.tools) {
     pi.registerTool(tool as unknown as RegisteredTool);
+    names.push((tool as unknown as { name: string }).name);
   }
+
+  /*
+   * Browser tools only, from the start and for good.
+   *
+   * Pi brings read, bash, write and edit, and a run used to switch them out and back
+   * again. That swap is what a coding agent needs to pretend to be a browser agent; this
+   * one is a browser agent, so the coding tools are simply never active. Doing it here
+   * also removes the failure mode the swap created after the cutover, where starting a
+   * run selected tool names that no longer existed and left the model with none.
+   */
+  pi.setActiveTools(names);
 
   // Replace the coding identity rather than appending to it. Appending is why the chat
   // used to answer "what can you do?" like a coding assistant.
