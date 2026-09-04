@@ -1,4 +1,10 @@
 import assert from "node:assert/strict";
+import {
+  TOOL_ACT,
+  TOOL_OBSERVE,
+  TOOL_PEEK,
+  TOOL_SURVEY,
+} from "../../src/runtime/names.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,14 +27,20 @@ afterEach(async () => {
 });
 
 describe("PRE-01-T01 Pi starts when BSA_NO_PI unset", () => {
-  it("wires a fake Pi session and browser_* tools without a live LLM", async () => {
+  it("wires a fake Pi session and the composed agent tools without a live LLM", async () => {
     const world = await startV1Api({ requirePaid: false, fakePi: true });
     worlds.push(world);
     assert.equal(process.env.BSA_NO_PI, undefined);
-    const tools = [...world.api.runtime.api.tools.keys()];
-    for (const name of ["browser_inspect", "browser_run_plan", "browser_fill"]) {
+    // The chat gets the agent the CLI and the suite get. The legacy browser_* set is
+    // gone, so asserting it would only prove the old agent is still there.
+    const tools = world.api.runtime.browserToolNames();
+    for (const name of [TOOL_OBSERVE, TOOL_ACT, TOOL_PEEK, TOOL_SURVEY]) {
       assert.ok(tools.includes(name), `missing ${name} in ${tools.join(",")}`);
     }
+    assert.ok(
+      !tools.some((name) => name.startsWith("browser_")),
+      `the legacy tool set must be gone, saw ${tools.join(",")}`,
+    );
 
     const user = await uniqueUser();
     const { cookie } = await register(world.origin, user.email, user.password);

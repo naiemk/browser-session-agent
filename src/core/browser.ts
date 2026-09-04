@@ -134,11 +134,38 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   protected abstract acquireIsolatedTab(): Promise<AcquiredTab>;
   abstract close(): Promise<void>;
 
+  /**
+   * Called before anything touches a page.
+   *
+   * A locally launched browser is ready when it is constructed. The operator's browser
+   * may not be running yet, and the agent asking for a page is reason enough to start it.
+   * Default is a no-op, so only ports that need it pay for it.
+   */
+  protected async ensureReady(): Promise<void> {}
+
+  /**
+   * Make sure there is a page to talk about, and say which.
+   *
+   * Nothing in the agent's tool set opens a tab: the legacy product opened the first one
+   * as a side effect of starting a *run*, so with runs gone the agent's very first action
+   * had nothing to act on. Opening one on demand is the honest fix - a browser with no
+   * page is not a state the agent can do anything about.
+   */
+  protected async ensurePage(tabId?: string): Promise<string> {
+    await this.ensureReady();
+    if (tabId) return tabId;
+    const existing = this.firstTabId();
+    if (existing) return existing;
+    return this.openTab();
+  }
+
   async openTab(url?: string): Promise<string> {
+    await this.ensureReady();
     return this.adopt(await this.acquireTab(), url);
   }
 
   async openIsolatedTab(url: string): Promise<string> {
+    await this.ensureReady();
     return this.adopt(await this.acquireIsolatedTab(), url);
   }
 
@@ -199,19 +226,19 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   }
 
   async probe(query: unknown, tabId?: string, limits: ProbeLimits = {}): Promise<ProbeResult> {
-    return probe(this.pageFor(tabId), query, limits);
+    return probe(this.pageFor(await this.ensurePage(tabId)), query, limits);
   }
 
   async survey(tabId?: string): Promise<AffordanceSurvey> {
-    return surveyAffordances(this.pageFor(tabId));
+    return surveyAffordances(this.pageFor(await this.ensurePage(tabId)));
   }
 
   async navigate(tabId: string | undefined, url: string, timeoutMs: number): Promise<void> {
-    await this.pageFor(tabId).goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await this.pageFor(await this.ensurePage(tabId)).goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   }
 
   async click(tabId: string | undefined, ref: string, timeoutMs: number): Promise<void> {
-    await this.locator(tabId, ref).click({ timeout: timeoutMs });
+    await this.locator(await this.ensurePage(tabId), ref).click({ timeout: timeoutMs });
   }
 
   async fill(
@@ -220,7 +247,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     text: string,
     timeoutMs: number,
   ): Promise<void> {
-    await this.locator(tabId, ref).fill(text, { timeout: timeoutMs });
+    await this.locator(await this.ensurePage(tabId), ref).fill(text, { timeout: timeoutMs });
   }
 
   async selectOption(
@@ -229,7 +256,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     value: string,
     timeoutMs: number,
   ): Promise<void> {
-    await this.locator(tabId, ref).selectOption(value, { timeout: timeoutMs });
+    await this.locator(await this.ensurePage(tabId), ref).selectOption(value, { timeout: timeoutMs });
   }
 
   async scroll(
@@ -238,16 +265,17 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     dy: number | undefined,
     timeoutMs: number,
   ): Promise<void> {
-    const page = this.pageFor(tabId);
+    const id = await this.ensurePage(tabId);
+    const page = this.pageFor(id);
     if (ref && dy) {
       // Scroll *within* the referenced container: hover it, then wheel. This is what a
       // virtualized listbox needs; scrollIntoViewIfNeeded cannot reach unrendered rows.
-      await this.locator(tabId, ref).hover({ timeout: timeoutMs });
+      await this.locator(id, ref).hover({ timeout: timeoutMs });
       await page.mouse.wheel(0, dy);
       return;
     }
     if (ref) {
-      await this.locator(tabId, ref).scrollIntoViewIfNeeded({ timeout: timeoutMs });
+      await this.locator(id, ref).scrollIntoViewIfNeeded({ timeout: timeoutMs });
       return;
     }
     await page.mouse.wheel(0, dy ?? 600);
@@ -259,11 +287,12 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     files: string[],
     timeoutMs: number,
   ): Promise<void> {
-    await this.locator(tabId, ref).setInputFiles(files, { timeout: timeoutMs });
+    await this.locator(await this.ensurePage(tabId), ref).setInputFiles(files, { timeout: timeoutMs });
   }
 
   async waitFor(tabId: string | undefined, spec: WaitSpec, timeoutMs: number): Promise<void> {
-    const page = this.pageFor(tabId);
+    const id = await this.ensurePage(tabId);
+    const page = this.pageFor(id);
     switch (spec.kind) {
       case "load":
         await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs });
@@ -280,7 +309,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
           .waitFor({ timeout: timeoutMs });
         return;
       case "ref":
-        await this.locator(tabId, spec.value ?? "").waitFor({ timeout: timeoutMs });
+        await this.locator(id, spec.value ?? "").waitFor({ timeout: timeoutMs });
         return;
       case "timeout":
         await page.waitForTimeout(timeoutMs);
@@ -299,6 +328,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   }
 
   async observe(tabId?: string): Promise<Observation> {
+    tabId = await this.ensurePage(tabId);
     const id = this.tabIdFor(tabId);
     const observation = await perceive(this.pageFor(id), {
       tabId: id,
@@ -311,6 +341,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   }
 
   async facts(tabId?: string): Promise<PageFacts> {
+    tabId = await this.ensurePage(tabId);
     const observation = await this.observe(tabId);
     const text = await visibleText(this.pageFor(tabId));
     return { url: observation.url, title: observation.title, text, observation };
@@ -322,7 +353,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   }
 
   async screenshot(tabId: string | undefined, path: string): Promise<void> {
-    await this.pageFor(tabId).screenshot({ path, fullPage: false });
+    await this.pageFor(await this.ensurePage(tabId)).screenshot({ path, fullPage: false });
   }
 
   protected firstTabId(): string | undefined {

@@ -7,6 +7,7 @@ import { FixtureServer } from "../helpers/fixture-server.ts";
 import { tempHome } from "../helpers/temp-home.ts";
 import { createFakePi, runCommand, runTool } from "../helpers/fake-pi.ts";
 import browserSessionAgent from "../../src/extension.ts";
+import { TOOL_ACT, TOOL_OBSERVE, TOOL_PEEK, TOOL_SURVEY } from "../../src/runtime/names.ts";
 import { readWorkerInfo } from "../../src/store/worker-info.ts";
 
 interface World {
@@ -254,8 +255,8 @@ describe("evidence, ownership, handoff, knowledge", () => {
   });
 });
 
-describe("extension tool swap and recording", () => {
-  it("swaps coding tools on start and records inspect", async () => {
+describe("the local extension registers the agent, not a coding agent with a hat", () => {
+  it("registers the composed tools and needs no run to look at a page", async () => {
     const { home, cleanup } = await tempHome();
     const server = new FixtureServer();
     const origin = await server.start();
@@ -264,14 +265,25 @@ describe("extension tool swap and recording", () => {
       process.env.BSA_HEADLESS = "1";
       const pi = createFakePi();
       browserSessionAgent(pi);
-      assert.deepEqual(pi.getActiveTools(), ["read", "bash", "write", "edit"]);
+
+      // There is no tool swap any more, because there is nothing to swap away from: the
+      // agent is a browser agent, and the coding identity is replaced rather than
+      // appended to. The swap existed to hide the fact that it was a coding agent.
+      const registered = [...pi.tools.keys()];
+      for (const name of [TOOL_OBSERVE, TOOL_ACT, TOOL_PEEK, TOOL_SURVEY]) {
+        assert.ok(registered.includes(name), `missing ${name} in ${registered.join(",")}`);
+      }
+      assert.ok(
+        !registered.some((name) => name.startsWith("browser_")),
+        `the legacy tool set must be gone, saw ${registered.join(",")}`,
+      );
+
+      // And the browser starts because the agent wanted a page, not because a run began.
+      const observed = await runTool(pi, TOOL_OBSERVE, {});
+      assert.equal(Boolean(observed.isError), false, JSON.stringify(observed));
+
       await runCommand(pi, "browser-start", `--url ${origin}/apply Apply to the role`);
-      assert.ok(pi.getActiveTools().every((name) => name.startsWith("browser_")));
-      assert.equal(pi.getActiveTools().includes("bash"), false);
-      const inspect = await runTool(pi, "browser_inspect", {});
-      assert.equal(Boolean(inspect.isError), false);
       await runCommand(pi, "browser-stop", "--browser");
-      assert.deepEqual(pi.getActiveTools(), ["read", "bash", "write", "edit"]);
     } finally {
       const info = await readWorkerInfo(home).catch(() => null);
       if (info?.pid) {

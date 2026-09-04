@@ -14,11 +14,12 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ParkedOutcome } from "../core/types.ts";
-import { buildTaskCard, type TaskCardInput } from "./card.ts";
+import { composeAgent } from "./agent.ts";
+import type { TaskCardInput } from "./card.ts";
 import { NO_METRICS, type MetricsSink } from "./metrics.ts";
 import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort, type UsageSplit } from "./model.ts";
 import { PLACEHOLDER, pruneMessages, type PrunableMessage, type PruneOptions } from "./prune.ts";
-import { buildTools, type ReportPayload, type ToolContext } from "./tools.ts";
+import type { ReportPayload, ToolContext } from "./tools.ts";
 
 /** Placeholder model descriptor for the mock port, which never calls a provider. */
 export const MOCK_MODEL = {
@@ -123,19 +124,26 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
   // and provider usage from the same turn share an index and the rollup can join them.
   let currentTurn = 0;
 
-  const tools = buildTools({
-    ...options.tools,
-    metrics,
-    turn: () => currentTurn,
-    onReport: (value) => {
-      report = value;
-      options.tools.onReport?.(value);
-    },
-    onParked: (value) => {
-      parked = value;
-      options.tools.onParked?.(value);
+  // Composed, not assembled here: the product builds the same agent from the same call,
+  // so the two cannot drift apart again.
+  const composed = composeAgent({
+    card: options.card,
+    maxTurns,
+    tools: {
+      ...options.tools,
+      metrics,
+      turn: () => currentTurn,
+      onReport: (value) => {
+        report = value;
+        options.tools.onReport?.(value);
+      },
+      onParked: (value) => {
+        parked = value;
+        options.tools.onParked?.(value);
+      },
     },
   });
+  const tools = composed.tools;
 
   const meter = new UsageMeter();
   const modelErrors: string[] = [];
@@ -146,7 +154,7 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
   // Pi's engine has no step limit, so the budget is enforced at the model port.
   const { stream, state: cap } = withTurnCap(options.stream, maxTurns);
 
-  const card = buildTaskCard({ ...options.card, maxTurns });
+  const card = composed.systemPrompt;
   const model = options.model ?? MOCK_MODEL;
 
   // The card and the schemas are resent on every turn, so their size is a per-turn cost

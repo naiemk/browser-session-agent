@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { TOOL_OBSERVE } from "../../src/runtime/names.ts";
 import { afterEach, describe, it } from "node:test";
 import { AgentError } from "../../src/domain/types.ts";
 import {
@@ -17,7 +18,7 @@ afterEach(async () => {
 });
 
 describe("PRE-01-T02 prompt uses browser tools when helper connected", () => {
-  it("invokes browser_inspect from the fake Pi path, not the BSA_NO_PI stub", async () => {
+  it("invokes the composed observe tool, not a stub and not the legacy one", async () => {
     const world = await withFixture(await startV1Api({ requirePaid: false, fakePi: true }));
     worlds.push(world);
     const { chat, hub } = await connectUnpaidConsumer(world);
@@ -34,11 +35,11 @@ describe("PRE-01-T02 prompt uses browser tools when helper connected", () => {
       chat.send({ type: "prompt", text: "inspect the page" });
       const call = await waitFor(
         chat.inbox,
-        (m) => m.type === "agentEvent" && m.event?.toolName === "browser_inspect",
+        (m) => m.type === "agentEvent" && m.event?.toolName === TOOL_OBSERVE,
         15_000,
         from,
       );
-      assert.equal(call.event?.toolName, "browser_inspect");
+      assert.equal(call.event?.toolName, TOOL_OBSERVE);
       const result = await waitFor(
         chat.inbox,
         (m) => m.type === "agentEvent" && m.event?.type === "tool_result",

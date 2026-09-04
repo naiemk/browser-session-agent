@@ -160,7 +160,7 @@ export class NodeAgent {
         // Anything else falls through to the session dispatcher, so both work during the
         // cutover rather than the flip being all-or-nothing.
         const asPort = message.method.startsWith("port.")
-          ? await dispatchPortRpc(await this.port(), message.method, message.args)
+          ? await dispatchPortRpc(this.port(), message.method, message.args)
           : ({ handled: false } as const);
         const result = asPort.handled
           ? asPort.result
@@ -190,16 +190,12 @@ export class NodeAgent {
   /**
    * The operator's browser as a port, adopting whatever tabs the worker already tracks.
    *
-   * Starts the worker if it is not running: the legacy path only started a browser as a
-   * side effect of starting a *run*, and the agent asking for a tab is reason enough.
-   * `start()` returns immediately when a context already exists, so this is cheap.
-   *
-   * Adopted once and kept, so tab identity stays stable across calls; the worker remains
+   * Built once and kept, so tab identity stays stable across calls; the worker remains
    * the owner of the browser process, the profile, and the screencast.
    */
-  private async port(): Promise<WorkerBrowserPort> {
-    await this.session.worker.start();
-    this.browserPort ??= WorkerBrowserPort.adopt(this.session.worker);
+  private port(): WorkerBrowserPort {
+    // Lazy: the port starts the worker itself the first time the agent wants a page.
+    this.browserPort ??= WorkerBrowserPort.lazy(this.session.worker);
     return this.browserPort;
   }
 

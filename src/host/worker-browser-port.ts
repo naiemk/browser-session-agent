@@ -19,6 +19,8 @@ import { PlaywrightBrowserPort, type AcquiredTab } from "../core/browser.ts";
 import type { BrowserWorker } from "../worker/browser-worker.ts";
 
 export class WorkerBrowserPort extends PlaywrightBrowserPort {
+  private adopted = false;
+
   private constructor(private readonly worker: BrowserWorker) {
     super();
   }
@@ -31,8 +33,30 @@ export class WorkerBrowserPort extends PlaywrightBrowserPort {
    */
   static adopt(worker: BrowserWorker): WorkerBrowserPort {
     const port = new WorkerBrowserPort(worker);
-    for (const [tabId, page] of worker.trackedPages()) port.register(tabId, page);
+    port.absorbTrackedTabs();
     return port;
+  }
+
+  /**
+   * Build a port for a worker that may not be running.
+   *
+   * The legacy path only started a browser as a side effect of starting a *run*. The
+   * agent asking for a page is reason enough, so the worker is started on first use.
+   */
+  static lazy(worker: BrowserWorker): WorkerBrowserPort {
+    return new WorkerBrowserPort(worker);
+  }
+
+  protected async ensureReady(): Promise<void> {
+    if (this.adopted) return;
+    // Returns immediately when a context already exists, so this is cheap to repeat.
+    await this.worker.start();
+    this.absorbTrackedTabs();
+  }
+
+  private absorbTrackedTabs(): void {
+    for (const [tabId, page] of this.worker.trackedPages()) this.register(tabId, page);
+    this.adopted = true;
   }
 
   protected async acquireTab(): Promise<AcquiredTab> {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { TOOL_ACT, TOOL_OBSERVE } from "../../src/runtime/names.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -214,17 +215,38 @@ describe("Pi package and extension contract", () => {
     assert.deepEqual(pkg.pi.extensions, ["./src/extension.ts"]);
   });
 
-  it("registers tools and commands and reports status without a run", async () => {
+  it("registers the agent's tools and the product's commands", async () => {
     const pi = createFakePi();
     browserSessionAgent(pi);
-    assert.equal(pi.tools.has("browser_inspect"), true);
+
+    // The agent's capabilities come from composeAgent; the commands are the product's
+    // run lifecycle. Previously both came from one place, which is how the agent's tools
+    // ended up gated on a *run* being active.
+    assert.equal(pi.tools.has(TOOL_OBSERVE), true);
+    assert.equal(pi.tools.has(TOOL_ACT), true);
+    assert.equal(pi.tools.has("browser_inspect"), false, "the legacy tool set is gone");
+
     assert.equal(pi.commands.has("browser-status"), true);
     assert.equal(pi.commands.has("browser-start"), true);
     await runCommand(pi, "browser-status");
     assert.match(pi.notifications.at(-1) ?? "", /currentRun/);
-    const result = await runTool(pi, "browser_inspect", {});
-    assert.equal(result.isError, true);
-    assert.equal(result.content[0]?.type, "text");
-    assert.match((result.content[0] as { text: string }).text, /run_inactive/);
+  });
+
+  it("replaces the coding identity rather than appending to it", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+
+    const hook = pi.handlers.get("before_agent_start");
+    const result = (await hook?.({ systemPrompt: "You are a coding agent." })) as {
+      systemPrompt?: string;
+    };
+
+    assert.ok(result?.systemPrompt, "the hook must supply a prompt");
+    assert.doesNotMatch(
+      result.systemPrompt!,
+      /You are a coding agent\./,
+      "appending is why the chat used to answer 'what can you do?' like a coding assistant",
+    );
+    assert.match(result.systemPrompt!, /You drive a real web browser/);
   });
 });

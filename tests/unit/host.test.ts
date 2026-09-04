@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { bindBrowserExtension } from "../../src/host/bind-extension.ts";
+import { bindBrowserCommands } from "../../src/host/bind-extension.ts";
 import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../src/host/memory-host.ts";
 import { RpcSessionHandle } from "../../src/host/session-handle.ts";
 import { parseJsonMessage } from "../../src/hosts/shared/protocol.ts";
@@ -37,12 +37,13 @@ describe("OperatorHost", () => {
     });
     const host = new MemoryOperatorHost();
     const api = createExtensionApi(host);
-    bindBrowserExtension(api, handle);
+    bindBrowserCommands(api, handle);
     await api.commands.get("browser-start")?.handler("Apply to the role", extensionContext(host));
     assert.equal(calls[0]?.method, "startRun");
     assert.deepEqual(calls[0]?.args, ["Apply to the role", undefined]);
     assert.equal(handle.currentRunId, "run_1");
-    assert.ok(host.getActiveTools().includes("browser_inspect"));
+    // No tool assertion here any more: the agent's tools come from composeAgent, and
+    // this binding is only the product's run-lifecycle commands.
   });
 
   it("parses protocol messages", () => {
