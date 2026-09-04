@@ -12,6 +12,11 @@ import { perceive, visibleText } from "./perceive.ts";
 import { CoreError, type Observation, type PageFacts } from "./types.ts";
 
 export interface BrowserPort {
+  /**
+   * A tab in the shared session: it sees the same cookies and storage as every other
+   * ordinary tab, which is what makes a side tab a second window onto *our* session
+   * rather than a stranger's.
+   */
   openTab(url?: string): Promise<string>;
   /**
    * A tab with no cookies and no storage: the same page as an anonymous visitor sees it.
@@ -45,18 +50,29 @@ export class LocalBrowser implements BrowserPort {
   private readonly isolated = new Map<string, BrowserContext>();
   private seq = 0;
 
-  private constructor(private readonly browser: Browser) {}
+  private constructor(
+    private readonly browser: Browser,
+    /**
+     * The session every ordinary tab shares.
+     *
+     * `browser.newPage()` is documented as creating a page *in a new browser context*, so
+     * using it per tab gives each one its own cookie jar. That silently breaks the whole
+     * point of a second tab: it would open signed out, so peeking would show us a
+     * stranger's view of our own account. One explicit context is the fix.
+     */
+    private readonly shared: BrowserContext,
+  ) {}
 
   static async launch(options: { headless?: boolean } = {}): Promise<LocalBrowser> {
     const browser = await chromium.launch({
       headless: options.headless ?? true,
       args: ["--no-sandbox"],
     });
-    return new LocalBrowser(browser);
+    return new LocalBrowser(browser, await browser.newContext());
   }
 
   async openTab(url?: string): Promise<string> {
-    return this.register(await this.browser.newPage(), url);
+    return this.register(await this.shared.newPage(), url);
   }
 
   async openIsolatedTab(url: string): Promise<string> {
