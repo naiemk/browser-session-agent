@@ -8,6 +8,10 @@
 
 import type { BrowserPort } from "../core/browser.ts";
 import type { CheckResult, Predicate, WaitSpec } from "../core/types.ts";
+import type { UsageSplit } from "../runtime/model.ts";
+// Measurement infrastructure depending on measurement analysis is fine; what must not
+// happen is production code importing it, which is why the view seam lives elsewhere.
+import type { OptimizeSummary, Rollup } from "../optimize/rollup.ts";
 
 /** One step of a reference solution, addressing controls by name rather than ref. */
 export interface ReferenceStep {
@@ -90,6 +94,10 @@ export interface TaskRun {
   evidenceChecks?: CheckResult[];
   tokens?: number;
   costUsd?: number;
+  /** Cache reads and fresh input are billed differently, so the total hides the story. */
+  usage?: UsageSplit;
+  /** What this run spent its context on, and what it bought twice. */
+  metrics?: Rollup;
 }
 
 export interface SuiteReport {
@@ -108,6 +116,13 @@ export interface SuiteReport {
   tokensPerTask?: number;
   /** False when too much of the run was lost to infrastructure to draw a conclusion. */
   valid: boolean;
+  /**
+   * Per-task cost and waste, in the shape `browser-agent compare` reads.
+   *
+   * Present whenever the driver metered itself, which the reference target never does
+   * because it runs no model and has no context to spend.
+   */
+  optimize?: OptimizeSummary;
   runs: TaskRun[];
 }
 
@@ -140,6 +155,9 @@ export interface DriverOutcome {
    * rate, because scoring them would blame the agent for the bill.
    */
   infraError?: string;
+  usage?: UsageSplit;
+  /** What the run spent, when the driver metered itself. */
+  metrics?: Rollup;
 }
 
 export interface AgentDriver {

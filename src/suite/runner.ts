@@ -11,10 +11,12 @@ import { LocalBrowser, type BrowserPort } from "../core/browser.ts";
 import { Ledger } from "../core/ledger.ts";
 import { verify } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
+import { summarize } from "../optimize/rollup.ts";
 import { evaluateAllEvidence } from "./evidence.ts";
 import {
   StepCapExceeded,
   type AgentDriver,
+  type DriverOutcome,
   type EvidenceCheck,
   type SuiteReport,
   type SuiteTask,
@@ -94,6 +96,13 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
   );
   const denominator = scored || 1;
 
+  // Only runs that actually happened describe what the agent costs. Including runs lost
+  // to a 402 would report an improvement every time the credits ran out.
+  const measured = runs
+    .filter((run) => run.outcome !== "error")
+    .map((run) => run.metrics)
+    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+
   return {
     target: options.driver.name,
     startedAt,
@@ -109,6 +118,7 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
     // A run that lost more than a quarter of its tasks to infrastructure says nothing
     // about the agent, so it must not be quoted as a result.
     valid: runs.length > 0 && errored / runs.length <= 0.25,
+    ...(measured.length > 0 ? { optimize: summarize(measured) } : {}),
     runs,
   };
 }
@@ -141,6 +151,8 @@ async function runOne(
   let detail = "";
   let tokens: number | undefined;
   let costUsd: number | undefined;
+  let usage: DriverOutcome["usage"];
+  let metrics: DriverOutcome["metrics"];
   let capped = false;
   let infraError: string | undefined;
 
@@ -149,6 +161,8 @@ async function runOne(
     const result = await options.driver.runTask(context);
     tokens = result.tokens;
     costUsd = result.costUsd;
+    usage = result.usage;
+    metrics = result.metrics;
     detail = result.claimed ?? "";
     infraError = result.infraError;
   } catch (err) {
@@ -172,6 +186,7 @@ async function runOne(
       checks: [],
       tokens,
       costUsd,
+      ...(usage ? { usage } : {}),
     };
   }
 
@@ -219,6 +234,8 @@ async function runOne(
     ...(evidence ? { evidenceChecks: evidence } : {}),
     tokens,
     costUsd,
+    ...(usage ? { usage } : {}),
+    ...(metrics ? { metrics } : {}),
   };
 }
 
