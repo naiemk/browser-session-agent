@@ -41,8 +41,20 @@ describe("task card", () => {
 
   it("stays short, because the prompt is resent every turn", () => {
     const card = buildTaskCard({ ...CARD, maxTurns: 12 });
-    assert.ok(card.length < 2600, `card is ${card.length} chars; trim it`);
+    assert.ok(card.length < 3400, `card is ${card.length} chars; trim it`);
     assert.match(card, /about 12 turns/);
+  });
+
+  it("separates what counts as the answer from how to go and get it", () => {
+    const card = buildTaskCard(CARD);
+
+    // A word that means two things changes the answer, so it is surfaced.
+    assert.match(card, /matches more than one thing/);
+    assert.match(card, /note_fork/);
+
+    // The route only changes the cost, so it is chosen and not asked about.
+    assert.match(card, /take the cheap one and do not ask about it/);
+    assert.match(card, /navigating away loses your place/);
   });
 
   it("teaches a method for establishing standing, and asserts no situation", () => {
