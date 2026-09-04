@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Roster</title>
+  </head>
+  <body>
+    <nav>
+      <a href="/roster">Roster</a>
+      <a href="/guests">Guests</a>
+      <form role="search" action="/find" method="get">
+        <input type="search" name="q" placeholder="Search people" />
+        <button type="submit">Search</button>
+      </form>
+    </nav>
+    <main>
+      <h1>Roster</h1>
+      <!--
+        Rows are built by script and only for the current page, so the ones you have not
+        paged to are not in the DOM. That is what a virtualized list does, and it is why
+        navigating away and coming back is expensive: the state is gone.
+      -->
+      <ul id="rows"></ul>
+      <button type="button" id="next">Next page</button>
+      <p id="pageLabel"></p>
+    </main>
+    <script>
+      const PEOPLE = [
+        { name: "Ada Lovelace", handle: "ada" },
+        { name: "Grace Hopper", handle: "grace" },
+        { name: "Alan Turing", handle: "alan" },
+        { name: "Katherine Johnson", handle: "katherine" },
+        { name: "Barbara Liskov", handle: "barbara" },
+        { name: "Edsger Dijkstra", handle: "edsger" },
+        { name: "Dana Ivanova", handle: "dana" },
+        { name: "Linus Torvalds", handle: "linus" },
+      ];
+      const PER_PAGE = 4;
+      const plain = document.body.dataset.plain === "1";
+      let page = 0;
+
+      function render() {
+        const rows = document.getElementById("rows");
+        rows.innerHTML = "";
+        for (const person of PEOPLE.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)) {
+          const li = document.createElement("li");
+          if (plain) {
+            // No anchor: the row hands you an identifier and nothing to click.
+            li.textContent = person.name + " (@" + person.handle + ")";
+          } else {
+            const a = document.createElement("a");
+            a.href = "/p/" + person.handle;
+            a.textContent = person.name;
+            li.appendChild(a);
+          }
+          rows.appendChild(li);
+        }
+        document.getElementById("pageLabel").textContent =
+          "Page " + (page + 1) + " of " + Math.ceil(PEOPLE.length / PER_PAGE);
+        document.getElementById("next").disabled =
+          (page + 1) * PER_PAGE >= PEOPLE.length;
+      }
+
+      document.getElementById("next").addEventListener("click", () => {
+        if ((page + 1) * PER_PAGE < PEOPLE.length) page += 1;
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>
