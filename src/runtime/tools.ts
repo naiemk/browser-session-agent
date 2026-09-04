@@ -13,9 +13,8 @@ import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gat
 import type { Ledger } from "../core/ledger.ts";
 import { peek } from "../core/peek.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
-import { probe } from "../core/probe.ts";
 import type { GoalStore } from "../core/state.ts";
-import { surveyAffordances } from "../core/survey.ts";
+import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
 import {
@@ -206,10 +205,15 @@ export function buildTools(context: ToolContext): AgentTool[] {
       promptSnippet: "Read anything about the page without touching it.",
       parameters: Type.Object({ query: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
+        const query = (params as { query: unknown }).query;
         try {
-          const result = await probe(context.browser.pageFor(tab()), (params as { query: unknown }).query, {
-            ledger: context.ledger,
+          const result = await context.browser.probe(query, tab());
+          // The probe answers; recording is ours, so evidence has one owner.
+          await context.ledger?.append({
+            type: "probe",
             entityId: context.entityId,
+            intent: `probe ${(query as { kind?: string })?.kind ?? "?"}`,
+            payload: { query, truncated: result.truncated },
           });
           return reply(result.truncated ? { data: result.data, note: result.note } : result.data);
         } catch (err) {
@@ -394,12 +398,14 @@ export function buildTools(context: ToolContext): AgentTool[] {
       parameters: Type.Object({}),
       execute: async () => {
         try {
-          return reply(
-            await surveyAffordances(context.browser.pageFor(tab()), {
-              ledger: context.ledger,
-              entityId: context.entityId,
-            }),
-          );
+          const survey = await context.browser.survey(tab());
+          await context.ledger?.append({
+            type: "probe",
+            entityId: context.entityId,
+            intent: `survey what ${survey.url} offers`,
+            payload: { counts: surveyCounts(survey) },
+          });
+          return reply(survey);
         } catch (err) {
           return reply({ error: describeError(err) });
         }

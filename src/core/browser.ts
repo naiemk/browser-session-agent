@@ -8,9 +8,32 @@
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { perceive, visibleText } from "./perceive.ts";
-import { CoreError, type Observation, type PageFacts } from "./types.ts";
+import { perceive, refSelector, visibleText } from "./perceive.ts";
+import { probe, type ProbeResult } from "./probe.ts";
+import { surveyAffordances, type AffordanceSurvey } from "./survey.ts";
+import { CoreError, type Observation, type PageFacts, type WaitSpec } from "./types.ts";
 
+/** Read-only limits a caller may tighten. Serializable, so it can cross a wire. */
+export interface ProbeLimits {
+  maxResultChars?: number;
+  timeoutMs?: number;
+}
+
+/**
+ * The browser, as the agent is allowed to see it.
+ *
+ * Every method is *serializable*: arguments and results are data, never live objects.
+ * That is the whole design constraint, and it used to be violated. The port exposed
+ * `pageFor(): Page`, and `act`, `probe` and `survey` all took that raw Playwright page —
+ * which made the port implementable only when the browser was in the same process. In the
+ * product the browser runs on the user's desktop and the agent runs on a server, talking
+ * over RPC, and a `Page` cannot cross that boundary. So the new runtime was structurally
+ * incapable of driving the product's browser, whichever tests passed.
+ *
+ * The split that fixes it: this port owns *primitives* and no judgement at all. Deciding
+ * what an action means, whether it worked, whether it can be undone, and what to record
+ * stays in `act` and the rest of the core, where there is exactly one copy of it.
+ */
 export interface BrowserPort {
   /**
    * A tab in the shared session: it sees the same cookies and storage as every other
@@ -29,10 +52,45 @@ export interface BrowserPort {
    */
   openIsolatedTab(url: string): Promise<string>;
   closeTab(tabId: string): Promise<void>;
-  pageFor(tabId?: string): Page;
+
+  // Reads.
   observe(tabId?: string): Promise<Observation>;
   facts(tabId?: string): Promise<PageFacts>;
   lastObservation(tabId?: string): Observation | undefined;
+  /** One read-only query. The query is validated data, and so is the answer. */
+  probe(query: unknown, tabId?: string, limits?: ProbeLimits): Promise<ProbeResult>;
+  /** What this page advertises, following none of it. */
+  survey(tabId?: string): Promise<AffordanceSurvey>;
+
+  /*
+   * Primitives. Deliberately dumb: no verification, no reversibility judgement, no
+   * evidence. `act` is the only caller and it owns all three, so there is one place
+   * where an action can be performed and exactly one place where it is judged.
+   */
+  navigate(tabId: string | undefined, url: string, timeoutMs: number): Promise<void>;
+  click(tabId: string | undefined, ref: string, timeoutMs: number): Promise<void>;
+  fill(tabId: string | undefined, ref: string, text: string, timeoutMs: number): Promise<void>;
+  selectOption(
+    tabId: string | undefined,
+    ref: string,
+    value: string,
+    timeoutMs: number,
+  ): Promise<void>;
+  scroll(
+    tabId: string | undefined,
+    ref: string | undefined,
+    dy: number | undefined,
+    timeoutMs: number,
+  ): Promise<void>;
+  setInputFiles(
+    tabId: string | undefined,
+    ref: string,
+    files: string[],
+    timeoutMs: number,
+  ): Promise<void>;
+  waitFor(tabId: string | undefined, spec: WaitSpec, timeoutMs: number): Promise<void>;
+
+  // Evidence and lifecycle.
   screenshot(tabId: string | undefined, path: string): Promise<void>;
   consoleErrors(tabId?: string): string[];
   failedRequests(tabId?: string): string[];
@@ -123,11 +181,109 @@ export class LocalBrowser implements BrowserPort {
     return tabId;
   }
 
+  /**
+   * Not on the port, on purpose: a live page cannot cross a wire. Kept public because
+   * tests and local-only tooling legitimately want direct Playwright access.
+   */
   pageFor(tabId?: string): Page {
     const id = tabId ?? this.firstTabId();
     const page = id ? this.pages.get(id) : undefined;
     if (!page) throw new CoreError("missing_tab", `No such tab: ${tabId ?? "(none open)"}`);
     return page;
+  }
+
+  async probe(query: unknown, tabId?: string, limits: ProbeLimits = {}): Promise<ProbeResult> {
+    return probe(this.pageFor(tabId), query, limits);
+  }
+
+  async survey(tabId?: string): Promise<AffordanceSurvey> {
+    return surveyAffordances(this.pageFor(tabId));
+  }
+
+  async navigate(tabId: string | undefined, url: string, timeoutMs: number): Promise<void> {
+    await this.pageFor(tabId).goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  }
+
+  async click(tabId: string | undefined, ref: string, timeoutMs: number): Promise<void> {
+    await this.locator(tabId, ref).click({ timeout: timeoutMs });
+  }
+
+  async fill(
+    tabId: string | undefined,
+    ref: string,
+    text: string,
+    timeoutMs: number,
+  ): Promise<void> {
+    await this.locator(tabId, ref).fill(text, { timeout: timeoutMs });
+  }
+
+  async selectOption(
+    tabId: string | undefined,
+    ref: string,
+    value: string,
+    timeoutMs: number,
+  ): Promise<void> {
+    await this.locator(tabId, ref).selectOption(value, { timeout: timeoutMs });
+  }
+
+  async scroll(
+    tabId: string | undefined,
+    ref: string | undefined,
+    dy: number | undefined,
+    timeoutMs: number,
+  ): Promise<void> {
+    const page = this.pageFor(tabId);
+    if (ref && dy) {
+      // Scroll *within* the referenced container: hover it, then wheel. This is what a
+      // virtualized listbox needs; scrollIntoViewIfNeeded cannot reach unrendered rows.
+      await this.locator(tabId, ref).hover({ timeout: timeoutMs });
+      await page.mouse.wheel(0, dy);
+      return;
+    }
+    if (ref) {
+      await this.locator(tabId, ref).scrollIntoViewIfNeeded({ timeout: timeoutMs });
+      return;
+    }
+    await page.mouse.wheel(0, dy ?? 600);
+  }
+
+  async setInputFiles(
+    tabId: string | undefined,
+    ref: string,
+    files: string[],
+    timeoutMs: number,
+  ): Promise<void> {
+    await this.locator(tabId, ref).setInputFiles(files, { timeout: timeoutMs });
+  }
+
+  async waitFor(tabId: string | undefined, spec: WaitSpec, timeoutMs: number): Promise<void> {
+    const page = this.pageFor(tabId);
+    switch (spec.kind) {
+      case "load":
+        await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs });
+        return;
+      case "url":
+        await page.waitForURL((url) => url.href.includes(spec.value ?? ""), {
+          timeout: timeoutMs,
+        });
+        return;
+      case "text":
+        await page
+          .getByText(spec.value ?? "", { exact: false })
+          .first()
+          .waitFor({ timeout: timeoutMs });
+        return;
+      case "ref":
+        await this.locator(tabId, spec.value ?? "").waitFor({ timeout: timeoutMs });
+        return;
+      case "timeout":
+        await page.waitForTimeout(timeoutMs);
+        return;
+    }
+  }
+
+  private locator(tabId: string | undefined, ref: string) {
+    return this.pageFor(tabId).locator(refSelector(ref)).first();
   }
 
   tabIdFor(tabId?: string): string {

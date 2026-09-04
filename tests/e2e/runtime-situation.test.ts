@@ -12,8 +12,10 @@ import { createMockModel } from "../../src/runtime/mock-model.ts";
 import {
   TOOL_DONE,
   TOOL_OBSERVE,
+  TOOL_PROBE,
   TOOL_REMEMBER,
   TOOL_STRANGER,
+  TOOL_SURVEY,
 } from "../../src/runtime/names.ts";
 import { runTask, runTaskWithDeclineRetry } from "../../src/runtime/runtime.ts";
 import { DEFAULT_STRANGER_VIEW_BUDGET } from "../../src/runtime/tools.ts";
@@ -112,6 +114,35 @@ describe("establishing the situation through the tools", () => {
       views,
       DEFAULT_STRANGER_VIEW_BUDGET,
       `expected the budget to cap views at ${DEFAULT_STRANGER_VIEW_BUDGET}, saw ${views}`,
+    );
+  });
+
+  it("records reads that the substrate no longer records for itself", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const ledger = await Ledger.open(root, "g_reads");
+
+    await runTask({
+      card: { objective: "Look at the form", criteria: CRITERIA },
+      stream: createMockModel({
+        plan: [
+          { tool: TOOL_PROBE, args: { query: { kind: "form_inventory" } } },
+          { tool: TOOL_SURVEY, args: {} },
+        ],
+      }),
+      tools: { browser, tabId: tab, ledger },
+    });
+
+    const events = await ledger.read();
+    const probes = events.filter((event) => event.type === "probe");
+    assert.ok(
+      probes.some((event) => /probe form_inventory/.test(event.intent ?? "")),
+      `expected the probe to be recorded, saw ${JSON.stringify(probes.map((e) => e.intent))}`,
+    );
+    const survey = probes.find((event) => /survey what/.test(event.intent ?? ""));
+    assert.ok(survey, "expected the survey to be recorded");
+    assert.ok(
+      (survey?.payload?.counts as { actions?: number })?.actions !== undefined,
+      "and to carry the counts, so a reader need not re-derive them",
     );
   });
 
