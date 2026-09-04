@@ -359,7 +359,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       name: TOOL_PEEK,
       label: "Peek",
       description:
-        "Read a URL in a side tab and come straight back, without leaving the page you are on. Use it to inspect items in a list: navigating away loses your place in the list, and peeking does not. Give expect (a predicate) when you built the URL from a name or id, so a URL that resolves to the wrong thing is caught instead of believed. Costs one action.",
+        `Read a URL in a side tab and come straight back, without leaving the page you are on. Use it to inspect items in a list: navigating away loses your place in the list, and peeking does not. Give expect (a predicate) when you built the URL from a name or id, so a URL that resolves to the wrong thing is caught instead of believed. The page is closed again, so refs from it cannot be acted on — use ${TOOL_SIDE_OPEN} when you need to do something there. Costs one action.`,
       promptSnippet: "Read something elsewhere without losing your place.",
       parameters: Type.Object({
         url: Type.String(),
