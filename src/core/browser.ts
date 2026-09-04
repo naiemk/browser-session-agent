@@ -99,46 +99,49 @@ export interface BrowserPort {
 
 const MAX_CAPTURED = 20;
 
-export class LocalBrowser implements BrowserPort {
-  private readonly pages = new Map<string, Page>();
+/** How a subclass hands the port a tab it has just opened. */
+export interface AcquiredTab {
+  tabId: string;
+  page: Page;
+  /** Called when the tab closes, for anything the subclass owns alongside it. */
+  dispose?: () => Promise<void>;
+}
+
+/**
+ * Everything about driving Playwright that does not depend on where the browser came from.
+ *
+ * There are two browsers in this product: one this process launches, and one already
+ * running on the user's desktop under a persistent profile, reached over CDP. They differ
+ * only in how a context is obtained. Every other concern - the tab registry, the console
+ * and failed-request listeners, perception, the primitives - is identical, so it lives
+ * here once. Two ports that each implemented `click` would drift, and drift between two
+ * implementations of the same idea is what this whole change exists to remove.
+ */
+export abstract class PlaywrightBrowserPort implements BrowserPort {
+  protected readonly pages = new Map<string, Page>();
   private readonly consoleByTab = new Map<string, string[]>();
   private readonly failedByTab = new Map<string, string[]>();
   private readonly observations = new Map<string, Observation>();
-  /** Contexts owned by isolated tabs, closed with the tab so they cannot leak. */
-  private readonly isolated = new Map<string, BrowserContext>();
-  private seq = 0;
+  private readonly owned = new Map<string, () => Promise<void>>();
 
-  private constructor(
-    private readonly browser: Browser,
-    /**
-     * The session every ordinary tab shares.
-     *
-     * `browser.newPage()` is documented as creating a page *in a new browser context*, so
-     * using it per tab gives each one its own cookie jar. That silently breaks the whole
-     * point of a second tab: it would open signed out, so peeking would show us a
-     * stranger's view of our own account. One explicit context is the fix.
-     */
-    private readonly shared: BrowserContext,
-  ) {}
-
-  static async launch(options: { headless?: boolean } = {}): Promise<LocalBrowser> {
-    const browser = await chromium.launch({
-      headless: options.headless ?? true,
-      args: ["--no-sandbox"],
-    });
-    return new LocalBrowser(browser, await browser.newContext());
-  }
+  /** Open a tab in the shared session. */
+  protected abstract acquireTab(url?: string): Promise<AcquiredTab>;
+  /** Open a tab that carries no cookies and no storage. */
+  protected abstract acquireIsolatedTab(url: string): Promise<AcquiredTab>;
+  abstract close(): Promise<void>;
 
   async openTab(url?: string): Promise<string> {
-    return this.register(await this.shared.newPage(), url);
+    return this.adopt(await this.acquireTab(url));
   }
 
   async openIsolatedTab(url: string): Promise<string> {
-    // A fresh context, so nothing from the signed-in session comes with it.
-    const context = await this.browser.newContext();
-    const tabId = await this.register(await context.newPage(), url);
-    this.isolated.set(tabId, context);
-    return tabId;
+    return this.adopt(await this.acquireIsolatedTab(url));
+  }
+
+  private async adopt(tab: AcquiredTab): Promise<string> {
+    this.register(tab.tabId, tab.page);
+    if (tab.dispose) this.owned.set(tab.tabId, tab.dispose);
+    return tab.tabId;
   }
 
   async closeTab(tabId: string): Promise<void> {
@@ -148,15 +151,15 @@ export class LocalBrowser implements BrowserPort {
     this.failedByTab.delete(tabId);
     this.observations.delete(tabId);
 
-    const context = this.isolated.get(tabId);
-    this.isolated.delete(tabId);
+    const dispose = this.owned.get(tabId);
+    this.owned.delete(tabId);
 
     await page?.close().catch(() => undefined);
-    await context?.close().catch(() => undefined);
+    await dispose?.().catch(() => undefined);
   }
 
-  private async register(page: Page, url?: string): Promise<string> {
-    const tabId = `tab_${++this.seq}`;
+  /** Start tracking a page. Public so a subclass can adopt tabs it already owns. */
+  protected register(tabId: string, page: Page): void {
     this.pages.set(tabId, page);
     this.consoleByTab.set(tabId, []);
     this.failedByTab.set(tabId, []);
@@ -176,9 +179,6 @@ export class LocalBrowser implements BrowserPort {
       if (response.status() < 400) return;
       this.push(this.failedByTab, tabId, `${response.status()} ${response.url()}`);
     });
-
-    if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
-    return tabId;
   }
 
   /**
@@ -327,12 +327,7 @@ export class LocalBrowser implements BrowserPort {
     return [...(this.failedByTab.get(this.tabIdFor(tabId)) ?? [])];
   }
 
-  async close(): Promise<void> {
-    await this.browser.close().catch(() => undefined);
-    this.pages.clear();
-  }
-
-  private firstTabId(): string | undefined {
+  protected firstTabId(): string | undefined {
     return this.pages.keys().next().value as string | undefined;
   }
 
@@ -340,5 +335,55 @@ export class LocalBrowser implements BrowserPort {
     const list = store.get(tabId) ?? [];
     list.push(value);
     store.set(tabId, list.slice(-MAX_CAPTURED));
+  }
+}
+
+/**
+ * A browser this process launches and owns. Used by the CLI, the suite, and tests.
+ */
+export class LocalBrowser extends PlaywrightBrowserPort {
+  private seq = 0;
+
+  private constructor(
+    private readonly browser: Browser,
+    /**
+     * The session every ordinary tab shares.
+     *
+     * `browser.newPage()` is documented as creating a page *in a new browser context*, so
+     * using it per tab gives each one its own cookie jar. That silently breaks the whole
+     * point of a second tab: it would open signed out, so peeking would show us a
+     * stranger's view of our own account. One explicit context is the fix.
+     */
+    private readonly shared: BrowserContext,
+  ) {
+    super();
+  }
+
+  static async launch(options: { headless?: boolean } = {}): Promise<LocalBrowser> {
+    const browser = await chromium.launch({
+      headless: options.headless ?? true,
+      args: ["--no-sandbox"],
+    });
+    return new LocalBrowser(browser, await browser.newContext());
+  }
+
+  protected async acquireTab(url?: string): Promise<AcquiredTab> {
+    const page = await this.shared.newPage();
+    if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
+    return { tabId: `tab_${++this.seq}`, page };
+  }
+
+  protected async acquireIsolatedTab(url: string): Promise<AcquiredTab> {
+    // A fresh context, so nothing from the signed-in session comes with it. Disposed with
+    // the tab, so a comparison cannot quietly become a second session.
+    const context = await this.browser.newContext();
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    return { tabId: `tab_${++this.seq}`, page, dispose: () => context.close() };
+  }
+
+  async close(): Promise<void> {
+    await this.browser.close().catch(() => undefined);
+    this.pages.clear();
   }
 }

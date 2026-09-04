@@ -181,6 +181,26 @@ export class BrowserWorker {
     await clearWorkerInfo(this.home);
   }
 
+  /**
+   * The persistent-profile context, and the pages already tracked in it.
+   *
+   * Exposed so `WorkerBrowserPort` can drive this browser with the same code that drives
+   * a locally launched one. The alternative was a second implementation of click, type
+   * and wait against the same Playwright API, which is exactly the duplication that let
+   * a perception bug live in two places at once.
+   *
+   * This worker keeps ownership of process lifecycle, CDP reconnect, the profile
+   * directory, screencast, and tab identity. Those are product concerns and none of them
+   * belong to the agent.
+   */
+  sharedContext(): BrowserContext {
+    return this.requireContext();
+  }
+
+  trackedPages(): Array<[string, Page]> {
+    return [...this.pages.entries()];
+  }
+
   listTabs(): TabSnapshot[] {
     return [...this.pages.entries()].map(([tabId, page]) => ({
       tabId,
