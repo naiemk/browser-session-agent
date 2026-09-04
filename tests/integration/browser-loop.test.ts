@@ -265,6 +265,7 @@ describe("the local extension registers the agent, not a coding agent with a hat
       process.env.BSA_HEADLESS = "1";
       const pi = createFakePi();
       browserSessionAgent(pi);
+      await pi.startSession();
 
       // There is no tool swap any more, because there is nothing to swap away from: the
       // agent is a browser agent, and the coding identity is replaced rather than
