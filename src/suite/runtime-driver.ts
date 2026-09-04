@@ -11,9 +11,13 @@
 
 import { Ledger } from "../core/ledger.ts";
 import type { ApprovalMode } from "../core/gate.ts";
+import { goalPaths } from "../core/paths.ts";
 import { GoalStore } from "../core/state.ts";
+import { FileRecorder } from "../optimize/recorder.ts";
+import { rollup } from "../optimize/rollup.ts";
 import { runTask, type RunOutcome } from "../runtime/runtime.ts";
 import type { ModelPort } from "../runtime/model.ts";
+import type { ViewStrategy } from "../runtime/view/index.ts";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentDriver, DriverContext, DriverOutcome, SuiteTask } from "./types.ts";
 
@@ -41,6 +45,10 @@ export interface RuntimeDriverOptions {
   /** Answers for `ask_user`, matched by substring of the question. */
   answers?: Record<string, string>;
   approve?: () => Promise<boolean>;
+  /** How pages are described to the model. Swapped to measure an alternative. */
+  view?: ViewStrategy;
+  /** Off to compare against a run that was not metered. On by default: it is free. */
+  meter?: boolean;
 }
 
 export class RuntimeDriver implements AgentDriver {
@@ -56,8 +64,13 @@ export class RuntimeDriver implements AgentDriver {
     const root = context.evidence?.root ?? this.options.root;
     const goalId = context.evidence?.goalId ?? `suite-${context.task.id}`;
     const ledger = await Ledger.open(root, goalId);
+    const metrics =
+      this.options.meter === false
+        ? undefined
+        : await FileRecorder.open(goalPaths(root, goalId).metricsFile);
 
     const outcome: RunOutcome = await runTask({
+      ...(metrics ? { metrics } : {}),
       card: {
         objective: context.task.goal,
         criteria: context.task.criteria,
@@ -83,6 +96,7 @@ export class RuntimeDriver implements AgentDriver {
             question.toLowerCase().includes(key.toLowerCase()),
           )?.[1],
         onStep: () => context.step(),
+        ...(this.options.view ? { view: this.options.view } : {}),
       },
     });
 
@@ -90,7 +104,11 @@ export class RuntimeDriver implements AgentDriver {
       claimed: describe(outcome),
       tokens: outcome.tokens || undefined,
       costUsd: outcome.costUsd || undefined,
+      usage: outcome.usage,
       infraError: infrastructureFailure(outcome.error, outcome.modelErrors),
+      ...(metrics
+        ? { metrics: rollup({ records: metrics.written, events: await ledger.read(), goalId }) }
+        : {}),
     };
   }
 }

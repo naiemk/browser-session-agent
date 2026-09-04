@@ -43,7 +43,23 @@ jobs:
         run: npm run suite:reference
 
       - name: Task suite — mock target (real loop, no tokens)
-        run: npm run suite
+        run: npm run suite -- --all --optimize-out /tmp/optimize-current.json
+
+      # Reports what moved and why, and never fails. A build that breaks on cost teaches
+      # people to raise the budget; a rise with a named cause is a decision instead.
+      - name: Cost report against the committed baseline
+        if: always()
+        continue-on-error: true
+        run: |
+          {
+            echo '## Cost against baseline'
+            echo ''
+            echo '```'
+            npx tsx src/cli/run.ts compare optimize/baseline.json /tmp/optimize-current.json 2>&1 || true
+            echo '```'
+            echo ''
+            echo 'Token and cache numbers need a paid run: trigger the Live baseline workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assert no provider key leaked into CI
         # A green CI must never depend on a paid call. If a key is present here, the

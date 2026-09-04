@@ -164,17 +164,71 @@ export async function createStopStream(text: string): Promise<never> {
   return stream as never;
 }
 
+/**
+ * One message's usage, kept split.
+ *
+ * The split is the whole point: a cache read is billed at a fraction of fresh input, so a
+ * run whose total tokens fell while its cache reads collapsed into fresh input got more
+ * expensive, not cheaper. Summing to a single total makes that invisible.
+ */
+export interface UsageSplit {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  costUsd: number;
+}
+
 /** Cost and token totals accumulated across a run. */
 export class UsageMeter {
   tokens = 0;
   costUsd = 0;
+  inputTokens = 0;
+  outputTokens = 0;
+  cacheReadTokens = 0;
+  cacheWriteTokens = 0;
 
-  add(message: AssistantMessage): void {
+  /** Returns this message's split, so the caller can record it per turn. */
+  add(message: AssistantMessage): UsageSplit | undefined {
     const usage = message.usage as
-      | (Usage & { totalTokens?: number; cost?: { total?: number } })
+      | (Usage & {
+          input?: number;
+          output?: number;
+          cacheRead?: number;
+          cacheWrite?: number;
+          totalTokens?: number;
+          cost?: { total?: number };
+        })
       | undefined;
-    if (!usage) return;
-    this.tokens += usage.totalTokens ?? 0;
-    this.costUsd += usage.cost?.total ?? 0;
+    if (!usage) return undefined;
+
+    const split: UsageSplit = {
+      inputTokens: usage.input ?? 0,
+      outputTokens: usage.output ?? 0,
+      cacheReadTokens: usage.cacheRead ?? 0,
+      cacheWriteTokens: usage.cacheWrite ?? 0,
+      totalTokens: usage.totalTokens ?? 0,
+      costUsd: usage.cost?.total ?? 0,
+    };
+
+    this.tokens += split.totalTokens;
+    this.costUsd += split.costUsd;
+    this.inputTokens += split.inputTokens;
+    this.outputTokens += split.outputTokens;
+    this.cacheReadTokens += split.cacheReadTokens;
+    this.cacheWriteTokens += split.cacheWriteTokens;
+    return split;
+  }
+
+  get split(): UsageSplit {
+    return {
+      inputTokens: this.inputTokens,
+      outputTokens: this.outputTokens,
+      cacheReadTokens: this.cacheReadTokens,
+      cacheWriteTokens: this.cacheWriteTokens,
+      totalTokens: this.tokens,
+      costUsd: this.costUsd,
+    };
   }
 }
