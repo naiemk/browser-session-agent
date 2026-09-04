@@ -9,7 +9,7 @@
  */
 
 import type { Predicate } from "../core/types.ts";
-import { TOOL_ACT } from "../runtime/names.ts";
+import { TOOL_ACT, TOOL_FORK, TOOL_PEEK } from "../runtime/names.ts";
 import type { PlanStep } from "../runtime/mock-model.ts";
 import type { WireObservation } from "../runtime/wire.ts";
 import type { ReferenceStep, SuiteTask } from "./types.ts";
@@ -82,16 +82,37 @@ function actArgs(step: ReferenceStep, origin: string): Record<string, unknown> {
       return { kind: "upload", files: step.files ?? [] };
     case "wait":
       return { kind: "wait", wait: step.wait ?? { kind: "timeout", timeoutMs: 250 } };
+    default:
+      throw new Error(`${step.do} is not an action; it needs its own tool call`);
   }
+}
+
+/** Reference steps that are not actions map to their own tool rather than to `act`. */
+function toPlanStep(step: ReferenceStep, origin: string): PlanStep {
+  if (step.do === "peek") {
+    const url = step.url?.startsWith("http") ? step.url : `${origin}${step.url ?? "/"}`;
+    return {
+      tool: TOOL_PEEK,
+      args: { url, ...(step.expect ? { expect: step.expect } : {}) },
+    };
+  }
+  if (step.do === "fork") {
+    return {
+      tool: TOOL_FORK,
+      args: {
+        term: step.term ?? "",
+        candidates: step.candidates ?? [],
+        resolution: step.resolution ?? "covered_all",
+        why: "reference solution",
+      },
+    };
+  }
+  return { tool: TOOL_ACT, target: step.name, args: actArgs(step, origin) };
 }
 
 export function planForTask(task: SuiteTask, origin: string): PlanStep[] {
   return task.reference.map((step) => {
-    const plan: PlanStep = {
-      tool: TOOL_ACT,
-      target: step.name,
-      args: actArgs(step, origin),
-    };
+    const plan: PlanStep = toPlanStep(step, origin);
 
     if (step.until) {
       const until = step.until;
