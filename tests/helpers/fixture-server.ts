@@ -47,6 +47,7 @@ const ROUTES: Record<string, string> = {
   "/account": "account.html",
   "/roster": "roster.html",
   "/guests": "guests.html",
+  "/rows": "rows.html",
 };
 
 /**
