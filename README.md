@@ -107,6 +107,7 @@ Pre-V1 apply: [docs/pre-v1-runbook.md](docs/pre-v1-runbook.md). Operator notes:
 
 ```bash
 npm run precommit         # everything CI gates on, in CI's order
+npm run optimize:check    # cost against the committed baseline, attributed by payload
 npm test                  # unit, integration, and end-to-end
 npm run typecheck         # core, runtime, suite, and CLI
 npm run suite:reference   # validates the suite tasks themselves
@@ -127,6 +128,11 @@ so a green build cannot quietly depend on a paid call.
 Paid runs are deliberately separate: the **Live baseline** workflow is triggered by hand
 and reports tokens and cost per task.
 
+Runs meter themselves: `browser-agent metrics <goalId>` says where a run's context went,
+what it bought twice, and whether the prompt cache was being invalidated. Cost is reported
+and attributed, never gated — see [docs/optimization.md](docs/optimization.md).
+
 Design notes: [docs/runtime.md](docs/runtime.md) ·
+[docs/optimization.md](docs/optimization.md) ·
 [docs/autonomous-agent.md](docs/autonomous-agent.md) ·
 [docs/decisions.md](docs/decisions.md)
