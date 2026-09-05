@@ -353,7 +353,10 @@ async function buildDriver(target: string, root: string, options: { model?: stri
       view,
       policy: "auto",
       answers: { name: "Ada Lovelace", email: "ada@example.com", password: "hunter2" },
-      createStream: (task, origin) => createMockModel({ plan: planForTask(task, origin) }),
+      // The same view the tools were built with: the mock resolves a named target by
+      // reading back the snapshot it was shown, so a mismatch here would fail every task
+      // for a reason that has nothing to do with the description being measured.
+      createStream: (task, origin) => createMockModel({ plan: planForTask(task, origin), view }),
     });
   }
 

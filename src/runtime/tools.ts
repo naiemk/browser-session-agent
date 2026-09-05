@@ -108,7 +108,7 @@ function reply(value: unknown, details: unknown = value): Result {
  * and it is the same string written to the payload log, which is what makes it safe for
  * a host to show one line instead.
  */
-function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
+function measured(tool: RuntimeTool, context: ToolContext, view: ViewStrategy): RuntimeTool {
   const { metrics, payloads } = context.evidence;
 
   return {
@@ -129,18 +129,26 @@ function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
         hash,
       });
 
-      // Snapshots dominate the bill, so they are counted in their own right wherever
-      // they turn up rather than only when `observe` produced them.
-      const observation = findWireObservation(result.details);
+      /*
+       * Snapshots dominate the bill, so they are counted in their own right wherever they
+       * turn up rather than only when `observe` produced them.
+       *
+       * Read back out of the text the model received, through the view that wrote it. A
+       * hard-coded shape here counted zero snapshots the moment a candidate description
+       * stopped using an array of objects, which would have left the seam unable to
+       * measure the only thing it exists to measure.
+       */
+      const observation = view.anySnapshot(text) ?? findWireObservation(result.details);
       if (observation) {
-        const stats = observationStats(observation);
         metrics.record({
           kind: "observation",
           turn,
           tool: tool.name,
-          bytes: wireText(observation).length,
+          // In the format it was sent in, or the comparison between two descriptions is
+          // a comparison of one description measured twice.
+          bytes: view.sizeOf(observation),
           hash: hashOf(wireText(observation)),
-          ...stats,
+          ...observationStats(observation),
         });
       }
 
@@ -576,5 +584,5 @@ export function buildTools(context: ToolContext): AgentTool[] {
   ];
 
   // One cast, at the boundary where the engine takes over.
-  return tools.map((tool) => measured(tool, context)) as unknown as AgentTool[];
+  return tools.map((tool) => measured(tool, context, view)) as unknown as AgentTool[];
 }

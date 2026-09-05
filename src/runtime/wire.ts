@@ -151,13 +151,13 @@ export function extractText(content: unknown): string | undefined {
   return parts.length > 0 ? parts.join("") : undefined;
 }
 
-function looksLikeObservation(value: unknown): value is WireObservation {
-  const candidate = value as WireObservation | undefined;
+function looksLikeSnapshot(value: unknown, controls: (value: unknown) => boolean): boolean {
+  const candidate = value as { url?: unknown; controls?: unknown } | undefined;
   return Boolean(
     candidate &&
       typeof candidate === "object" &&
       typeof candidate.url === "string" &&
-      Array.isArray(candidate.controls),
+      controls(candidate.controls),
   );
 }
 
@@ -170,13 +170,21 @@ function looksLikeObservation(value: unknown): value is WireObservation {
  * or tool names means a tool added later is covered without anyone remembering to
  * register it, which is exactly the mistake the name-based version made.
  */
-export function findWireObservation(value: unknown): WireObservation | undefined {
-  if (looksLikeObservation(value)) return value;
+export function findSnapshot(
+  value: unknown,
+  controls: (value: unknown) => boolean,
+): Record<string, unknown> | undefined {
+  if (looksLikeSnapshot(value, controls)) return value as Record<string, unknown>;
   if (!value || typeof value !== "object") return undefined;
   for (const nested of Object.values(value as Record<string, unknown>)) {
-    if (looksLikeObservation(nested)) return nested;
+    if (looksLikeSnapshot(nested, controls)) return nested as Record<string, unknown>;
   }
   return undefined;
+}
+
+/** The snapshot as objects, which is what the baseline view sends. */
+export function findWireObservation(value: unknown): WireObservation | undefined {
+  return findSnapshot(value, Array.isArray) as WireObservation | undefined;
 }
 
 /**

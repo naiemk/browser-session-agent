@@ -28,6 +28,13 @@ export interface TaskCardInput {
   knownFacts?: Record<string, unknown>;
   maxTurns?: number;
   policy?: "auto" | "ask" | "never";
+  /**
+   * How to read the page description, when it needs reading instructions.
+   *
+   * Explained here rather than on every snapshot: the card is resent once per turn either
+   * way, and once per turn is cheaper than once per observation.
+   */
+  format?: string;
 }
 
 export function buildTaskCard(input: TaskCardInput): string {
@@ -57,7 +64,7 @@ SUCCESS (checked against the live page by code you do not control; claiming succ
 ${criteria}
 ${facts}
 RULES
-- ${TOOL_OBSERVE} before acting: refs come from the latest snapshot and go stale.
+${input.format ? `- ${input.format}\n` : ""}- ${TOOL_OBSERVE} before acting: refs come from the latest snapshot and go stale.
 - ${TOOL_PROBE} when you do not understand a form or widget. It cannot change anything, so prefer it over a hopeful click.
 - ${TOOL_ACT} verifies every action. A click that changes nothing is a failure; typing is read back.
 - ${TOOL_CHECK} before you claim to be done.

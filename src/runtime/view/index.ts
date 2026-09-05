@@ -20,8 +20,11 @@ import {
   toWireActionResult,
   toWireObservation,
   toWireVerification,
+  findSnapshot,
+  wireText,
   type WireObservation,
 } from "../wire.ts";
+import { formatControls, parseControls, TABLE_LEGEND } from "./table.ts";
 
 export interface ViewStrategy {
   /** Named so a report can say which description was measured. */
@@ -31,6 +34,75 @@ export interface ViewStrategy {
   observation(observation: Observation): object;
   actionResult(result: ActionResult): object;
   verification(verification: Verification): object;
+  /**
+   * The snapshot in this reply whose refs are live: the page the reply is about, or the
+   * page an action left behind.
+   *
+   * Required, not optional. The mock model resolves a named target against the newest
+   * snapshot in the transcript, so a description nothing can read back is a description
+   * that cannot be run on the token-free suite - which is the only place a candidate gets
+   * measured before it costs anyone real tokens.
+   *
+   * Deliberately not every snapshot a reply contains. A peek reports a page it has
+   * already closed and says which page you are still on; its refs address a tab that no
+   * longer exists, and treating them as live sends the next action at a ghost.
+   */
+  readObservation(text: string): WireObservation | undefined;
+  /**
+   * Any snapshot in this reply, live or not, for metering.
+   *
+   * The other question: a peeked page is not somewhere the agent can act, but it was
+   * still sent and still billed, so it is still counted.
+   */
+  anySnapshot(text: string): WireObservation | undefined;
+  /**
+   * How large a snapshot is in this view's own format.
+   *
+   * Asked of the view because only the view knows what it writes. Measuring a parsed
+   * snapshot as JSON would report every candidate as costing exactly what the baseline
+   * costs, which is a comparison of one description measured twice.
+   */
+  sizeOf(observation: WireObservation): number;
+  /** A line for the card, when the format needs explaining. Paid once per turn. */
+  readonly legend?: string;
+}
+
+/**
+ * Reading snapshots back out of a reply, given how this view writes a control list.
+ *
+ * Shared because the search is the same for every format and only the shape of the
+ * control list differs - and because writing it twice is how the two views came to
+ * disagree about where a live snapshot can be.
+ */
+function decoding(
+  controls: (value: unknown) => boolean,
+  decode: (found: Record<string, unknown>) => WireObservation,
+): Pick<ViewStrategy, "readObservation" | "anySnapshot"> {
+  const json = (text: string): Record<string, unknown> | undefined => {
+    try {
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const here = (value: unknown): Record<string, unknown> | undefined =>
+    findSnapshot(value, controls) === value ? (value as Record<string, unknown>) : undefined;
+
+  return {
+    readObservation: (text) => {
+      const parsed = json(text);
+      if (!parsed) return undefined;
+      // The reply's own page, or the page the action left us on. Nowhere else.
+      const live = here(parsed) ?? here(parsed.observation);
+      return live ? decode(live) : undefined;
+    },
+    anySnapshot: (text) => {
+      const parsed = json(text);
+      const found = parsed ? findSnapshot(parsed, controls) : undefined;
+      return found ? decode(found) : undefined;
+    },
+  };
 }
 
 /** Today's format: a flat control list with stable refs. The measurement baseline. */
@@ -39,7 +111,39 @@ export const flatView: ViewStrategy = {
   observation: (observation) => toWireObservation(observation),
   actionResult: (result) => toWireActionResult(result),
   verification: (verification) => toWireVerification(verification),
+  ...decoding(Array.isArray, (found) => found as unknown as WireObservation),
+  sizeOf: (observation) => wireText(observation).length,
 };
+
+/**
+ * The same page, with the control list as a table.
+ *
+ * Only the `controls` field changes shape, which is deliberate: it was the largest share
+ * of the model's context and the rest of a reply is a handful of fields that objects
+ * describe well. Off by default until the suite says what it is worth - run
+ * `browser-agent suite --view table` beside the baseline.
+ */
+export const tableView: ViewStrategy = {
+  name: "table",
+  legend: TABLE_LEGEND,
+  observation: (observation) => tabulate(toWireObservation(observation)),
+  actionResult: (result) => {
+    const wire = toWireActionResult(result) as { observation?: WireObservation };
+    if (!wire.observation) return wire;
+    return { ...wire, observation: tabulate(wire.observation) };
+  },
+  verification: (verification) => toWireVerification(verification),
+  ...decoding(
+    (controls) => typeof controls === "string",
+    (found) =>
+      ({ ...found, controls: parseControls(found.controls as string) }) as unknown as WireObservation,
+  ),
+  sizeOf: (observation) => wireText(tabulate(observation)).length,
+};
+
+function tabulate(wire: WireObservation): object {
+  return { ...wire, controls: formatControls(wire.controls) };
+}
 
 /**
  * A candidate, not the default: drop the snapshot from a successful action.
@@ -72,6 +176,7 @@ export const leanActionView: ViewStrategy = {
 
 export const VIEW_STRATEGIES: Record<string, ViewStrategy> = {
   [flatView.name]: flatView,
+  [tableView.name]: tableView,
   [leanActionView.name]: leanActionView,
 };
 

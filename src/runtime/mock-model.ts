@@ -18,6 +18,7 @@ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Context, ToolCall } from "@earendil-works/pi-ai";
 import { TOOL_ACT, TOOL_DONE, TOOL_OBSERVE } from "./names.ts";
 import { ZERO_USAGE, type ModelPort } from "./model.ts";
+import { flatView, type ViewStrategy } from "./view/index.ts";
 import type { WireObservation } from "./wire.ts";
 
 /** One intended tool call. `target` is matched against control names at call time. */
@@ -51,6 +52,11 @@ export interface MockModelOptions {
    * turn actually costs, which is otherwise invisible.
    */
   onContext?: (context: Context, turn: number) => void;
+  /**
+   * How the page was described to it, so the mock reads back what it was actually shown.
+   * Must be the view the tools were built with, or a named target cannot be resolved.
+   */
+  view?: ViewStrategy;
 }
 
 interface MockState {
@@ -89,8 +95,17 @@ function assistantMessage(
   };
 }
 
-/** The newest observation the transcript contains, as the model would see it. */
-export function latestObservation(context: Context): WireObservation | undefined {
+/**
+ * The newest observation the transcript contains, as the model would see it.
+ *
+ * Read back through the view rather than with a hard-coded `JSON.parse`, because a
+ * candidate description that the mock cannot read cannot be run on the token-free suite,
+ * and a candidate that is never run is never measured.
+ */
+export function latestObservation(
+  context: Context,
+  view: ViewStrategy = flatView,
+): WireObservation | undefined {
   const messages = context.messages as Array<{
     role?: string;
     toolName?: string;
@@ -101,13 +116,8 @@ export function latestObservation(context: Context): WireObservation | undefined
     if (message.role !== "toolResult") continue;
     const text = extractText(message.content);
     if (!text) continue;
-    try {
-      const parsed = JSON.parse(text) as WireObservation & { observation?: WireObservation };
-      const candidate = parsed.observation ?? parsed;
-      if (candidate && Array.isArray(candidate.controls)) return candidate;
-    } catch {
-      // not JSON, or not an observation
-    }
+    const candidate = view.readObservation(text);
+    if (candidate) return candidate;
   }
   return undefined;
 }
@@ -138,8 +148,9 @@ function nextPlanTurn(
   plan: PlanStep[],
   state: MockState,
   context: Context,
+  view: ViewStrategy,
 ): MockTurn {
-  const observation = latestObservation(context);
+  const observation = latestObservation(context, view);
 
   while (state.stepIndex < plan.length) {
     const step = plan[state.stepIndex]!;
@@ -228,7 +239,7 @@ export function createMockModel(options: MockModelOptions): ModelPort {
             },
           ],
         })
-      : nextPlanTurn(options.plan ?? [], state, context);
+      : nextPlanTurn(options.plan ?? [], state, context, options.view ?? flatView);
 
     options.onTurn?.({
       turn: turnIndex,
