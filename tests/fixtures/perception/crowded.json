@@ -1,0 +1,367 @@
+{
+  "perceiver": "lean",
+  "path": "/crowded",
+  "totalControls": 71,
+  "offered": 71,
+  "dropped": {
+    "containment": 0,
+    "occlusion": 0
+  },
+  "controls": [
+    {
+      "ref": "e1",
+      "role": "a",
+      "name": "Home"
+    },
+    {
+      "ref": "e2",
+      "role": "a",
+      "name": "Reels"
+    },
+    {
+      "ref": "e3",
+      "role": "a",
+      "name": "Messages"
+    },
+    {
+      "ref": "e4",
+      "role": "a",
+      "name": "Search"
+    },
+    {
+      "ref": "e5",
+      "role": "a",
+      "name": "Notifications"
+    },
+    {
+      "ref": "e6",
+      "role": "a",
+      "name": "Create"
+    },
+    {
+      "ref": "e7",
+      "role": "a",
+      "name": "Profile"
+    },
+    {
+      "ref": "e8",
+      "role": "a",
+      "name": "Settings"
+    },
+    {
+      "ref": "e9",
+      "role": "a",
+      "name": "Section one"
+    },
+    {
+      "ref": "e10",
+      "role": "a",
+      "name": "Section two"
+    },
+    {
+      "ref": "e11",
+      "role": "a",
+      "name": "Section three"
+    },
+    {
+      "ref": "e12",
+      "role": "a",
+      "name": "Section four"
+    },
+    {
+      "ref": "e13",
+      "role": "a",
+      "name": "Section five"
+    },
+    {
+      "ref": "e14",
+      "role": "a",
+      "name": "Section six"
+    },
+    {
+      "ref": "e15",
+      "role": "a",
+      "name": "Section seven"
+    },
+    {
+      "ref": "e16",
+      "role": "a",
+      "name": "Section eight"
+    },
+    {
+      "ref": "e17",
+      "role": "a",
+      "name": "Section nine"
+    },
+    {
+      "ref": "e18",
+      "role": "a",
+      "name": "Section ten"
+    },
+    {
+      "ref": "e19",
+      "role": "a",
+      "name": "member1"
+    },
+    {
+      "ref": "e20",
+      "role": "a",
+      "name": "member2"
+    },
+    {
+      "ref": "e21",
+      "role": "a",
+      "name": "member3"
+    },
+    {
+      "ref": "e22",
+      "role": "a",
+      "name": "member4"
+    },
+    {
+      "ref": "e23",
+      "role": "a",
+      "name": "member5"
+    },
+    {
+      "ref": "e24",
+      "role": "a",
+      "name": "member6"
+    },
+    {
+      "ref": "e25",
+      "role": "a",
+      "name": "member7"
+    },
+    {
+      "ref": "e26",
+      "role": "a",
+      "name": "member8"
+    },
+    {
+      "ref": "e27",
+      "role": "a",
+      "name": "member9"
+    },
+    {
+      "ref": "e28",
+      "role": "a",
+      "name": "member10"
+    },
+    {
+      "ref": "e29",
+      "role": "a",
+      "name": "member11"
+    },
+    {
+      "ref": "e30",
+      "role": "a",
+      "name": "member12"
+    },
+    {
+      "ref": "e31",
+      "role": "a",
+      "name": "member13"
+    },
+    {
+      "ref": "e32",
+      "role": "a",
+      "name": "member14"
+    },
+    {
+      "ref": "e33",
+      "role": "a",
+      "name": "member15"
+    },
+    {
+      "ref": "e34",
+      "role": "a",
+      "name": "member16"
+    },
+    {
+      "ref": "e35",
+      "role": "a",
+      "name": "member17"
+    },
+    {
+      "ref": "e36",
+      "role": "a",
+      "name": "member18"
+    },
+    {
+      "ref": "e37",
+      "role": "a",
+      "name": "member19"
+    },
+    {
+      "ref": "e38",
+      "role": "a",
+      "name": "member20"
+    },
+    {
+      "ref": "e39",
+      "role": "a",
+      "name": "member21"
+    },
+    {
+      "ref": "e40",
+      "role": "a",
+      "name": "member22"
+    },
+    {
+      "ref": "e41",
+      "role": "a",
+      "name": "member23"
+    },
+    {
+      "ref": "e42",
+      "role": "a",
+      "name": "member24"
+    },
+    {
+      "ref": "e43",
+      "role": "a",
+      "name": "member25"
+    },
+    {
+      "ref": "e44",
+      "role": "a",
+      "name": "member26"
+    },
+    {
+      "ref": "e45",
+      "role": "a",
+      "name": "member27"
+    },
+    {
+      "ref": "e46",
+      "role": "a",
+      "name": "member28"
+    },
+    {
+      "ref": "e47",
+      "role": "a",
+      "name": "member29"
+    },
+    {
+      "ref": "e48",
+      "role": "a",
+      "name": "member30"
+    },
+    {
+      "ref": "e49",
+      "role": "a",
+      "name": "member31"
+    },
+    {
+      "ref": "e50",
+      "role": "a",
+      "name": "member32"
+    },
+    {
+      "ref": "e51",
+      "role": "a",
+      "name": "member33"
+    },
+    {
+      "ref": "e52",
+      "role": "a",
+      "name": "member34"
+    },
+    {
+      "ref": "e53",
+      "role": "a",
+      "name": "member35"
+    },
+    {
+      "ref": "e54",
+      "role": "a",
+      "name": "member36"
+    },
+    {
+      "ref": "e55",
+      "role": "a",
+      "name": "member37"
+    },
+    {
+      "ref": "e56",
+      "role": "a",
+      "name": "member38"
+    },
+    {
+      "ref": "e57",
+      "role": "a",
+      "name": "member39"
+    },
+    {
+      "ref": "e58",
+      "role": "a",
+      "name": "member40"
+    },
+    {
+      "ref": "e59",
+      "role": "a",
+      "name": "About"
+    },
+    {
+      "ref": "e60",
+      "role": "a",
+      "name": "Blog"
+    },
+    {
+      "ref": "e61",
+      "role": "a",
+      "name": "Jobs"
+    },
+    {
+      "ref": "e62",
+      "role": "a",
+      "name": "Help"
+    },
+    {
+      "ref": "e63",
+      "role": "a",
+      "name": "API"
+    },
+    {
+      "ref": "e64",
+      "role": "a",
+      "name": "Privacy"
+    },
+    {
+      "ref": "e65",
+      "role": "a",
+      "name": "Terms"
+    },
+    {
+      "ref": "e66",
+      "role": "a",
+      "name": "Locations"
+    },
+    {
+      "ref": "e67",
+      "role": "a",
+      "name": "Popular"
+    },
+    {
+      "ref": "e68",
+      "role": "a",
+      "name": "Lite"
+    },
+    {
+      "ref": "e69",
+      "role": "a",
+      "name": "Verified"
+    },
+    {
+      "ref": "e70",
+      "role": "a",
+      "name": "Contact"
+    },
+    {
+      "ref": "e71",
+      "role": "a",
+      "name": "Verified badge"
+    }
+  ]
+}

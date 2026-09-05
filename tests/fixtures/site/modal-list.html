@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Followers</title>
+    <style>
+      /*
+        A backdrop that intercepts clicks, which is what every real modal has. It is
+        semi-transparent on purpose: that is how they are all built, and it is the case
+        where "can you see it" and "can you click it" disagree.
+      */
+      #backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 10;
+      }
+      #followers {
+        position: fixed;
+        top: 5vh;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 400px;
+        height: 90vh;
+        overflow-y: auto;
+        background: #ffffff;
+        z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      The page that started all of this: a profile with a follower dialog open over it.
+
+      Everything outside the dialog is unreachable while it is open - the backdrop eats
+      the click - and yet it is all still in the DOM, still visible by every test the
+      collector applies, and still competing for slots in an 80-control cap. On the run
+      this is modelled on, the agent was shown a screenful of navigation it could not
+      click and told the list it had actually opened was "40 more".
+
+      Above the cap by construction. Below it nothing is ranked and nothing is dropped,
+      so a page under the cap cannot show whether either works.
+    -->
+    <header>
+      <a href="/">Home</a>
+      <a href="/reels">Reels</a>
+      <a href="/messages">Messages</a>
+      <a href="/search">Search</a>
+      <a href="/notifications">Notifications</a>
+      <a href="/create">Create</a>
+      <a href="/profile">Profile</a>
+      <a href="/settings">Settings</a>
+    </header>
+    <nav>
+      <a href="/n1">Section one</a>
+      <a href="/n2">Section two</a>
+      <a href="/n3">Section three</a>
+      <a href="/n4">Section four</a>
+      <a href="/n5">Section five</a>
+      <a href="/n6">Section six</a>
+      <a href="/n7">Section seven</a>
+      <a href="/n8">Section eight</a>
+    </nav>
+
+    <main>
+      <h1>viktoria</h1>
+      <button id="open-followers" type="button">1,204 followers</button>
+      <button type="button">Message</button>
+      <button type="button">Following</button>
+      <ul id="posts"></ul>
+    </main>
+
+    <footer>
+      <a href="/about">About</a>
+      <a href="/blog">Blog</a>
+      <a href="/jobs">Jobs</a>
+      <a href="/help">Help</a>
+      <a href="/api">API</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/contact">Contact</a>
+    </footer>
+
+    <!--
+      The dialog is in the markup rather than opened by a click, because what is being
+      measured here is perception of a page in this state, not the click that got there.
+    -->
+    <div id="backdrop"></div>
+    <div id="followers" role="dialog" aria-label="Followers">
+      <button id="close" type="button">Close</button>
+      <input id="search-followers" type="text" placeholder="Search followers" />
+      <ul id="follower-rows"></ul>
+    </div>
+
+    <script>
+      const posts = document.getElementById("posts");
+      for (let index = 1; index <= 30; index += 1) {
+        const row = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = "/p/post" + index;
+        link.textContent = "Post " + index;
+        row.appendChild(link);
+        posts.appendChild(row);
+      }
+
+      // The one list the agent came for, and the one it should be spending its budget on.
+      const followers = document.getElementById("follower-rows");
+      for (let index = 1; index <= 40; index += 1) {
+        const row = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = "/u/follower" + index;
+        link.textContent = "follower" + index;
+        row.appendChild(link);
+        const display = document.createElement("span");
+        display.textContent = " Follower Number " + index;
+        row.appendChild(display);
+        followers.appendChild(row);
+      }
+    </script>
+  </body>
+</html>

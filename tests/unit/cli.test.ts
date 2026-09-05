@@ -158,7 +158,15 @@ describe("task selection", () => {
   });
 
   it("returns everything by default", () => {
-    assert.equal(selectTasks(SUITE_TASKS).length, SUITE_TASKS.length);
+    assert.equal(
+      selectTasks(SUITE_TASKS).length,
+      SUITE_TASKS.filter((task) => !task.perceiver || task.perceiver === "reference").length,
+      "tasks that name another perceiver stay out of the default set",
+    );
+    assert.ok(
+      selectTasks(SUITE_TASKS, { perceiver: "lean" }).some((task) => task.id === "followers-under-dialog"),
+      "the lean-only task is selected when that perceiver is running",
+    );
   });
 
   it("names only tasks that exist", () => {

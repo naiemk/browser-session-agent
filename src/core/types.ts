@@ -58,7 +58,23 @@ export interface Observation {
    * a follower dialog with hundreds of rows.
    */
   totalControls?: number;
+  /**
+   * How this observation was made. The model never sees it; reports and the CLI do.
+   *
+   * Optional because the reference perceiver has nothing to say beyond its name, and a
+   * snapshot loaded from an older ledger has no record of the strategy that produced it.
+   */
+  perception?: PerceptionTrace;
   capturedAt: string;
+}
+
+/** Which perceiver ran, and what each stage dropped, so a report can attribute a change. */
+export interface PerceptionTrace {
+  perceiver: string;
+  dropped: {
+    occlusion?: number;
+    containment?: number;
+  };
 }
 
 /** Everything a predicate may be evaluated against. */

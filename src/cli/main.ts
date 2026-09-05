@@ -97,6 +97,8 @@ Usage:
   browser-agent replay <goalId> [--root <dir>]
   browser-agent metrics <goalId> [--root <dir>] [--json]
   browser-agent compare <baseline.json> <current.json>
+  browser-agent perceive diff <url> [--a reference] [--b lean]
+  browser-agent perceive golden <dir> [--perceiver lean]
 
 run options:
   --url <url>              page to start from (required)
@@ -118,7 +120,8 @@ suite options:
   --all                    every task
   --only <id,id>           specific task ids
   --tags <tag,tag>         tasks carrying any of these tags
-  --view <name>            page description to measure (default: flat)
+  --view <name>            page description to measure (default: table)
+  --perceiver <name>       how the page is read (default: reference)
   --out <file>             write the JSON report
   --optimize-out <file>    write just the cost summary, for a committed baseline
   --pause <ms>             gap between tasks (live default: 2000)
@@ -133,6 +136,9 @@ metrics options:
 compare takes two suite reports and explains what moved, attributed by payload.
 It never exits non-zero for a regression: a rise with a named cause is a
 decision to make, not a build to break.
+
+perceive diff prints the controls one perceiver found and the other missed.
+perceive golden writes that control set for the committed corpus.
 `;
 
 async function commandRun(args: ParsedArgs): Promise<number> {
@@ -257,10 +263,14 @@ async function commandSuite(args: ParsedArgs): Promise<number> {
 
   const target = flagString(args.flags, "target") ?? "mock";
   const smoke = target === "live" ? !args.flags.all : Boolean(args.flags.smoke);
+  const perceiverName = flagString(args.flags, "perceiver");
+  const { perceiverByName } = await import("../core/perception/index.ts");
+  const perceiver = perceiverByName(perceiverName);
   const tasks = selectTasks(SUITE_TASKS, {
     only: flagList(args.flags, "only"),
     tags: flagList(args.flags, "tags"),
     smoke,
+    perceiver: perceiver.name,
   });
 
   if (tasks.length === 0) {
@@ -283,6 +293,7 @@ async function commandSuite(args: ParsedArgs): Promise<number> {
       tasks,
       driver,
       origin,
+      perceiver,
       // The runner reads evidence back itself, so it names where every run writes it.
       evidenceRoot: root,
       headless: !args.flags.headed,
@@ -454,6 +465,89 @@ async function commandCompare(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+const PERCEIVE_CORPUS = ["/modal-list", "/nav-shell", "/nested-cards", "/crowded"];
+
+async function commandPerceive(args: ParsedArgs): Promise<number> {
+  const [verb, target] = args.positional;
+  const { perceiverByName } = await import("../core/perception/index.ts");
+  const { LocalBrowser } = await import("../core/browser.ts");
+
+  if (verb === "diff") {
+    if (!target) {
+      process.stderr.write("perceive diff needs a url\n");
+      return 2;
+    }
+    const left = perceiverByName(flagString(args.flags, "a") ?? "reference");
+    const right = perceiverByName(flagString(args.flags, "b") ?? "lean");
+    const browser = await LocalBrowser.launch({ headless: true, perceiver: left });
+    try {
+      const tab = await browser.openTab(target);
+      const page = browser.pageFor(tab);
+      const a = await left.observe(page, { tabId: tab });
+      const b = await right.observe(page, { tabId: tab });
+      const names = (observation: typeof a) => new Set(observation.controls.map((c) => `${c.role}:${c.name}`));
+      const onlyA = [...names(a)].filter((name) => !names(b).has(name));
+      const onlyB = [...names(b)].filter((name) => !names(a).has(name));
+      process.stdout.write(
+        `${left.name}: ${a.controls.length} controls (of ${a.totalControls ?? a.controls.length})\n` +
+          `${right.name}: ${b.controls.length} controls (of ${b.totalControls ?? b.controls.length})\n` +
+          `only ${left.name} (${onlyA.length}): ${onlyA.slice(0, 20).join(", ")}${onlyA.length > 20 ? "…" : ""}\n` +
+          `only ${right.name} (${onlyB.length}): ${onlyB.slice(0, 20).join(", ")}${onlyB.length > 20 ? "…" : ""}\n`,
+      );
+      if (b.perception?.dropped) {
+        process.stdout.write(`dropped: ${JSON.stringify(b.perception.dropped)}\n`);
+      }
+    } finally {
+      await browser.close();
+    }
+    return 0;
+  }
+
+  if (verb === "golden") {
+    if (!target) {
+      process.stderr.write("perceive golden needs an output directory\n");
+      return 2;
+    }
+    const perceiver = perceiverByName(flagString(args.flags, "perceiver") ?? "lean");
+    const { FixtureServer } = await import("../../tests/helpers/fixture-server.ts");
+    const server = new FixtureServer();
+    const origin = await server.start();
+    const browser = await LocalBrowser.launch({ headless: true, perceiver });
+    try {
+      await mkdir(target, { recursive: true });
+      for (const pathName of PERCEIVE_CORPUS) {
+        const tab = await browser.openTab(`${origin}${pathName}`);
+        const observation = await browser.observe(tab);
+        const file = path.join(target, `${pathName.slice(1)}.json`);
+        await writeFile(
+          file,
+          `${JSON.stringify(
+            {
+              perceiver: perceiver.name,
+              path: pathName,
+              totalControls: observation.totalControls,
+              offered: observation.controls.length,
+              dropped: observation.perception?.dropped ?? {},
+              controls: observation.controls.map((c) => ({ ref: c.ref, role: c.role, name: c.name })),
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        process.stderr.write(`wrote ${file}\n`);
+        await browser.closeTab(tab);
+      }
+    } finally {
+      await browser.close();
+      await server.stop();
+    }
+    return 0;
+  }
+
+  process.stderr.write(`unknown perceive verb "${verb ?? ""}"\n`);
+  return 2;
+}
+
 /**
  * What runs are on this machine.
  *
@@ -516,6 +610,8 @@ export async function main(argv: string[]): Promise<number> {
       return commandMetrics(args);
     case "compare":
       return commandCompare(args);
+    case "perceive":
+      return commandPerceive(args);
     case "help":
     case "--help":
     case "-h":

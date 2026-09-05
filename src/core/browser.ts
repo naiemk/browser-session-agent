@@ -8,7 +8,7 @@
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { perceive, refSelector, visibleText } from "./perceive.ts";
+import { DEFAULT_PERCEIVER, type Perceiver } from "./perception/index.ts";
 import { probe, type ProbeResult } from "./probe.ts";
 import { surveyAffordances, type AffordanceSurvey } from "./survey.ts";
 import { CoreError, type Observation, type PageFacts, type WaitSpec } from "./types.ts";
@@ -121,6 +121,15 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   private readonly failedByTab = new Map<string, string[]>();
   private readonly observations = new Map<string, Observation>();
   private readonly owned = new Map<string, () => Promise<void>>();
+
+  /**
+   * How this port turns a page into an observation, and a ref back into an element.
+   *
+   * One field, because those two are one decision: a ref only means something to the
+   * perceiver that minted it. Injected rather than imported so a suite run can measure a
+   * candidate perception against the reference without a second port existing.
+   */
+  constructor(protected readonly perceiver: Perceiver = DEFAULT_PERCEIVER) {}
 
   /**
    * Open a blank tab in the shared session.
@@ -318,7 +327,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   }
 
   private locator(tabId: string | undefined, ref: string) {
-    return this.pageFor(tabId).locator(refSelector(ref)).first();
+    return this.perceiver.locate(this.pageFor(tabId), ref);
   }
 
   tabIdFor(tabId?: string): string {
@@ -330,7 +339,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   async observe(tabId?: string): Promise<Observation> {
     tabId = await this.ensurePage(tabId);
     const id = this.tabIdFor(tabId);
-    const observation = await perceive(this.pageFor(id), {
+    const observation = await this.perceiver.observe(this.pageFor(id), {
       tabId: id,
       previous: this.observations.get(id),
       consoleErrors: this.consoleByTab.get(id) ?? [],
@@ -343,7 +352,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   async facts(tabId?: string): Promise<PageFacts> {
     tabId = await this.ensurePage(tabId);
     const observation = await this.observe(tabId);
-    const text = await visibleText(this.pageFor(tabId));
+    const text = await this.perceiver.text(this.pageFor(tabId));
     return { url: observation.url, title: observation.title, text, observation };
   }
 
@@ -384,16 +393,19 @@ export class LocalBrowser extends PlaywrightBrowserPort {
      * stranger's view of our own account. One explicit context is the fix.
      */
     private readonly shared: BrowserContext,
+    perceiver?: Perceiver,
   ) {
-    super();
+    super(perceiver);
   }
 
-  static async launch(options: { headless?: boolean } = {}): Promise<LocalBrowser> {
+  static async launch(
+    options: { headless?: boolean; perceiver?: Perceiver } = {},
+  ): Promise<LocalBrowser> {
     const browser = await chromium.launch({
       headless: options.headless ?? true,
       args: ["--no-sandbox"],
     });
-    return new LocalBrowser(browser, await browser.newContext());
+    return new LocalBrowser(browser, await browser.newContext(), options.perceiver);
   }
 
   protected async acquireTab(): Promise<AcquiredTab> {

@@ -24,6 +24,8 @@ export interface SelectOptions {
   only?: string[];
   tags?: string[];
   smoke?: boolean;
+  /** Tasks that name a perceiver are skipped unless it matches. */
+  perceiver?: string;
 }
 
 export function selectTasks(tasks: SuiteTask[], options: SelectOptions = {}): SuiteTask[] {
@@ -40,5 +42,6 @@ export function selectTasks(tasks: SuiteTask[], options: SelectOptions = {}): Su
     const ids = new Set(options.only);
     selected = selected.filter((task) => ids.has(task.id));
   }
+  selected = selected.filter((task) => !task.perceiver || task.perceiver === (options.perceiver ?? "reference"));
   return selected;
 }

@@ -1,0 +1,252 @@
+{
+  "perceiver": "lean",
+  "path": "/modal-list",
+  "totalControls": 99,
+  "offered": 48,
+  "dropped": {
+    "containment": 0,
+    "occlusion": 51
+  },
+  "controls": [
+    {
+      "ref": "e50",
+      "role": "a",
+      "name": "About"
+    },
+    {
+      "ref": "e51",
+      "role": "a",
+      "name": "Blog"
+    },
+    {
+      "ref": "e52",
+      "role": "a",
+      "name": "Jobs"
+    },
+    {
+      "ref": "e53",
+      "role": "a",
+      "name": "Help"
+    },
+    {
+      "ref": "e54",
+      "role": "a",
+      "name": "API"
+    },
+    {
+      "ref": "e55",
+      "role": "a",
+      "name": "Privacy"
+    },
+    {
+      "ref": "e56",
+      "role": "a",
+      "name": "Terms"
+    },
+    {
+      "ref": "e57",
+      "role": "a",
+      "name": "Contact"
+    },
+    {
+      "ref": "e58",
+      "role": "button",
+      "name": "Close"
+    },
+    {
+      "ref": "e59",
+      "role": "text",
+      "name": "Search followers"
+    },
+    {
+      "ref": "e60",
+      "role": "a",
+      "name": "follower1"
+    },
+    {
+      "ref": "e61",
+      "role": "a",
+      "name": "follower2"
+    },
+    {
+      "ref": "e62",
+      "role": "a",
+      "name": "follower3"
+    },
+    {
+      "ref": "e63",
+      "role": "a",
+      "name": "follower4"
+    },
+    {
+      "ref": "e64",
+      "role": "a",
+      "name": "follower5"
+    },
+    {
+      "ref": "e65",
+      "role": "a",
+      "name": "follower6"
+    },
+    {
+      "ref": "e66",
+      "role": "a",
+      "name": "follower7"
+    },
+    {
+      "ref": "e67",
+      "role": "a",
+      "name": "follower8"
+    },
+    {
+      "ref": "e68",
+      "role": "a",
+      "name": "follower9"
+    },
+    {
+      "ref": "e69",
+      "role": "a",
+      "name": "follower10"
+    },
+    {
+      "ref": "e70",
+      "role": "a",
+      "name": "follower11"
+    },
+    {
+      "ref": "e71",
+      "role": "a",
+      "name": "follower12"
+    },
+    {
+      "ref": "e72",
+      "role": "a",
+      "name": "follower13"
+    },
+    {
+      "ref": "e73",
+      "role": "a",
+      "name": "follower14"
+    },
+    {
+      "ref": "e74",
+      "role": "a",
+      "name": "follower15"
+    },
+    {
+      "ref": "e75",
+      "role": "a",
+      "name": "follower16"
+    },
+    {
+      "ref": "e76",
+      "role": "a",
+      "name": "follower17"
+    },
+    {
+      "ref": "e77",
+      "role": "a",
+      "name": "follower18"
+    },
+    {
+      "ref": "e78",
+      "role": "a",
+      "name": "follower19"
+    },
+    {
+      "ref": "e79",
+      "role": "a",
+      "name": "follower20"
+    },
+    {
+      "ref": "e80",
+      "role": "a",
+      "name": "follower21"
+    },
+    {
+      "ref": "e81",
+      "role": "a",
+      "name": "follower22"
+    },
+    {
+      "ref": "e82",
+      "role": "a",
+      "name": "follower23"
+    },
+    {
+      "ref": "e83",
+      "role": "a",
+      "name": "follower24"
+    },
+    {
+      "ref": "e84",
+      "role": "a",
+      "name": "follower25"
+    },
+    {
+      "ref": "e85",
+      "role": "a",
+      "name": "follower26"
+    },
+    {
+      "ref": "e86",
+      "role": "a",
+      "name": "follower27"
+    },
+    {
+      "ref": "e87",
+      "role": "a",
+      "name": "follower28"
+    },
+    {
+      "ref": "e88",
+      "role": "a",
+      "name": "follower29"
+    },
+    {
+      "ref": "e89",
+      "role": "a",
+      "name": "follower30"
+    },
+    {
+      "ref": "e90",
+      "role": "a",
+      "name": "follower31"
+    },
+    {
+      "ref": "e91",
+      "role": "a",
+      "name": "follower32"
+    },
+    {
+      "ref": "e92",
+      "role": "a",
+      "name": "follower33"
+    },
+    {
+      "ref": "e93",
+      "role": "a",
+      "name": "follower34"
+    },
+    {
+      "ref": "e96",
+      "role": "a",
+      "name": "follower37"
+    },
+    {
+      "ref": "e97",
+      "role": "a",
+      "name": "follower38"
+    },
+    {
+      "ref": "e98",
+      "role": "a",
+      "name": "follower39"
+    },
+    {
+      "ref": "e99",
+      "role": "a",
+      "name": "follower40"
+    }
+  ]
+}

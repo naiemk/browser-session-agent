@@ -485,6 +485,26 @@ now answers two separate questions rather than one: which snapshot's refs are li
 which snapshots were billed. A peek reports a page it has already closed, so its refs
 address a tab that no longer exists — countable, not actionable.
 
+## D54. Perception and resolution are one strategy
+
+A ref is not data. It is a promise that whatever minted it can hand the element back. Ours
+are attributes found by a CSS selector; a CDP perceiver's would be node ids with no CSS
+address. Split those two and swapping the first quietly breaks the second, so they are
+one interface, injected at the single place the port used to call `perceive` and
+`refSelector`.
+
+The first candidate behind that seam is subtractive, not additive. Finding more controls
+— listeners, pointer cursors, shadow roots — competes for a budget we are already
+spending. Dropping controls a click cannot reach, and children that live inside a control
+we already have, frees that budget for the thing the agent opened the page to see. On the
+corpus page that stands in for a follower dialog, the reference offered 80 of 99 and still
+could not put follower37 on the wire; lean offered 48 and could, because 51 of those 99
+were buried under the backdrop.
+
+The two filters are Browser Use's, transcribed with their names and their constants, from
+commit cfe10a2. Their paint-order union is not: we can hit-test, they cannot. Off-viewport
+is not occluded. Same asymmetry as D50 — do not act on a negative you cannot confirm.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.
