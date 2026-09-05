@@ -1,6 +1,7 @@
 import type { ExtensionAPI, RegisteredTool } from "./pi-api.ts";
 import { bindBrowserCommands } from "./host/bind-extension.ts";
 import { fileEvidence, goalDir } from "./host/evidence.ts";
+import { compactPiContext } from "./host/pi-compaction.ts";
 import { meterPiSession, turnClock } from "./host/pi-metering.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
@@ -65,6 +66,14 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     names.push((tool as unknown as { name: string }).name);
   }
 
+  /*
+   * Before the metering, on purpose.
+   *
+   * Pi passes each context handler what the previous one returned, so registering the
+   * compaction first is what makes the recorded bytes the bytes that were sent rather
+   * than the bytes we decided not to send.
+   */
+  compactPiContext(pi);
   meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId }, clock);
 
   /*

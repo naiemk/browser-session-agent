@@ -48,10 +48,25 @@ export function createFakePi(answers: string[] = []): FakePi {
     }
   };
 
+  /*
+   * Handlers see what the handler before them returned.
+   *
+   * Pi's runner threads a `context` result through the remaining handlers, so ordering is
+   * a contract an extension can rely on: compaction registered before metering is what
+   * makes the recorded bytes the bytes that were sent. A double that handed every handler
+   * the original event would let that ordering look irrelevant here and be load-bearing
+   * in the product.
+   */
   const emit = async (event: string, payload?: unknown): Promise<unknown[]> => {
     const results: unknown[] = [];
+    let current = payload;
     for (const handler of handlers.get(event) ?? []) {
-      results.push(await handler(payload));
+      const result = await handler(current);
+      results.push(result);
+      const messages = (result as { messages?: unknown } | undefined)?.messages;
+      if (Array.isArray(messages) && current && typeof current === "object") {
+        current = { ...(current as object), messages };
+      }
     }
     return results;
   };
