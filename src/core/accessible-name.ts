@@ -21,12 +21,10 @@ function collapseRepeatedHalves(value: string): string {
 function tokenizeName(value: string): string[] {
   const tokens: string[] = [];
   for (const part of value.split(/\s+/)) {
-    const bits = part.match(/[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+/g);
-    if (!bits) {
-      if (part) tokens.push(part);
-      continue;
-    }
-    tokens.push(...bits);
+    const bits = part.split(
+      /(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=\D)(?=\d)|(?<=\d)(?=[A-Za-z])/,
+    );
+    tokens.push(...bits.filter(Boolean));
   }
   return tokens;
 }

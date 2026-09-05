@@ -13,7 +13,7 @@
 import type { Page } from "playwright";
 import { compactControls, diffControls } from "./diff.ts";
 import { shortId } from "./ids.ts";
-import { collapseAccessibleName } from "./accessible-name.ts";
+import { displayControlName } from "./accessible-name.ts";
 import type { Control, Observation } from "./types.ts";
 
 /** Attribute used to address controls. Distinct from the old system's marker. */
@@ -268,7 +268,7 @@ export async function perceive(
   // not inflate the remainder the model is told about.
   const named = collected.controls.map((control) => ({
     ...control,
-    name: collapseAccessibleName(control.name) || control.name,
+    name: displayControlName(control.name, control.href) || control.name,
   }));
   const present = filter ? await filter(named, page) : named;
   const { controls, truncated } = compactControls(present);

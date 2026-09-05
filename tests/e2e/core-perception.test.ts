@@ -114,4 +114,16 @@ describe("AGENT-00-T01 perception", () => {
     assert.ok(names.includes("Messages 1"), `Messages 1 missing in ${names.join(", ")}`);
     assert.ok(names.includes("Home"), `Home missing in ${names.join(", ")}`);
   });
+
+  it("names a nameless image link from its href path", async () => {
+    const tab = await browser.openTab(`${origin}/grid`);
+    const observation = await browser.observe(tab);
+    const names = observation.controls.map((control) => control.name);
+    assert.ok(names.includes("abc"), `abc missing in ${names.join(", ")}`);
+    assert.ok(names.includes("xyz"), `xyz missing in ${names.join(", ")}`);
+    assert.ok(names.includes("hello-world"), `hello-world missing in ${names.join(", ")}`);
+    const abc = observation.controls.find((control) => control.name === "abc");
+    assert.ok(abc?.ref, "still addressed by ref");
+    assert.equal(abc?.tag, "a");
+  });
 });
