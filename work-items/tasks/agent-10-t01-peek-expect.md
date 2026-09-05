@@ -3,7 +3,7 @@ id: AGENT-10-T01
 title: Peek expect is data, matched is the URL
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T01 — Peek expect is data, matched is the URL
