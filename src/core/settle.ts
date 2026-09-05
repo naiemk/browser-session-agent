@@ -16,6 +16,7 @@
  */
 
 import { diffControls } from "./diff.ts";
+import { describeCheck } from "./predicates.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { Observation, PageFacts, Verification } from "./types.ts";
 
@@ -118,9 +119,7 @@ async function read(browser: BrowserPort, options: SettleOptions): Promise<PageF
 
 /** The ledger line for a verdict, saying whether the page was given time to answer. */
 export function describeVerification(verification: Verification): string {
-  const checks = verification.checks
-    .map((check) => `${check.predicate}: ${check.detail}`)
-    .join("; ");
+  const checks = verification.checks.map(describeCheck).join("; ");
   const waited = verification.waitedMs ?? 0;
   if (waited === 0) return checks;
   return verification.status === "passed"

@@ -1,46 +1,46 @@
 {
   "note": "Structural cost of the token-free suite. Regenerate with npm run optimize:baseline.",
-  "recordedAt": "2026-09-04T17:33:56.128Z",
+  "recordedAt": "2026-09-05T03:11:35.655Z",
   "target": "mock",
   "taskCount": 29,
   "optimize": {
     "tasks": 29,
     "turnsPerTask": 5,
-    "contextBytesPerTask": 2568.9,
-    "toolResultBytesPerTask": 1721.9,
+    "contextBytesPerTask": 2474.3,
+    "toolResultBytesPerTask": 1358.9,
     "observationsPerTask": 3.9,
-    "observationBytesPerTask": 1336.1,
+    "observationBytesPerTask": 944.8,
     "duplicateResultsPerTask": 0,
     "zeroChangeObservationsPerTask": 0,
     "repeatNavigationsPerTask": 0,
     "snapshotsWithCollisionsPerTask": 0,
-    "cardBytes": 2749,
-    "toolSchemaBytes": 5834,
+    "cardBytes": 3009,
+    "toolSchemaBytes": 5936,
     "toolCount": 13,
     "attribution": [
       {
         "source": "toolSchemas",
-        "bytes": 840096,
-        "share": 0.652
+        "bytes": 854784,
+        "share": 0.642
       },
       {
         "source": "card",
-        "bytes": 398937,
-        "share": 0.31
+        "bytes": 436377,
+        "share": 0.328
       },
       {
         "source": "tool:act",
-        "bytes": 37227,
-        "share": 0.029
+        "bytes": 29462,
+        "share": 0.022
       },
       {
         "source": "tool:observe",
-        "bytes": 7047,
-        "share": 0.005
+        "bytes": 4541,
+        "share": 0.003
       },
       {
         "source": "tool:peek",
-        "bytes": 4116,
+        "bytes": 3860,
         "share": 0.003
       },
       {

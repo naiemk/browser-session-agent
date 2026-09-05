@@ -75,7 +75,20 @@ describe("what the model sees", () => {
     );
     const wire = toWireObservation(observation({ controls }));
     assert.equal(wire.controls.length, MAX_WIRE_CONTROLS);
-    assert.match(wire.note ?? "", /5 more controls not shown/);
+    assert.match(wire.note ?? "", new RegExp(`${MAX_WIRE_CONTROLS} of ${MAX_WIRE_CONTROLS + 5}`));
+  });
+
+  it("counts the withheld against the page, not against an already-capped list", () => {
+    const controls = Array.from({ length: MAX_WIRE_CONTROLS }, (_, index) =>
+      control({ ref: `e${index}`, name: `Field ${index}` }),
+    );
+    // What the core hands over is already trimmed; the page had far more than this.
+    const wire = toWireObservation(observation({ controls, totalControls: 300, truncated: true }));
+    assert.match(
+      wire.note ?? "",
+      /of 300 controls shown/,
+      "a model told '40 more' believes one more look will cover a list of hundreds",
+    );
   });
 
   it("clips long strings so one verbose label cannot dominate a turn", () => {

@@ -15,7 +15,14 @@
 import type { LedgerEvent, LedgerInput, LedgerSink } from "../core/ledger.ts";
 import type { GoalStore } from "../core/state.ts";
 import { shortId } from "../core/ids.ts";
-import { NO_METRICS, NO_PAYLOADS, type MetricsSink, type PayloadSink } from "./metrics.ts";
+import {
+  NO_METRICS,
+  NO_PAYLOADS,
+  type MetricRecord,
+  type MetricsSink,
+  type PayloadRecord,
+  type PayloadSink,
+} from "./metrics.ts";
 
 /** The subset of the goal store the tools use, so a stub does not need a filesystem. */
 export interface FactStore {
@@ -44,15 +51,22 @@ export interface Evidence {
 export interface MemoryEvidence extends Evidence {
   events: LedgerEvent[];
   written: Record<string, unknown>;
+  metrics: MetricsSink & { records: MetricRecord[] };
+  payloads: PayloadSink & { records: PayloadRecord[] };
 }
 
 /**
  * Evidence in memory, for tests that want to assert on it without a temp directory.
  * The ledger is real enough to be read back, which is all a test needs.
+ *
+ * Metrics and payloads are kept rather than dropped: a sink that silently discards is how
+ * "we are measuring" and "we are not measuring" came to look the same from a test.
  */
 export function memoryEvidence(overrides: Partial<Evidence> = {}): MemoryEvidence {
   const events: LedgerEvent[] = [];
   const written: Record<string, unknown> = {};
+  const metrics: MetricRecord[] = [];
+  const payloads: PayloadRecord[] = [];
   return {
     events,
     written,
@@ -75,10 +89,18 @@ export function memoryEvidence(overrides: Partial<Evidence> = {}): MemoryEvidenc
         return written;
       },
     },
-    metrics: NO_METRICS,
-    payloads: NO_PAYLOADS,
+    metrics: {
+      records: metrics,
+      record: (record) => void metrics.push(record),
+      async flush() {},
+    },
+    payloads: {
+      records: payloads,
+      write: (record) => void payloads.push(record),
+      async flush() {},
+    },
     ...overrides,
-  };
+  } as MemoryEvidence;
 }
 
 /**

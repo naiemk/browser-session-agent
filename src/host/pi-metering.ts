@@ -12,12 +12,39 @@
 
 import type { ExtensionAPI } from "../pi-api.ts";
 import type { Evidence } from "../runtime/evidence.ts";
+import { measureContext, type PrunableMessage } from "../runtime/prune.ts";
 
 export interface SessionOverhead {
   goalId: string;
   cardBytes: number;
   toolSchemaBytes: number;
   toolCount: number;
+  /** 0 when the host imposes no cap, which is the case for a chat. */
+  maxTurns?: number;
+}
+
+/**
+ * The turn every record is stamped with.
+ *
+ * Pi numbers turns from one again on each user message, so its index cannot join a tool
+ * result to the context that carried it - which is why every `tool_result` record in the
+ * first metered run said turn 0 and the payloads could only be matched to turns by
+ * guessing at their order. This counts the whole session instead, and the tools read the
+ * same counter, so a payload, the context it landed in, and the usage it was billed under
+ * all carry one number.
+ */
+export interface TurnClock {
+  current(): number;
+  /** Called when a context is built, which is the start of a turn. */
+  advance(): number;
+}
+
+export function turnClock(): TurnClock {
+  let turn = 0;
+  return {
+    current: () => turn,
+    advance: () => (turn += 1),
+  };
 }
 
 function num(value: unknown): number {
@@ -36,24 +63,15 @@ function modelOf(message: unknown): string {
   return typeof nested === "string" ? nested : "unknown";
 }
 
-/** Bytes of a message as the provider would see it, which is close enough for a trend. */
-function messageBytes(message: unknown): number {
-  try {
-    return JSON.stringify(message).length;
-  } catch {
-    return 0;
-  }
-}
-
 export function meterPiSession(
   pi: ExtensionAPI,
   evidence: Evidence,
   overhead: SessionOverhead,
+  clock: TurnClock,
 ): void {
-  let turn = 0;
   let recordedRun = false;
-  // Hashes of each message's content, so a rewrite is visible as a changed prefix.
-  let previous: number[] = [];
+  // Last turn's messages, so a rewrite is visible as a changed prefix.
+  let previous: PrunableMessage[] = [];
 
   const recordRun = (model: string) => {
     if (recordedRun) return;
@@ -65,47 +83,31 @@ export function meterPiSession(
       cardBytes: overhead.cardBytes,
       toolSchemaBytes: overhead.toolSchemaBytes,
       toolCount: overhead.toolCount,
-      maxTurns: 0,
+      maxTurns: overhead.maxTurns ?? 0,
     });
   };
 
   pi.on("context", (event: unknown) => {
     const messages = (event as { messages?: unknown })?.messages;
     if (!Array.isArray(messages)) return;
+    const turn = clock.advance();
 
-    const sizes = messages.map((message) => messageBytes(message));
     /*
-     * Where the prompt stopped matching the last one.
+     * The same accounting the suite's loop does, against the previous turn rather than
+     * against an unpruned copy of this one.
      *
-     * Providers cache on an exact prefix, so if this index is small every turn then
-     * something upstream is rewriting history and turning cheap cache reads into
-     * full-price input. That would make pruning a net loss, and it is invisible without
-     * this number.
+     * Both answer the cache question - providers cache on an exact prefix, so the
+     * earliest changed index is where the cache stops paying - but only the cross-turn
+     * comparison catches a rewrite this process did not make.
      */
-    let rewrittenFrom = -1;
-    for (let at = 0; at < Math.min(sizes.length, previous.length); at += 1) {
-      if (sizes[at] !== previous[at]) {
-        rewrittenFrom = at;
-        break;
-      }
-    }
-    previous = sizes;
+    const measured = measureContext(previous, messages as PrunableMessage[]);
+    previous = messages as PrunableMessage[];
 
-    const bytes = sizes.reduce((total, size) => total + size, 0);
-    evidence.metrics.record({
-      kind: "context",
-      turn,
-      bytes,
-      liveBytes: bytes,
-      placeholderBytes: 0,
-      messages: messages.length,
-      rewrittenFrom,
-    });
+    evidence.metrics.record({ kind: "context", turn, ...measured, messages: messages.length });
   });
 
   pi.on("turn_end", (event: unknown) => {
     const message = (event as { message?: unknown })?.message;
-    turn = num((event as { turnIndex?: unknown })?.turnIndex) || turn + 1;
     recordRun(modelOf(message));
 
     const usage = usageOf(message);
@@ -113,7 +115,7 @@ export function meterPiSession(
     const cost = usage.cost as Record<string, unknown> | undefined;
     evidence.metrics.record({
       kind: "turn",
-      turn,
+      turn: clock.current(),
       inputTokens: num(usage.input),
       outputTokens: num(usage.output),
       cacheReadTokens: num(usage.cacheRead),

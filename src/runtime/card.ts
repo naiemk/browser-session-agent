@@ -28,6 +28,13 @@ export interface TaskCardInput {
   knownFacts?: Record<string, unknown>;
   maxTurns?: number;
   policy?: "auto" | "ask" | "never";
+  /**
+   * How to read the page description, when it needs reading instructions.
+   *
+   * Explained here rather than on every snapshot: the card is resent once per turn either
+   * way, and once per turn is cheaper than once per observation.
+   */
+  format?: string;
 }
 
 export function buildTaskCard(input: TaskCardInput): string {
@@ -48,7 +55,15 @@ export function buildTaskCard(input: TaskCardInput): string {
         ? "Irreversible actions run once their precondition holds."
         : "Irreversible actions need approval and may pause the task.";
 
-  return `You drive a real web browser. You are not a coding assistant: no files, no shell, no repository.
+  /*
+   * What it can do, said once and said accurately.
+   *
+   * "No files" was both wrong and expensive: uploading is an action it has, and getting a
+   * job done routinely means attaching a document. A capability the model does not know
+   * it has is a capability it argues itself out of using - the run where it was asked to
+   * open a site and replied that it could not open a browser window started here.
+   */
+  return `You drive a real web browser: pages, forms, dialogs, tabs, file uploads. No shell, no repository.
 
 TASK
 ${input.objective}
@@ -57,10 +72,10 @@ SUCCESS (checked against the live page by code you do not control; claiming succ
 ${criteria}
 ${facts}
 RULES
-- ${TOOL_OBSERVE} before acting: refs come from the latest snapshot and go stale.
+${input.format ? `- ${input.format}\n` : ""}- Refs stay valid while the element is on the page, so ${TOOL_OBSERVE} when you arrive somewhere new or a ref is reported gone, not between every action.
 - ${TOOL_PROBE} when you do not understand a form or widget. It cannot change anything, so prefer it over a hopeful click.
-- ${TOOL_ACT} verifies every action. A click that changes nothing is a failure; typing is read back.
-- ${TOOL_CHECK} before you claim to be done.
+- ${TOOL_ACT} verifies every action and waits for the page to settle, so never follow one with a wait.
+- ${TOOL_CHECK} before you claim to be done, asking everything at once with all: one call beats five.
 - ${TOOL_ASK} for personal facts. Never invent them.
 - ${TOOL_DONE} to finish. A truthful failure beats a false success.
 - On failure, read the recovery note and errors, then change approach. Do not repeat the same click.

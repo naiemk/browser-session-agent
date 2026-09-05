@@ -43,6 +43,10 @@ describe("the agent the operator runs records what it did", () => {
 
       browserSessionAgent(pi);
       await pi.startSession();
+      // A real session builds a context before it calls the model, which is what starts a
+      // turn. Without it every payload below would be stamped turn 0, which is what made
+      // the first metered run impossible to attribute.
+      await pi.emit("context", { type: "context", messages: [{ role: "user", content: "look" }] });
 
       /*
        * This is the test whose absence cost an unreadable run.
@@ -76,6 +80,7 @@ describe("the agent the operator runs records what it did", () => {
       const look = payloads.find((record) => record.tool === TOOL_OBSERVE);
       assert.ok(look, "the model-facing payload must be on disk");
       assert.ok(look.bytes > 0 && look.text.length === look.bytes, "bytes must match the text");
+      assert.equal(look.turn, 1, "and it must say which turn sent it");
     } finally {
       // The look started a real browser, so it has to be stopped or the process never
       // exits and the whole file times out.

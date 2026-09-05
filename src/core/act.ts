@@ -7,7 +7,7 @@
  */
 
 import { visibleText } from "./perceive.ts";
-import { evaluatePredicate, verify } from "./predicates.ts";
+import { describeCheck, evaluatePredicate, verify } from "./predicates.ts";
 import { describeVerification, settleVerification, DEFAULT_SETTLE_MS } from "./settle.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { LedgerSink } from "./ledger.ts";
@@ -245,7 +245,7 @@ async function buildFailure(
 ): Promise<FailureBundle> {
   const failed = verification.checks.filter((check) => !check.passed);
   const detail =
-    failed.map((check) => check.detail).join(" | ") ||
+    failed.map(describeCheck).join(" | ") ||
     `action did not meet expectations at ${facts.url}`;
   // How long we waited belongs in the recovery text: "has not happened yet" and "is not
   // going to happen" read identically without it, and they call for different next moves.

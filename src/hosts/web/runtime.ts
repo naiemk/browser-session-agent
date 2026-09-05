@@ -1,8 +1,10 @@
 import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
+import { turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
 import { composeAgent } from "../../runtime/agent.ts";
+import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
 import { summarizeToolResult } from "../../runtime/summary.ts";
 import { payloadInContent } from "../../runtime/wire.ts";
@@ -78,6 +80,18 @@ export class OperatorRuntime {
    * session: evidence already written must not be orphaned by a later rename.
    */
   readonly evidenceGoalId = shortId("goal");
+  /*
+   * One bundle and one clock for the session, not one per composition.
+   *
+   * `composeBrowserAgent` runs more than once (the fake-Pi path composes before the real
+   * one), and a bundle built inside it would open a second writer onto the same files
+   * while the tools disagreed about which turn they were in.
+   */
+  private readonly evidence = fileEvidence({
+    goalId: this.evidenceGoalId,
+    goal: "hosted chat session",
+  });
+  private readonly clock = turnClock();
   model = "auto";
   thinking = "medium";
   private models: Array<{ id: string; label: string }> = [
@@ -240,6 +254,7 @@ export class OperatorRuntime {
         this.model = describeModel(result.session.model) ?? this.model;
         this.thinking = String(result.session.thinkingLevel ?? this.thinking);
         this.unsubscribePi = result.session.subscribe((event) => {
+          this.meter(event);
           this.send({ type: "agentEvent", event: normalizeAgentEvent(event) });
           const err = assistantErrorFromEvent(event);
           if (err) this.send({ type: "error", message: err, code: "pi_turn_error" });
@@ -430,6 +445,39 @@ export class OperatorRuntime {
   }
 
   /**
+   * Cost, from the event stream the chat already subscribes to.
+   *
+   * The hosted chat does not own the model call any more than the local CLI does, so the
+   * numbers come from what the session reports. Turns advance here rather than being read
+   * off the event, because Pi restarts its own count at every user message and a tool
+   * result has to be joinable to the turn that produced it.
+   */
+  private meter(event: unknown): void {
+    const value = event as {
+      type?: string;
+      message?: { usage?: Record<string, unknown>; model?: unknown };
+    };
+    if (value.type === "turn_start") {
+      this.clock.advance();
+      return;
+    }
+    if (value.type !== "message_end") return;
+    const usage = value.message?.usage;
+    if (!usage) return;
+    const num = (raw: unknown) => (typeof raw === "number" && Number.isFinite(raw) ? raw : 0);
+    const cost = usage.cost as Record<string, unknown> | undefined;
+    this.evidence.metrics.record({
+      kind: "turn",
+      turn: this.clock.current(),
+      inputTokens: num(usage.input),
+      outputTokens: num(usage.output),
+      cacheReadTokens: num(usage.cacheRead),
+      cacheWriteTokens: num(usage.cacheWrite),
+      costUsd: num(cost?.total),
+    });
+  }
+
+  /**
    * The agent the operator talks to: the same tools and the same prompt the CLI and the
    * suite use, pointed at the browser on their desktop over RPC.
    */
@@ -447,7 +495,9 @@ export class OperatorRuntime {
         askUser: async (question) => this.host.input(question),
         // A chat session is the goal here, same as in the local CLI: the operator's
         // objective spans whatever runs they start inside the conversation.
-        evidence: fileEvidence({ goalId: this.evidenceGoalId, goal: "hosted chat session" }),
+        evidence: this.evidence,
+        turn: () => this.clock.current(),
+        view: viewByName(process.env.BSA_VIEW),
       },
     });
     this.browserPrompt = composed.systemPrompt;

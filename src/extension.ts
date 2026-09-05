@@ -1,11 +1,13 @@
 import type { ExtensionAPI, RegisteredTool } from "./pi-api.ts";
 import { bindBrowserCommands } from "./host/bind-extension.ts";
 import { fileEvidence, goalDir } from "./host/evidence.ts";
-import { meterPiSession } from "./host/pi-metering.ts";
+import { compactPiContext } from "./host/pi-compaction.ts";
+import { meterPiSession, turnClock } from "./host/pi-metering.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
+import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
 
 /**
@@ -35,6 +37,10 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   const goalId = shortId("goal");
   const evidence = fileEvidence({ goalId, goal: "browser chat session" });
 
+  // Shared with the metering below, so a payload and the context that carried it agree on
+  // which turn they belong to. Without it every tool result is stamped turn 0.
+  const clock = turnClock();
+
   const composed = composeAgent({
     card: {
       objective:
@@ -49,6 +55,10 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       browser: WorkerBrowserPort.lazy(session.worker),
       askUser: (question) => session.askUser(question),
       evidence,
+      turn: () => clock.current(),
+      // Named on the environment because a chat has no flags. The default is the format
+      // being measured; this is how an operator puts the baseline back mid-investigation.
+      view: viewByName(process.env.BSA_VIEW),
     },
   });
 
@@ -60,7 +70,15 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     names.push((tool as unknown as { name: string }).name);
   }
 
-  meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId });
+  /*
+   * Before the metering, on purpose.
+   *
+   * Pi passes each context handler what the previous one returned, so registering the
+   * compaction first is what makes the recorded bytes the bytes that were sent rather
+   * than the bytes we decided not to send.
+   */
+  compactPiContext(pi);
+  meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId }, clock);
 
   /*
    * Browser tools only, for the whole session.

@@ -7,6 +7,7 @@
  * empty values rather than sending nulls, and caps the control list.
  */
 
+import { chooseControls } from "../core/diff.ts";
 import type { ActionResult, Observation, Verification } from "../core/types.ts";
 
 export const MAX_WIRE_CONTROLS = 40;
@@ -47,7 +48,7 @@ function omitEmpty<T>(values: T[] | undefined): T[] | undefined {
 }
 
 export function toWireObservation(observation: Observation): WireObservation {
-  const controls = observation.controls.slice(0, MAX_WIRE_CONTROLS).map((control) => {
+  const controls = chooseControls(observation.controls, MAX_WIRE_CONTROLS).map((control) => {
     const wire: WireControl = {
       ref: control.ref,
       role: control.role,
@@ -74,7 +75,11 @@ export function toWireObservation(observation: Observation): WireObservation {
     observation.failedRequests.slice(-3).map((entry) => clip(entry)),
   );
   const changes = omitEmpty(observation.changes.slice(0, 6).map((entry) => clip(entry)));
-  const dropped = observation.controls.length - controls.length;
+  // Against the page, not against an already-capped copy of it: the core trims to its own
+  // limit before this runs, so counting from `observation.controls` reported "40 more" on
+  // a list of hundreds and the model believed one more look would cover it.
+  const total = observation.totalControls ?? observation.controls.length;
+  const dropped = total - controls.length;
 
   if (dialogs) wire.dialogs = dialogs;
   if (errors) wire.errors = errors;
@@ -82,7 +87,7 @@ export function toWireObservation(observation: Observation): WireObservation {
   if (failedRequests) wire.failedRequests = failedRequests;
   if (changes) wire.changes = changes;
   if (dropped > 0) {
-    wire.note = `${dropped} more controls not shown; probe with a selector to narrow down`;
+    wire.note = `${controls.length} of ${total} controls shown; probe with a selector to narrow down`;
   }
   return wire;
 }
@@ -146,13 +151,13 @@ export function extractText(content: unknown): string | undefined {
   return parts.length > 0 ? parts.join("") : undefined;
 }
 
-function looksLikeObservation(value: unknown): value is WireObservation {
-  const candidate = value as WireObservation | undefined;
+function looksLikeSnapshot(value: unknown, controls: (value: unknown) => boolean): boolean {
+  const candidate = value as { url?: unknown; controls?: unknown } | undefined;
   return Boolean(
     candidate &&
       typeof candidate === "object" &&
       typeof candidate.url === "string" &&
-      Array.isArray(candidate.controls),
+      controls(candidate.controls),
   );
 }
 
@@ -165,13 +170,21 @@ function looksLikeObservation(value: unknown): value is WireObservation {
  * or tool names means a tool added later is covered without anyone remembering to
  * register it, which is exactly the mistake the name-based version made.
  */
-export function findWireObservation(value: unknown): WireObservation | undefined {
-  if (looksLikeObservation(value)) return value;
+export function findSnapshot(
+  value: unknown,
+  controls: (value: unknown) => boolean,
+): Record<string, unknown> | undefined {
+  if (looksLikeSnapshot(value, controls)) return value as Record<string, unknown>;
   if (!value || typeof value !== "object") return undefined;
   for (const nested of Object.values(value as Record<string, unknown>)) {
-    if (looksLikeObservation(nested)) return nested;
+    if (looksLikeSnapshot(nested, controls)) return nested as Record<string, unknown>;
   }
   return undefined;
+}
+
+/** The snapshot as objects, which is what the baseline view sends. */
+export function findWireObservation(value: unknown): WireObservation | undefined {
+  return findSnapshot(value, Array.isArray) as WireObservation | undefined;
 }
 
 /**

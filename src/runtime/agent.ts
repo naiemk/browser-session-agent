@@ -60,6 +60,9 @@ export function composeAgent(options: ComposeAgentOptions): AgentComposition {
   const card: TaskCardInput = {
     ...options.card,
     ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
+    // A description that needs explaining explains itself in the card, so the tools and
+    // the prompt cannot disagree about which format the model is reading.
+    ...(options.tools.view?.legend ? { format: options.tools.view.legend } : {}),
   };
   return {
     tools: buildTools(options.tools),

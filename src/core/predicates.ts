@@ -30,33 +30,66 @@ function includesInsensitive(haystack: string, needle: string): boolean {
 }
 
 /**
- * What the page says, including what has been typed into it.
+ * What the page says, including what has been typed into it and what its rows say.
  *
- * `facts.text` is the body's innerText, and the value of an input is not part of it:
- * type a name into a box and the page's text does not change, so asking whether the
- * text you just typed is visible answers no however well the typing worked. That is a
- * false failure with a real cost — it was one of the failures in the trace that
- * prompted this — and it is also simply wrong, because a person looking at the screen
- * can see it. Values come from the same snapshot the model is shown, where passwords
- * are already redacted, so nothing secret is searchable here that was not already out.
+ * `facts.text` is the body's innerText, and three kinds of visible thing are missing
+ * from it. The value of an input: type a name into a box and the page's text does not
+ * change, so asking whether the text you just typed is visible answers no however well
+ * the typing worked. A control's accessible name, which is what the model is shown and
+ * what it addresses. And the row a control sits in, which is where a list keeps the
+ * other half of an identity - a handle in the anchor, a display name in the span beside
+ * it - and asking for the display name of a row the agent can plainly see should not
+ * answer no.
+ *
+ * All three are things a person looking at the screen can read, and all three come from
+ * the same snapshot the model is shown, where passwords are already redacted.
  */
 function readableText(facts: PageFacts): string {
-  const values = facts.observation.controls
-    .map((control) => control.value)
-    .filter((value): value is string => Boolean(value));
-  return values.length === 0 ? facts.text : `${facts.text}\n${values.join("\n")}`;
+  const fromControls: string[] = [];
+  for (const control of facts.observation.controls) {
+    if (control.value) fromControls.push(control.value);
+    if (control.name) fromControls.push(control.name);
+    if (control.row) fromControls.push(control.row);
+  }
+  return fromControls.length === 0 ? facts.text : `${facts.text}\n${fromControls.join("\n")}`;
 }
 
-function matchesControl(
-  facts: PageFacts,
-  role: string | undefined,
-  name: string | undefined,
-): boolean {
-  return facts.observation.controls.some((control) => {
+/**
+ * Where the text was, or what we looked through and did not find it in.
+ *
+ * The detail used to be a fixed sentence written for the failing case, so a passing
+ * check reported `pass text visible "x": text not found: "x"`. The model read that
+ * contradiction on every successful check, and so did anyone reading the ledger.
+ */
+function describeTextMatch(haystack: string, needle: string, found: boolean): string {
+  if (!found) return `no match in ${haystack.length} characters of visible text`;
+  const at = haystack.toLowerCase().indexOf(needle.toLowerCase());
+  const from = Math.max(0, at - 20);
+  const window = haystack.slice(from, at + needle.length + 20).replace(/\s+/g, " ").trim();
+  return `found in "${window}"`;
+}
+
+function findControl(facts: PageFacts, role: string | undefined, name: string | undefined) {
+  return facts.observation.controls.find((control) => {
     if (role && control.role !== role) return false;
     if (name && !includesInsensitive(control.name, name)) return false;
     return true;
   });
+}
+
+function describeControl(control: { ref: string; role: string; name: string }): string {
+  return `${control.ref} ${control.role} "${control.name}"`;
+}
+
+/**
+ * How one check reads, wherever it is reported.
+ *
+ * Both halves are needed and they live in different fields: what was wanted is the
+ * predicate, what was seen is the detail. Reporting only the detail is what left a
+ * recovery note saying "no match in 101 characters" without saying no match for what.
+ */
+export function describeCheck(check: CheckResult): string {
+  return `${check.predicate}: ${check.detail}`;
 }
 
 function findByName(facts: PageFacts, name: string) {
@@ -110,25 +143,30 @@ export function evaluatePredicate(pred: Predicate, facts: PageFacts): CheckResul
       return result(facts.url.includes(pred.text), `url=${facts.url}`);
     case "title_includes":
       return result(includesInsensitive(facts.title, pred.text), `title=${facts.title}`);
-    case "text_visible":
-      return result(
-        includesInsensitive(readableText(facts), pred.text),
-        `text not found: "${pred.text}"`,
-      );
-    case "text_absent":
-      return result(
-        !includesInsensitive(readableText(facts), pred.text),
-        `text present: "${pred.text}"`,
-      );
-    case "ref_exists":
-      return result(
-        facts.observation.controls.some((c) => c.ref === pred.ref),
-        `refs=${facts.observation.controls.map((c) => c.ref).join(",")}`,
-      );
-    case "control_exists":
-      return result(matchesControl(facts, pred.role, pred.name), summarizeControls(facts));
-    case "control_absent":
-      return result(!matchesControl(facts, pred.role, pred.name), summarizeControls(facts));
+    case "text_visible": {
+      const text = readableText(facts);
+      const seen = includesInsensitive(text, pred.text);
+      return result(seen, describeTextMatch(text, pred.text, seen));
+    }
+    case "text_absent": {
+      const text = readableText(facts);
+      const seen = includesInsensitive(text, pred.text);
+      return result(!seen, describeTextMatch(text, pred.text, seen));
+    }
+    case "ref_exists": {
+      // The whole ref table used to be the detail, which cost 365 bytes to answer yes.
+      const live = facts.observation.controls;
+      const present = live.some((c) => c.ref === pred.ref);
+      return result(present, present ? "present" : `absent, ${live.length} refs live`);
+    }
+    case "control_exists": {
+      const match = findControl(facts, pred.role, pred.name);
+      return result(Boolean(match), match ? describeControl(match) : summarizeControls(facts));
+    }
+    case "control_absent": {
+      const match = findControl(facts, pred.role, pred.name);
+      return result(!match, match ? describeControl(match) : "absent");
+    }
     case "value_equals": {
       const control = findByName(facts, pred.name);
       const actual = control?.value ?? "";

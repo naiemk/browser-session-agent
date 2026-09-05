@@ -35,8 +35,24 @@ const COLLECT = `(() => {
     '[role="menuitem"]', '[role="tab"]', '[contenteditable="true"]',
   ].join(",");
 
+  /*
+   * A ref belongs to an element for as long as the element lasts.
+   *
+   * Refs used to be positional and reassigned from scratch on every look, so inserting
+   * one row at the top of a list renumbered every row below it. That is why the card has
+   * to say refs go stale, and it is what makes it impossible to describe a page as a
+   * change from the last one: an unchanged control cannot be left out of a snapshot if
+   * leaving it out also takes away the only way to address it.
+   *
+   * The marker is already in the DOM, so keeping it is enough. New elements are numbered
+   * above every ref the page is already carrying, so a fresh number never collides with
+   * one the model is still holding. Navigation replaces the document and the numbering
+   * starts again, which is correct: that is a different page.
+   */
+  let seq = 0;
   for (const el of document.querySelectorAll("[" + REF_ATTR + "]")) {
-    el.removeAttribute(REF_ATTR);
+    const existing = Number(String(el.getAttribute(REF_ATTR)).slice(1));
+    if (Number.isFinite(existing) && existing > seq) seq = existing;
   }
 
   const visible = (el) => {
@@ -104,13 +120,46 @@ const COLLECT = `(() => {
     return host ? clean(host.innerText) : "";
   };
 
+  /*
+   * Site furniture, from the document's own landmarks.
+   *
+   * Every page carries a header, a nav and a footer that are the same on every page of
+   * the site, and on a crowded page they crowd out the thing the agent came for: a
+   * follower dialog arrived as eleven navigation links, fifteen footer links and
+   * fourteen rows of the list. Which controls those are is a structural question HTML
+   * already answers, so nothing here needs to know what site it is on.
+   *
+   * Marked, never dropped: a nav link is often exactly the route the agent wants.
+   */
+  const LANDMARK = "nav, footer, header, [role='navigation'], [role='contentinfo'], [role='banner']";
+  const inLandmark = (el) => Boolean(el.closest && el.closest(LANDMARK));
+
+  // The name of a control that has no text of its own: an image link, a bare icon.
+  // Without this a photo grid arrives as a dozen controls all called "a".
+  const borrowedName = (el) => {
+    const image = el.querySelector ? el.querySelector("img[alt], [aria-label]") : null;
+    const fromImage = image
+      ? clean(image.getAttribute("alt") || image.getAttribute("aria-label"))
+      : "";
+    if (fromImage) return fromImage;
+    const title = clean(el.getAttribute("title"));
+    if (title) return title;
+    const href = el.tagName.toLowerCase() === "a" ? el.getAttribute("href") || "" : "";
+    const tail = href.split("?")[0].split("#")[0].split("/").filter(Boolean).pop() || "";
+    return tail && tail !== "" ? tail : "";
+  };
+
   const nodes = [...document.querySelectorAll(selector)].filter(
     (el) => visible(el) || editorLike(el),
   );
 
-  const controls = nodes.map((el, index) => {
-    const ref = "e" + (index + 1);
-    el.setAttribute(REF_ATTR, ref);
+  const controls = nodes.map((el) => {
+    let ref = el.getAttribute(REF_ATTR) || "";
+    if (!ref) {
+      seq += 1;
+      ref = "e" + seq;
+      el.setAttribute(REF_ATTR, ref);
+    }
     const tag = el.tagName.toLowerCase();
     const labelText = labelTextFor(el).slice(0, 80);
     let role = el.getAttribute("role") || "";
@@ -131,6 +180,7 @@ const COLLECT = `(() => {
       el.getAttribute("name") ||
       el.getAttribute("placeholder") ||
       clean(el.textContent).slice(0, 80) ||
+      borrowedName(el).slice(0, 80) ||
       inputType ||
       tag;
 
@@ -156,6 +206,7 @@ const COLLECT = `(() => {
       role,
       name,
       tag,
+      chrome: inLandmark(el) || undefined,
       value,
       disabled: el.disabled || undefined,
       checked: el.checked || undefined,
@@ -210,6 +261,7 @@ export async function perceive(page: Page, context: PerceiveContext): Promise<Ob
     failedRequests: (context.failedRequests ?? []).slice(-8),
     changes: diffControls(context.previous?.controls, collected.controls),
     truncated: truncated || undefined,
+    totalControls: collected.controls.length,
     capturedAt: new Date().toISOString(),
   };
 }

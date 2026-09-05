@@ -11,6 +11,7 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek } from "../core/peek.ts";
+import { describeCheck } from "../core/predicates.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
@@ -33,7 +34,7 @@ import {
 import { hashOf, observationStats } from "./metrics.ts";
 import type { Evidence } from "./evidence.ts";
 import { findWireObservation, wireText } from "./wire.ts";
-import { flatView, type ViewStrategy } from "./view/index.ts";
+import { DEFAULT_VIEW, type ViewStrategy } from "./view/index.ts";
 
 export interface ReportPayload {
   status: "success" | "blocked" | "failed";
@@ -107,7 +108,7 @@ function reply(value: unknown, details: unknown = value): Result {
  * and it is the same string written to the payload log, which is what makes it safe for
  * a host to show one line instead.
  */
-function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
+function measured(tool: RuntimeTool, context: ToolContext, view: ViewStrategy): RuntimeTool {
   const { metrics, payloads } = context.evidence;
 
   return {
@@ -128,18 +129,26 @@ function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
         hash,
       });
 
-      // Snapshots dominate the bill, so they are counted in their own right wherever
-      // they turn up rather than only when `observe` produced them.
-      const observation = findWireObservation(result.details);
+      /*
+       * Snapshots dominate the bill, so they are counted in their own right wherever they
+       * turn up rather than only when `observe` produced them.
+       *
+       * Read back out of the text the model received, through the view that wrote it. A
+       * hard-coded shape here counted zero snapshots the moment a candidate description
+       * stopped using an array of objects, which would have left the seam unable to
+       * measure the only thing it exists to measure.
+       */
+      const observation = view.anySnapshot(text) ?? findWireObservation(result.details);
       if (observation) {
-        const stats = observationStats(observation);
         metrics.record({
           kind: "observation",
           turn,
           tool: tool.name,
-          bytes: wireText(observation).length,
+          // In the format it was sent in, or the comparison between two descriptions is
+          // a comparison of one description measured twice.
+          bytes: view.sizeOf(observation),
           hash: hashOf(wireText(observation)),
-          ...stats,
+          ...observationStats(observation),
         });
       }
 
@@ -154,7 +163,7 @@ function describeError(err: unknown): string {
 }
 
 export function buildTools(context: ToolContext): AgentTool[] {
-  const view = context.view ?? flatView;
+  const view = context.view ?? DEFAULT_VIEW;
   let strangerViews = 0;
   let steps = 0;
 
@@ -227,7 +236,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       name: TOOL_CHECK,
       label: "Check",
       description:
-        'Assert something about the page now, evaluated in code. {"predicate":{"kind":"text_visible","text":"Submitted"}}. Kinds: text_visible, text_absent, url_includes, title_includes, ref_exists, control_exists, control_absent, value_equals, value_includes, no_console_error, dialog_open, all, any, not.',
+        'Assert something about the page now, evaluated in code. {"predicate":{"kind":"text_visible","text":"Submitted"}}. Several at once: {"kind":"all","of":[...]}. Kinds: text_visible, text_absent, url_includes, title_includes, ref_exists, control_exists, control_absent, value_equals, value_includes, no_console_error, dialog_open, all, any, not.',
       promptSnippet: "Verify a claim instead of assuming it.",
       parameters: Type.Object({ predicate: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
@@ -247,7 +256,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       name: TOOL_ACT,
       label: "Act",
       description:
-        "One verified browser action. kind is navigate, click, type, select, scroll, wait, or upload. Address controls with ref from the latest observation. The result says whether it actually worked, and why not.",
+        "One verified browser action. kind is navigate, click, type, select, scroll, wait, or upload. Address controls by ref. Waits for the page to settle and re-reads it before reporting, so never follow one with a wait. The result says whether it actually worked, and why not.",
       promptSnippet: "One verified browser action.",
       parameters: Type.Object({
         kind: Type.String({ description: "navigate | click | type | select | scroll | wait | upload" }),
@@ -437,7 +446,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           return reply({
             page: view.observation(result.observation),
             matched: result.matched,
-            ...(result.identity ? { identity: result.identity.detail } : {}),
+            ...(result.identity ? { identity: describeCheck(result.identity) } : {}),
             ...(result.matched
               ? {}
               : { note: "This is not what you asked for. Do not read anything into it." }),
@@ -575,5 +584,5 @@ export function buildTools(context: ToolContext): AgentTool[] {
   ];
 
   // One cast, at the boundary where the engine takes over.
-  return tools.map((tool) => measured(tool, context)) as unknown as AgentTool[];
+  return tools.map((tool) => measured(tool, context, view)) as unknown as AgentTool[];
 }

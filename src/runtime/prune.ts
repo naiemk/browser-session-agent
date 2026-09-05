@@ -34,6 +34,15 @@ export interface PruneOptions {
   placeholder?: string;
   /** Off only to measure what shape matching is worth. */
   byShape?: boolean;
+  /**
+   * What `keepLatest` counts.
+   *
+   * Per tool while work is live, because the model takes its refs from the newest
+   * snapshot and each tool's newest may be the one it is holding. Across all of them for
+   * work that is finished, where the question is only whether anything is addressable at
+   * all and four snapshots of four dead pages answer it no better than one.
+   */
+  group?: "tool" | "any";
 }
 
 /**
@@ -51,6 +60,91 @@ export function isPerishable(
 }
 
 export const PLACEHOLDER = "[stale snapshot dropped; observe again if you need it]";
+
+/**
+ * Bytes of context for one turn, and where the prompt cache was invalidated.
+ *
+ * Lives beside pruning because pruning is what rewrites a prefix, and next to
+ * `PLACEHOLDER` because that is how a replaced message is recognised. Exported so the
+ * accounting is testable without running an agent, and so a host that does not own the
+ * loop can do the same sum over whatever context it is shown.
+ */
+export function measureContext(
+  before: readonly PrunableMessage[],
+  after: readonly PrunableMessage[],
+): { bytes: number; liveBytes: number; placeholderBytes: number; rewrittenFrom: number } {
+  let bytes = 0;
+  let liveBytes = 0;
+  let placeholderBytes = 0;
+  let rewrittenFrom = -1;
+
+  for (const [index, message] of after.entries()) {
+    const size = JSON.stringify(message ?? null).length;
+    bytes += size;
+    if (message?.content === PLACEHOLDER) placeholderBytes += size;
+    else liveBytes += size;
+
+    // Providers cache on an exact prefix, so the earliest rewrite is where the cache
+    // stops being usable for this request.
+    if (rewrittenFrom < 0 && before[index] && before[index]!.content !== message?.content) {
+      rewrittenFrom = index;
+    }
+  }
+
+  return { bytes, liveBytes, placeholderBytes, rewrittenFrom };
+}
+
+/**
+ * Where the current piece of work starts: the operator's most recent message.
+ *
+ * A chat is a sequence of sub-goals, and the boundary between them is the only place in
+ * the transcript where the past reliably stops mattering. Returns 0 when there is nothing
+ * but the opening request, because then everything is still the current piece of work.
+ */
+export function epochStart(messages: readonly PrunableMessage[]): number {
+  for (let index = messages.length - 1; index > 0; index--) {
+    if (messages[index]!.role === "user") return index;
+  }
+  return 0;
+}
+
+/**
+ * Drop the snapshots from finished work, and only when a piece of work finishes.
+ *
+ * Pruning every turn looks like the obvious saving and is the opposite of one. Providers
+ * bill a cached prefix at a fraction of the input price, and rewriting a message near the
+ * front invalidates everything after it, so a context trimmed on every turn is a context
+ * paid for at full price on every turn. On the measured run that arithmetic came out at
+ * roughly two and a half times the cost of leaving it alone: cache reads were 74% of the
+ * bill precisely because the prefix was stable.
+ *
+ * Compacting at a sub-goal boundary pays that penalty once and then leaves the prefix
+ * alone. It is also where the drop is safe to make: the snapshots being dropped are of
+ * pages the last request was about, not this one.
+ *
+ * Stable by construction, which is what keeps the cache warm: the answer depends only on
+ * where the last user message is, so every turn inside an epoch produces the same prefix,
+ * and turns are appended to it rather than rewriting it.
+ *
+ * What survives is deliberate. Snapshots go; the assistant's own account of what it
+ * worked out stays, as does every non-snapshot tool result - which is where `remember`
+ * records what was established, so nothing has to be re-derived. One snapshot is kept, so
+ * a new sub-goal starts with somewhere to act rather than with nothing addressable.
+ */
+export function compactFinishedWork<T extends PrunableMessage>(
+  messages: T[],
+  options: PruneOptions = {},
+): T[] {
+  const boundary = epochStart(messages);
+  if (boundary === 0) return messages;
+
+  const history = pruneMessages(messages.slice(0, boundary), {
+    ...options,
+    keepLatest: options.keepLatest ?? 1,
+    group: options.group ?? "any",
+  });
+  return [...history, ...messages.slice(boundary)];
+}
 
 export function pruneMessages<T extends PrunableMessage>(
   messages: T[],
@@ -74,7 +168,7 @@ export function pruneMessages<T extends PrunableMessage>(
     // Grouped by tool so each keeps its own newest result. That matters for more than
     // tidiness: the mock model resolves refs from the newest snapshot in the transcript,
     // and a real agent is in the same position, so the latest action result has to stay.
-    const group = message.toolName ?? "unnamed";
+    const group = options.group === "any" ? "any" : (message.toolName ?? "unnamed");
     const count = (seen.get(group) ?? 0) + 1;
     seen.set(group, count);
     if (count <= keepLatest) continue;

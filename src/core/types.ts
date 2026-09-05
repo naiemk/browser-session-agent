@@ -27,6 +27,14 @@ export interface Control {
    * "v_varvar": the two never appeared together anywhere the agent could see.
    */
   row?: string;
+  /**
+   * Site furniture: this control lives in a header, nav or footer landmark.
+   *
+   * Recorded so a crowded page can be trimmed to the part the agent came for. It is
+   * never a reason to drop a control - a nav link is often the route wanted - only a
+   * reason to give up its slot last.
+   */
+  chrome?: boolean;
 }
 
 /** One compact, ephemeral view of a page. Never persisted into model context long-term. */
@@ -44,6 +52,12 @@ export interface Observation {
   /** Delta against the previous observation of this tab. */
   changes: string[];
   truncated?: boolean;
+  /**
+   * How many controls the page had before any cap, so the model is told the real
+   * remainder. Reporting the shortfall against an already-capped list said "40 more" on
+   * a follower dialog with hundreds of rows.
+   */
+  totalControls?: number;
   capturedAt: string;
 }
 
