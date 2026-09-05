@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { Observation } from "../../src/core/types.ts";
-import { flatView, tableView, VIEW_STRATEGIES, viewByName } from "../../src/runtime/view/index.ts";
+import {
+  DEFAULT_VIEW,
+  flatView,
+  tableView,
+  VIEW_STRATEGIES,
+  viewByName,
+} from "../../src/runtime/view/index.ts";
 import { formatControls, parseControls } from "../../src/runtime/view/table.ts";
 import { toWireObservation, wireText, type WireControl } from "../../src/runtime/wire.ts";
 
@@ -91,7 +97,7 @@ describe("every view can be read back", () => {
   });
 
   it("names an unknown view rather than silently falling back", () => {
-    assert.equal(viewByName(undefined), flatView);
+    assert.equal(viewByName(undefined), DEFAULT_VIEW);
     assert.throws(() => viewByName("outline"), /unknown view strategy/);
   });
 });

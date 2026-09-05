@@ -424,6 +424,67 @@ what changed between two polls; that was only accidentally right before. And a r
 throws is "not yet" rather than a failure, because mid-navigation the execution context
 is genuinely gone for a moment and that is a fact about when we asked.
 
+## D51. A ref belongs to an element, not to a position
+
+Refs were positional and reassigned from scratch on every look, so one arrival at the top
+of a list renumbered every row beneath it: a ref read one turn ago addressed a different
+row now. The card had to warn that refs go stale, and the agent obeyed it by observing
+before every action — a whole turn, costing the card and every tool schema again, bought
+to learn that nothing had moved.
+
+Keeping the marker already in the DOM is enough. New elements are numbered above every ref
+the page is carrying, so a fresh number never collides with one the model still holds, and
+navigation starts the numbering again because that is a different page. Single-page apps
+that replace nodes on render will churn refs anyway, and that is the correct answer there:
+the element really is gone.
+
+The property is also load-bearing for anything that wants to describe a page as a change
+from the last one. An unchanged control cannot be left out of a snapshot while leaving it
+out is also the only way to lose the ability to address it.
+
+## D52. The context is compacted at sub-goal boundaries, not every turn
+
+Cache reads were 74% of the metered run's bill: the same accumulated context re-read on
+every one of 112 turns, peaking at 798KB. The obvious response is to prune the stale
+snapshots out of it every turn, and the arithmetic says that costs more than doing nothing.
+Providers bill a cached prefix at a fraction of the input price and a rewrite near the
+front invalidates everything after it, so a context trimmed on every turn is a context
+billed as fresh input on every turn — roughly two and a half times the cost on the numbers
+from that run. Cache reads were the majority of the bill *because* the prefix was stable.
+
+So compaction happens where a piece of work ends, which is the operator's next message. It
+pays the invalidation once and then leaves the prefix alone, and it is also the only point
+where the drop is safe: the snapshots being dropped are of pages the last request was
+about. The result depends only on where that message is, so every turn inside a piece of
+work reproduces the same prefix exactly, which is what keeps the cache warm.
+
+What survives is the decision, not the mechanism. Snapshots go. The agent's own account of
+what it worked out stays, as does every non-snapshot tool result — which is where
+`remember` keeps what was established, so a new sub-goal inherits the facts without
+inheriting the pages they came from. One snapshot is kept so the next sub-goal starts with
+something addressable rather than with nothing.
+
+## D53. How a page is described is a strategy, and the default is the one being measured
+
+A control is four short strings and a few booleans, and JSON spends more on saying so than
+on the strings: forty-four characters to carry seventeen, with the field names repeated for
+every row of every snapshot of every turn. A table says the field names nowhere.
+
+The seam already existed for exactly this, so the table is a strategy behind it and the
+suite compares them: tool result bytes down 21% at 29/29 passing. What the suite cannot
+tell us is whether a real model reads a table as well as it reads objects, because the mock
+reads it perfectly by construction. That question has one honest answer — a real run — and
+a real run only ever measures the default. So the candidate that has passed everything we
+can cheaply test becomes the default, and `--view flat` or `BSA_VIEW=flat` restores the
+baseline in one word.
+
+Two things had to change before a candidate could be compared at all, both of which had
+quietly assumed the baseline's shape. Snapshot metering read the control list as an array,
+so it counted zero snapshots the moment a description stopped sending objects. And a view
+now answers two separate questions rather than one: which snapshot's refs are live, and
+which snapshots were billed. A peek reports a page it has already closed, so its refs
+address a tab that no longer exists — countable, not actionable.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

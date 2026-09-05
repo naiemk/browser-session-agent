@@ -4,6 +4,7 @@ import { fileEvidence } from "../../host/evidence.ts";
 import { turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
 import { composeAgent } from "../../runtime/agent.ts";
+import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
 import { summarizeToolResult } from "../../runtime/summary.ts";
 import { payloadInContent } from "../../runtime/wire.ts";
@@ -496,6 +497,7 @@ export class OperatorRuntime {
         // objective spans whatever runs they start inside the conversation.
         evidence: this.evidence,
         turn: () => this.clock.current(),
+        view: viewByName(process.env.BSA_VIEW),
       },
     });
     this.browserPrompt = composed.systemPrompt;

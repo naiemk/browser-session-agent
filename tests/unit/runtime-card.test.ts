@@ -38,12 +38,12 @@ describe("task card", () => {
     // Refs survive while the element does, and a turn costs the card and every tool
     // schema again, so a snapshot bought out of habit is the most expensive kind.
     const card = buildTaskCard(CARD);
-    assert.match(card, /Not between every action/);
+    assert.match(card, /not between every action/);
     assert.doesNotMatch(card, /go stale/);
   });
 
   it("tells the agent that checks can be batched", () => {
-    assert.match(buildTaskCard(CARD), /Ask everything at once/);
+    assert.match(buildTaskCard(CARD), /asking everything at once/);
   });
 
   it("tells the agent what it may commit", () => {

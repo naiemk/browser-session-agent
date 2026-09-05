@@ -18,7 +18,7 @@ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Context, ToolCall } from "@earendil-works/pi-ai";
 import { TOOL_ACT, TOOL_DONE, TOOL_OBSERVE } from "./names.ts";
 import { ZERO_USAGE, type ModelPort } from "./model.ts";
-import { flatView, type ViewStrategy } from "./view/index.ts";
+import { DEFAULT_VIEW, type ViewStrategy } from "./view/index.ts";
 import type { WireObservation } from "./wire.ts";
 
 /** One intended tool call. `target` is matched against control names at call time. */
@@ -104,7 +104,7 @@ function assistantMessage(
  */
 export function latestObservation(
   context: Context,
-  view: ViewStrategy = flatView,
+  view: ViewStrategy = DEFAULT_VIEW,
 ): WireObservation | undefined {
   const messages = context.messages as Array<{
     role?: string;
@@ -239,7 +239,7 @@ export function createMockModel(options: MockModelOptions): ModelPort {
             },
           ],
         })
-      : nextPlanTurn(options.plan ?? [], state, context, options.view ?? flatView);
+      : nextPlanTurn(options.plan ?? [], state, context, options.view ?? DEFAULT_VIEW);
 
     options.onTurn?.({
       turn: turnIndex,

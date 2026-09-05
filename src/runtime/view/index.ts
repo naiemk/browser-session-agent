@@ -116,12 +116,18 @@ export const flatView: ViewStrategy = {
 };
 
 /**
- * The same page, with the control list as a table.
+ * The same page, with the control list as a table. The default.
  *
  * Only the `controls` field changes shape, which is deliberate: it was the largest share
  * of the model's context and the rest of a reply is a handful of fields that objects
- * describe well. Off by default until the suite says what it is worth - run
- * `browser-agent suite --view table` beside the baseline.
+ * describe well. On the token-free suite it cut tool result bytes by 22.7% at 29/29
+ * passing, on fixture pages carrying a handful of controls each - which is where the
+ * format has the least to save, since what it saves is per row.
+ *
+ * The residual risk is the one the suite cannot cover: the mock reads a table back
+ * perfectly, and whether a real model does is a question only a real run answers. So it
+ * is the default, because a default is the only thing the next real run measures, and
+ * `--view flat` or `BSA_VIEW=flat` puts the baseline back in one word.
  */
 export const tableView: ViewStrategy = {
   name: "table",
@@ -180,8 +186,17 @@ export const VIEW_STRATEGIES: Record<string, ViewStrategy> = {
   [leanActionView.name]: leanActionView,
 };
 
+/**
+ * What every composition root uses when nobody chose.
+ *
+ * One constant rather than a default per caller: the tools and the mock model have to
+ * agree about the format, and two independent `?? flatView` defaults are how they would
+ * come to disagree.
+ */
+export const DEFAULT_VIEW = tableView;
+
 export function viewByName(name: string | undefined): ViewStrategy {
-  if (!name) return flatView;
+  if (!name) return DEFAULT_VIEW;
   const strategy = VIEW_STRATEGIES[name];
   if (!strategy) {
     throw new Error(

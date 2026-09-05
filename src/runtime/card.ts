@@ -63,7 +63,7 @@ export function buildTaskCard(input: TaskCardInput): string {
    * it has is a capability it argues itself out of using - the run where it was asked to
    * open a site and replied that it could not open a browser window started here.
    */
-  return `You drive a real web browser: pages, forms, dialogs, tabs, and file uploads through a page's own file input. No shell, no repository, and no filesystem beyond the files an operator has given you to attach.
+  return `You drive a real web browser: pages, forms, dialogs, tabs, file uploads. No shell, no repository.
 
 TASK
 ${input.objective}
@@ -72,10 +72,10 @@ SUCCESS (checked against the live page by code you do not control; claiming succ
 ${criteria}
 ${facts}
 RULES
-${input.format ? `- ${input.format}\n` : ""}- Refs come from a snapshot and stay valid while the element is on the page. ${TOOL_OBSERVE} when you arrive somewhere new, when a result says something changed that you need to read, or when a ref turns out to be gone. Not between every action.
+${input.format ? `- ${input.format}\n` : ""}- Refs stay valid while the element is on the page, so ${TOOL_OBSERVE} when you arrive somewhere new or a ref is reported gone, not between every action.
 - ${TOOL_PROBE} when you do not understand a form or widget. It cannot change anything, so prefer it over a hopeful click.
-- ${TOOL_ACT} verifies every action and waits for the page to settle before reporting. You do not need to wait afterwards.
-- ${TOOL_CHECK} before you claim to be done. Ask everything at once: it takes a list, and one call answering five questions costs a fraction of five calls.
+- ${TOOL_ACT} verifies every action and waits for the page to settle, so never follow one with a wait.
+- ${TOOL_CHECK} before you claim to be done, asking everything at once with all: one call beats five.
 - ${TOOL_ASK} for personal facts. Never invent them.
 - ${TOOL_DONE} to finish. A truthful failure beats a false success.
 - On failure, read the recovery note and errors, then change approach. Do not repeat the same click.

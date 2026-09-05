@@ -132,6 +132,15 @@ Runs meter themselves: `browser-agent metrics <goalId>` says where a run's conte
 what it bought twice, and whether the prompt cache was being invalidated. Cost is reported
 and attributed, never gated — see [docs/optimization.md](docs/optimization.md).
 
+How a page is described to the model is a strategy, so a cheaper description can be
+measured rather than argued about:
+
+```bash
+browser-agent suite --view flat     # the baseline: a control list as JSON objects
+browser-agent suite --view table    # the default: the same list as tab-separated rows
+BSA_VIEW=flat npm run cli           # put the baseline back in a chat, which has no flags
+```
+
 ### Reading a run
 
 Every run — a suite task, a `browser-agent run`, a chat in either CLI — files itself under

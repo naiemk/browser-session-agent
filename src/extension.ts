@@ -7,6 +7,7 @@ import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
+import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
 
 /**
@@ -55,6 +56,9 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       askUser: (question) => session.askUser(question),
       evidence,
       turn: () => clock.current(),
+      // Named on the environment because a chat has no flags. The default is the format
+      // being measured; this is how an operator puts the baseline back mid-investigation.
+      view: viewByName(process.env.BSA_VIEW),
     },
   });
 

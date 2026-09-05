@@ -6,6 +6,7 @@ import { createMockModel, latestObservation } from "../../src/runtime/mock-model
 import { TOOL_ACT, TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE } from "../../src/runtime/names.ts";
 import { memoryEvidence } from "../../src/runtime/evidence.ts";
 import { runTask } from "../../src/runtime/runtime.ts";
+import { flatView } from "../../src/runtime/view/index.ts";
 
 function observation(overrides: Partial<Observation> = {}): Observation {
   return {
@@ -200,7 +201,25 @@ describe("latestObservation", () => {
         },
       ],
     } as never;
-    assert.equal(latestObservation(context)?.url, "b");
+    assert.equal(latestObservation(context, flatView)?.url, "b");
+  });
+
+  it("reads the format it was actually shown", () => {
+    // The default description is a table, so a transcript of JSON control arrays is not
+    // one this model was handed. Reading it anyway would resolve refs against a snapshot
+    // nobody sent.
+    const asTable = {
+      systemPrompt: "",
+      messages: [
+        {
+          role: "toolResult",
+          content: [{ type: "text", text: '{"url":"b","controls":"e1\\tlink\\tHome"}' }],
+        },
+      ],
+    } as never;
+
+    assert.equal(latestObservation(asTable)?.controls[0]?.name, "Home");
+    assert.equal(latestObservation(asTable, flatView), undefined);
   });
 
   it("looks inside an action result for its observation", () => {
@@ -213,7 +232,7 @@ describe("latestObservation", () => {
         },
       ],
     } as never;
-    assert.equal(latestObservation(context)?.url, "c");
+    assert.equal(latestObservation(context, flatView)?.url, "c");
   });
 
   it("returns nothing when there is no observation yet", () => {
