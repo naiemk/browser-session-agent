@@ -50,6 +50,7 @@ const ROUTES: Record<string, string> = {
   "/split-rows": "split-rows.html",
   "/rows": "rows.html",
   "/crowded": "crowded.html",
+  "/prepend": "prepend.html",
 };
 
 /**

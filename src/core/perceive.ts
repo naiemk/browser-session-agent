@@ -35,8 +35,24 @@ const COLLECT = `(() => {
     '[role="menuitem"]', '[role="tab"]', '[contenteditable="true"]',
   ].join(",");
 
+  /*
+   * A ref belongs to an element for as long as the element lasts.
+   *
+   * Refs used to be positional and reassigned from scratch on every look, so inserting
+   * one row at the top of a list renumbered every row below it. That is why the card has
+   * to say refs go stale, and it is what makes it impossible to describe a page as a
+   * change from the last one: an unchanged control cannot be left out of a snapshot if
+   * leaving it out also takes away the only way to address it.
+   *
+   * The marker is already in the DOM, so keeping it is enough. New elements are numbered
+   * above every ref the page is already carrying, so a fresh number never collides with
+   * one the model is still holding. Navigation replaces the document and the numbering
+   * starts again, which is correct: that is a different page.
+   */
+  let seq = 0;
   for (const el of document.querySelectorAll("[" + REF_ATTR + "]")) {
-    el.removeAttribute(REF_ATTR);
+    const existing = Number(String(el.getAttribute(REF_ATTR)).slice(1));
+    if (Number.isFinite(existing) && existing > seq) seq = existing;
   }
 
   const visible = (el) => {
@@ -137,9 +153,13 @@ const COLLECT = `(() => {
     (el) => visible(el) || editorLike(el),
   );
 
-  const controls = nodes.map((el, index) => {
-    const ref = "e" + (index + 1);
-    el.setAttribute(REF_ATTR, ref);
+  const controls = nodes.map((el) => {
+    let ref = el.getAttribute(REF_ATTR) || "";
+    if (!ref) {
+      seq += 1;
+      ref = "e" + seq;
+      el.setAttribute(REF_ATTR, ref);
+    }
     const tag = el.tagName.toLowerCase();
     const labelText = labelTextFor(el).slice(0, 80);
     let role = el.getAttribute("role") || "";

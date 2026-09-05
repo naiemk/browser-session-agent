@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Prepend</title>
+  </head>
+  <body>
+    <!--
+      A list that grows at the top, which is how a feed, an inbox and a notification list
+      all behave. With positional refs, one arrival renumbers every row below it, so a ref
+      the model read one turn ago addresses a different row now.
+    -->
+    <main>
+      <h1>Inbox</h1>
+      <button id="arrive" type="button">Receive one</button>
+      <ul id="messages">
+        <li><a href="/m/1">First message</a></li>
+        <li><a href="/m/2">Second message</a></li>
+      </ul>
+    </main>
+    <script>
+      let next = 0;
+      document.getElementById("arrive").addEventListener("click", () => {
+        next += 1;
+        const row = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = "/m/new" + next;
+        link.textContent = "Arrival " + next;
+        row.appendChild(link);
+        const list = document.getElementById("messages");
+        list.insertBefore(row, list.firstChild);
+      });
+    </script>
+  </body>
+</html>
