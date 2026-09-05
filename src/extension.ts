@@ -7,6 +7,7 @@ import { shapePiToolResults } from "./host/pi-shape.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
+import { bindSubagent, CHAT_WORKER_HINT } from "./host/pi-subagent/bind.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
@@ -91,6 +92,8 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     names.push((tool as unknown as { name: string }).name);
   }
 
+  names.push(bindSubagent(pi, { goalId }));
+
   /*
    * Compaction, then shape, then metering.
    *
@@ -121,7 +124,9 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
 
   // Replace the coding identity rather than appending to it. Appending is why the chat
   // used to answer "what can you do?" like a coding assistant.
-  pi.on("before_agent_start", () => ({ systemPrompt: composed.systemPrompt }));
+  pi.on("before_agent_start", () => ({
+    systemPrompt: `${composed.systemPrompt}\n\n${CHAT_WORKER_HINT}`,
+  }));
 
   pi.registerCommand("browser-evidence", {
     description: "Where this session's evidence, metrics and payloads are written",

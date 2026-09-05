@@ -152,3 +152,5 @@ The instinct to build a **database** now is the same move D26 already rejected, 
 Implementation hook if this ever promotes: `loadSkillCatalogue` already treats a non-`generic` group directory as `host`. That is a seam, not permission to fill `skills/instagram/` this week.
 
 Next useful move is not a schema. It is (a) finish the memory instrumentation so we know whether site-level repeat exists, and (b) if someone hand-writes **one** skill from a real failed session, treat it as an experiment: same task with/without the file, measure turns and misses. That experiment can live in this folder as evidence without becoming an epic.
+
+Scratch, a planner artifact, and a coder in a jail are a different idea: [typed-workers.md](./typed-workers.md). Skills are their UI; scratch is ours.
