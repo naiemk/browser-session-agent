@@ -177,6 +177,31 @@ describe("pruning by payload shape", () => {
     assert.equal(isPerishable(message, new Set()), true);
   });
 
+  it("replaces Pi-shaped content with Pi-shaped content, because GLM calls .filter on it", () => {
+    // The crash: `Error: toolMsg.content.filter is not a function`. Compaction ran on
+    // the second user message and rewrote the first snapshot as a string. Pi's OpenAI
+    // path (the one GLM uses) then did toolMsg.content.filter(...).
+    const first = {
+      role: "toolResult",
+      toolName: TOOL_OBSERVE,
+      content: [{ type: "text", text: "snapshot 1" }],
+    };
+    const second = {
+      role: "toolResult",
+      toolName: TOOL_OBSERVE,
+      content: [{ type: "text", text: "snapshot 2" }],
+    };
+    const pruned = pruneMessages([first, second]);
+    const dropped = pruned[0]!.content as Array<{ type: string; text: string }>;
+
+    assert.equal(typeof dropped.filter, "function");
+    assert.deepEqual(
+      dropped.filter((part) => part.type === "text").map((part) => part.text),
+      [PLACEHOLDER],
+    );
+    assert.deepEqual(pruned[1]!.content, second.content);
+  });
+
   it("can be turned off, so the saving from shape matching is measurable", () => {
     const pruned = pruneMessages(
       [toolResult(TOOL_ACT, actResult("/a")), toolResult(TOOL_ACT, actResult("/b"))],
