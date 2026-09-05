@@ -141,6 +141,23 @@ describe("AGENT-02-T01 read-only probe", () => {
     assert.equal((narrow.data as { count: number }).count, 10);
   });
 
+  it("does not dump a data document's body", async () => {
+    const tab = await browser.openTab(`${origin}/api/search`);
+    const text = await probe(browser.pageFor(tab), { kind: "text" });
+    const blob = JSON.stringify(text.data);
+    assert.ok(blob.length < 400, `probe dumped ${blob.length} characters of payload`);
+    assert.doesNotMatch(blob, /User 12/);
+    assert.doesNotMatch(blob, /"users"/);
+    assert.match(text.note ?? "", /json/i);
+    assert.ok((text.data as { bytes: number }).bytes > 0);
+
+    const links = await probe(browser.pageFor(tab), { kind: "links" });
+    assert.doesNotMatch(JSON.stringify(links.data), /User 12/);
+
+    const meta = await probe(browser.pageFor(tab), { kind: "page_meta" });
+    assert.match((meta.data as { url: string }).url, /\/api\/search$/);
+  });
+
   it("records nothing itself, because evidence has one owner", async () => {
     // A probe used to append to the ledger, which put an evidence concern inside the
     // substrate and meant every new primitive had to remember to log. The primitive now
