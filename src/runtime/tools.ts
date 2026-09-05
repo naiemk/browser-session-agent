@@ -236,7 +236,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       name: TOOL_CHECK,
       label: "Check",
       description:
-        'Assert something about the page now, evaluated in code. {"predicate":{"kind":"text_visible","text":"Submitted"}}. Kinds: text_visible, text_absent, url_includes, title_includes, ref_exists, control_exists, control_absent, value_equals, value_includes, no_console_error, dialog_open, all, any, not.',
+        'Assert something about the page now, evaluated in code. {"predicate":{"kind":"text_visible","text":"Submitted"}}. Ask several things at once with all: {"predicate":{"kind":"all","of":[{"kind":"url_includes","text":"/done"},{"kind":"text_visible","text":"Submitted"}]}} - one call is far cheaper than one per question. Kinds: text_visible, text_absent, url_includes, title_includes, ref_exists, control_exists, control_absent, value_equals, value_includes, no_console_error, dialog_open, all, any, not.',
       promptSnippet: "Verify a claim instead of assuming it.",
       parameters: Type.Object({ predicate: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
@@ -256,7 +256,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       name: TOOL_ACT,
       label: "Act",
       description:
-        "One verified browser action. kind is navigate, click, type, select, scroll, wait, or upload. Address controls with ref from the latest observation. The result says whether it actually worked, and why not.",
+        "One verified browser action. kind is navigate, click, type, select, scroll, wait, or upload. Address controls with ref from a snapshot; a ref stays valid while the element is on the page. Every action already waits for the page to settle and re-reads it before reporting, so a wait afterwards buys nothing. The result says whether it actually worked, and why not.",
       promptSnippet: "One verified browser action.",
       parameters: Type.Object({
         kind: Type.String({ description: "navigate | click | type | select | scroll | wait | upload" }),

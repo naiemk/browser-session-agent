@@ -22,9 +22,28 @@ describe("task card", () => {
 
   it("is not a coding agent", () => {
     const card = buildTaskCard(CARD);
-    assert.match(card, /not a coding assistant/);
-    assert.match(card, /no files, no shell, no repository/);
+    assert.match(card, /drive a real web browser/);
+    assert.match(card, /No shell, no repository/);
     assert.doesNotMatch(card, /working directory/i);
+  });
+
+  it("says what it can do, including the parts that are not clicking", () => {
+    // "No files" was wrong, and a capability the model does not know it has is one it
+    // argues itself out of using: attaching a document is how plenty of jobs get done.
+    const card = buildTaskCard(CARD);
+    assert.match(card, /file uploads/);
+  });
+
+  it("does not send the agent to observe between every action", () => {
+    // Refs survive while the element does, and a turn costs the card and every tool
+    // schema again, so a snapshot bought out of habit is the most expensive kind.
+    const card = buildTaskCard(CARD);
+    assert.match(card, /Not between every action/);
+    assert.doesNotMatch(card, /go stale/);
+  });
+
+  it("tells the agent that checks can be batched", () => {
+    assert.match(buildTaskCard(CARD), /Ask everything at once/);
   });
 
   it("tells the agent what it may commit", () => {
