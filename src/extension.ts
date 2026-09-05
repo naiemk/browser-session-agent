@@ -92,7 +92,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     names.push((tool as unknown as { name: string }).name);
   }
 
-  names.push(bindSubagent(pi, { goalId }));
+  names.push(...bindSubagent(pi, { goalId }));
 
   /*
    * Compaction, then shape, then metering.

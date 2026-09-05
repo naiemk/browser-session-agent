@@ -1,11 +1,11 @@
 /**
- * Parent-only: a `subagent` tool and `/plan`. Coding builtins stay off on this session.
+ * Parent-only: `subagent`, `scratch_write`, and `/plan`. Coding builtins stay off.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
-import { coreRoot, goalPaths } from "../../core/paths.ts";
+import { ensureScratch, writeScratch } from "../../core/scratch.ts";
 import type { ExtensionAPI, ExtensionContext, RegisteredTool } from "../../pi-api.ts";
 import { textResult } from "../../pi-api.ts";
 import { discoverPackagedAgents } from "./discover.ts";
@@ -18,15 +18,17 @@ import {
 } from "./auto-plan.ts";
 
 export { AUTO_PLAN_TIMEOUT_MS, PLAN_DIGEST_HEADER, prependPlanDigest, shouldAutoPlan };
+export { ensureScratch };
 
 export const SUBAGENT_TOOL_NAME = "subagent";
+export const SCRATCH_WRITE_TOOL_NAME = "scratch_write";
 export const PLAN_COMMAND = "plan";
 export const PLAN_FILE = "plan.md";
 /** About 500 tokens; the parent must not ingest the child transcript. */
 export const DIGEST_MAX_CHARS = 2000;
 
 export const CHAT_WORKER_HINT =
-  "For work that spans many entities, or that needs a written brief, a tailored document, or code over files, use the subagent tool or /plan. Those workers share this goal's scratch directory, not the browser profile. You still have no shell.";
+  "For work that spans many entities, or that needs a written brief, a tailored document, or code over files, use the subagent tool or /plan. Those workers share this goal's scratch directory, not the browser profile. Put text there with scratch_write; relative upload names resolve in scratch. You still have no shell.";
 
 export interface SubagentHostOptions {
   goalId: string;
@@ -48,12 +50,6 @@ export function digestText(text: string, max = DIGEST_MAX_CHARS): string {
   const trimmed = text.trim();
   if (trimmed.length <= max) return trimmed;
   return `${trimmed.slice(0, max).trimEnd()}\n\n[truncated]`;
-}
-
-export async function ensureScratch(goalId: string, root?: string): Promise<string> {
-  const paths = goalPaths(coreRoot(root), goalId);
-  await mkdir(paths.scratchDir, { recursive: true });
-  return paths.scratchDir;
 }
 
 function defaultRuntime(): SubagentRuntime {
@@ -162,6 +158,29 @@ function formatWorkerReply(result: WorkerResult, scratchDir: string): string {
   return lines.join("\n");
 }
 
+export function scratchWriteTool(options: SubagentHostOptions): RegisteredTool {
+  return {
+    name: SCRATCH_WRITE_TOOL_NAME,
+    label: "Scratch write",
+    description:
+      "Write a working file into this goal's scratch directory (the workers' cwd). Not the audit trail; use save_artifact for that.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Relative path under scratch, e.g. notes.md or extracts/page.md" }),
+      content: Type.String({ description: "Full file contents (UTF-8)" }),
+    }),
+    async execute(_id, params) {
+      const name = typeof params.name === "string" ? params.name : "";
+      const content = typeof params.content === "string" ? params.content : "";
+      const scratchDir = await ensureScratch(options.goalId, options.root);
+      const result = await writeScratch(scratchDir, name, content);
+      if ("error" in result) {
+        return textResult(result.error, { error: result.error }, true);
+      }
+      return textResult(`Wrote ${result.path}`, { path: result.path });
+    },
+  };
+}
+
 export function subagentTool(options: SubagentHostOptions): RegisteredTool {
   const runtime = options.runtime ?? defaultRuntime();
   const available = agentList();
@@ -244,8 +263,9 @@ export function bindPlanCommand(pi: ExtensionAPI, options: SubagentHostOptions):
   });
 }
 
-export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): string {
-  pi.registerTool(subagentTool(options));
+export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): string[] {
+  const tools = [subagentTool(options), scratchWriteTool(options)];
+  for (const tool of tools) pi.registerTool(tool);
   bindPlanCommand(pi, options);
   const attempted = new Set<string>();
   const runtime = options.runtime ?? defaultRuntime();
@@ -270,5 +290,5 @@ export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): st
       },
     };
   });
-  return SUBAGENT_TOOL_NAME;
+  return tools.map((tool) => tool.name);
 }

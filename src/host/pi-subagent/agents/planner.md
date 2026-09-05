@@ -16,7 +16,7 @@ Cap: about 800 words. Concrete steps the operate agent can follow, plus missing 
 One sentence.
 
 ## Missing inputs
-What the human still has to supply (CV path, login, which jobs). Empty list if none.
+What the human still has to supply (files, login, which entities). Empty list if none.
 
 ## Plan
 Numbered steps, each small. Name which worker kind does it (operate / write / review / code). Do not replan every entity.
