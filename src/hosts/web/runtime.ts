@@ -4,6 +4,8 @@ import { fileEvidence } from "../../host/evidence.ts";
 import { shortId } from "../../core/ids.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
+import { summarizeToolResult } from "../../runtime/summary.ts";
+import { payloadInContent } from "../../runtime/wire.ts";
 import { RpcBrowserPort } from "../shared/port-rpc.ts";
 import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../host/memory-host.ts";
 import { RpcSessionHandle } from "../../host/session-handle.ts";
@@ -591,9 +593,21 @@ function normalizeAgentEvent(event: unknown): Record<string, unknown> {
     assistantMessageEvent?: { type?: string; delta?: string };
     message?: unknown;
     toolName?: string;
+    result?: { details?: unknown };
+    content?: unknown;
   };
   if (value.type === "message_update" && value.assistantMessageEvent?.type === "text_delta") {
     return { type: "text_delta", text: value.assistantMessageEvent.delta ?? "" };
+  }
+  /*
+   * Say what the step did, not just which tool ran.
+   *
+   * The same one-liner the CLI prints, from the same function, because a step should not
+   * read differently depending on which surface the operator happens to be watching.
+   */
+  if (value.type === "tool_execution_end" && value.toolName) {
+    const details = value.result?.details ?? payloadInContent(value.content);
+    return { ...value, summary: summarizeToolResult(value.toolName, details) };
   }
   if (value.type) return { ...value };
   return { type: "agentEvent", event };

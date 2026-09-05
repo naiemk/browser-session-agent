@@ -35,7 +35,8 @@ function short(url: string | undefined): string {
   try {
     const parsed = new URL(url);
     const path = parsed.pathname === "/" ? "" : parsed.pathname;
-    return `${parsed.host}${path}`;
+    // "www." is four characters that never once distinguished two pages.
+    return `${parsed.host.replace(/^www\./, "")}${path}`;
   } catch {
     return url;
   }
@@ -104,12 +105,12 @@ function describeTool(tool: string, details: unknown): string {
       }`;
     }
     case TOOL_PEEK: {
+      // Deliberately terser than a page description: a peek is judged on whether it
+      // found the right thing and left you where you were, and both must fit the line.
       const page = findWireObservation(details);
-      const matched = get(details, "matched");
-      const identity = matched === false ? "wrong thing" : "as expected";
-      return `${page ? describePage(page) : "no page"} (${identity}), still on ${short(
-        str(get(details, "stillOn")),
-      )}`;
+      const identity = get(details, "matched") === false ? "wrong thing" : "as expected";
+      const where = page ? `${short(page.url)}, ${page.controls.length} controls` : "no page";
+      return `${where} (${identity}), still on ${short(str(get(details, "stillOn")))}`;
     }
     case TOOL_SIDE_OPEN: {
       const page = findWireObservation(details);

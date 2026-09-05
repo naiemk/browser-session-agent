@@ -155,7 +155,9 @@ function onServerMessage(event) {
       return;
     }
     if (ev.type === "agent_end" || ev.type === "turn_end") assistantBuf = "";
-    if (ev.toolName) addMessage("tool", `${ev.toolName}`);
+    // The summary, when the server worked one out: "what the step did" beats "which
+    // tool ran", and the full payload is in the run's payload log either way.
+    if (ev.toolName) addMessage("tool", ev.summary ? `${ev.toolName} — ${ev.summary}` : `${ev.toolName}`);
     if (ev.verification) {
       addMessage("tool", `harness ${ev.verification.status}${ev.recovery ? `: ${ev.recovery}` : ""}`);
     }

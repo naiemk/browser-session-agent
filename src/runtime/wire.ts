@@ -174,13 +174,25 @@ export function findWireObservation(value: unknown): WireObservation | undefined
   return undefined;
 }
 
-/** The same, from serialized tool result content. Returns undefined when it is not JSON. */
-export function observationInContent(content: unknown): WireObservation | undefined {
+/**
+ * The payload back from serialized tool result content.
+ *
+ * Every tool sends the model exactly what it puts in `details`, so parsing the text
+ * recovers the structure when only the wire form survived - which is the case for events
+ * that have crossed a websocket.
+ */
+export function payloadInContent(content: unknown): unknown {
   const text = extractText(content);
   if (!text || !text.startsWith("{")) return undefined;
   try {
-    return findWireObservation(JSON.parse(text));
+    return JSON.parse(text);
   } catch {
     return undefined;
   }
+}
+
+/** The same, from serialized tool result content. Returns undefined when it is not JSON. */
+export function observationInContent(content: unknown): WireObservation | undefined {
+  const payload = payloadInContent(content);
+  return payload === undefined ? undefined : findWireObservation(payload);
 }
