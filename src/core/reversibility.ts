@@ -17,6 +17,8 @@ import type { ActionRequest, Control, Reversibility } from "./types.ts";
 export interface Classification {
   reversibility: Reversibility;
   reason: string;
+  /** Stable id of the rule that fired, so an approval can stick to the same judgement. */
+  ruleId: string;
 }
 
 export interface ClassifierRule {
@@ -36,10 +38,10 @@ const OUTBOUND =
 
 /** Names that only change what is on screen. */
 const BENIGN =
-  /\b(show|expand|collapse|more|less|filter|sort|search|view|details|next page|previous page|next|previous|back|toggle|open|close|menu|tab|preview|refresh|reload|select|choose|edit|add another)\b/i;
+  /\b(show|expand|collapse|more|less|filter|sort|search|view|details|next page|previous page|next|previous|back|toggle|open|close|dismiss|menu|tab|preview|refresh|reload|select|choose|edit|add another|maybe later|not now|skip|tags|following|followers|profile|avatar)\b/i;
 
 /** Abandon paths. Ambiguous on purpose: cancelling is not reliably side-effect free. */
-const ABANDON = /\b(cancel|discard|dismiss|abandon|reset|clear)\b/i;
+const ABANDON = /\b(cancel|discard|abandon|reset|clear)\b/i;
 
 export const CLASSIFIER_RULES: ClassifierRule[] = [
   {
@@ -77,7 +79,11 @@ export const CLASSIFIER_RULES: ClassifierRule[] = [
     id: "submits-form",
     reversibility: "committing",
     reason: "activating this control submits a form",
-    test: (request, control) => request.kind === "click" && Boolean(control?.submits),
+    test: (request, control) =>
+      request.kind === "click" &&
+      Boolean(control?.submits) &&
+      // A Search button often submits a GET form. That is a view change, not a commit.
+      !BENIGN.test(control?.name ?? ""),
   },
   {
     id: "abandon-name",
@@ -115,13 +121,18 @@ export function classifyAction(
 ): Classification {
   for (const rule of CLASSIFIER_RULES) {
     if (rule.test(request, control)) {
-      return { reversibility: rule.reversibility, reason: `${rule.reason} (${rule.id})` };
+      return {
+        reversibility: rule.reversibility,
+        reason: `${rule.reason} (${rule.id})`,
+        ruleId: rule.id,
+      };
     }
   }
   if (request.ref && !control) {
     return {
       reversibility: "committing",
       reason: "target could not be described, so its effect is unknown (unknown-target)",
+      ruleId: "unknown-target",
     };
   }
   return {
@@ -129,5 +140,6 @@ export function classifyAction(
     reason: control?.name
       ? `no rule matched "${control.name}", so its effect is unknown (unmatched)`
       : "the control has no name, so its effect is unknown (unnamed)",
+    ruleId: control?.name ? "unmatched" : "unnamed",
   };
 }

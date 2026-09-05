@@ -54,6 +54,7 @@ const ROUTES: Record<string, string> = {
   "/modal-list": "modal-list.html",
   "/nav-shell": "nav-shell.html",
   "/nested-cards": "nested-cards.html",
+  "/notes": "notes.html",
 };
 
 /**
@@ -141,8 +142,8 @@ export class FixtureServer {
           await templatePost(req, res, "tmpl-b.html");
           return;
         }
-        if (url.pathname === "/jobs" && !hasSession(req)) {
-          send(res, 302, "", { location: "/login" });
+        if (url.pathname === "/go-jobs") {
+          send(res, 302, "", { location: "/jobs" });
           return;
         }
         // The plain roster shows handles as text with nothing to click, so reaching a

@@ -12,6 +12,7 @@ import { describeVerification, settleVerification, DEFAULT_SETTLE_MS } from "./s
 import type { BrowserPort } from "./browser.ts";
 import type { LedgerSink } from "./ledger.ts";
 import { classifyAction, type Classification } from "./reversibility.ts";
+import { urlMatchesIntent } from "./url-intent.ts";
 import {
   CoreError,
   type ActionRequest,
@@ -106,10 +107,7 @@ export async function act(
 
   const { facts, verification } = await settleVerification(
     browser,
-    (settled) =>
-      request.expect
-        ? verify([request.expect], settled)
-        : defaultPostcondition(request, before, settled, control),
+    (settled) => postcondition(request, before, settled, control),
     { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
   );
 
@@ -162,6 +160,58 @@ export async function act(
 }
 
 /**
+ * What "it worked" means.
+ *
+ * Fill is special: the harness already knows how to check a field (read the value back).
+ * A model `text_visible` of the whole blob used to replace that check and fail a fill
+ * that stuck. Type and select always read back; only a value_* expect may AND with it.
+ * Other kinds of expect still replace the default for clicks and navigation.
+ */
+function postcondition(
+  request: ActionRequest,
+  before: Observation,
+  facts: PageFacts,
+  control: Control | undefined,
+): Verification {
+  if (request.kind === "type" || request.kind === "select") {
+    const readBack = defaultPostcondition(request, before, facts, control);
+    const extra = fillValueExpect(request.expect);
+    if (!extra) return readBack;
+    const anded = verify([extra], facts);
+    return {
+      status: readBack.status === "passed" && anded.status === "passed" ? "passed" : "failed",
+      checks: [...readBack.checks, ...anded.checks],
+    };
+  }
+  if (request.expect) return verify([request.expect], facts);
+  return defaultPostcondition(request, before, facts, control);
+}
+
+function fillValueExpect(expect: Predicate | undefined): Predicate | undefined {
+  if (!expect) return undefined;
+  if (expect.kind === "value_equals" || expect.kind === "value_includes") return expect;
+  return undefined;
+}
+
+function collapse(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function fillAccepted(wanted: string, actual: string): boolean {
+  if (wanted === "") return true;
+  const want = collapse(wanted);
+  const got = collapse(actual);
+  if (got === want || got.toLowerCase().includes(want.toLowerCase())) return true;
+  if (want.length > 200) {
+    const ratio = got.length / Math.max(want.length, 1);
+    if (ratio >= 0.9 && ratio <= 1.1 && got.toLowerCase().startsWith(want.slice(0, 40).toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * What "it worked" means when the caller gave no explicit expectation.
  * A click that changes nothing is a failure — the single most common way a browser
  * agent fools itself.
@@ -197,8 +247,7 @@ function defaultPostcondition(
         return single(true, "readBack", "password redacted");
       }
       const actual = updated?.value ?? "";
-      const passed =
-        actual === wanted || actual.toLowerCase().includes(wanted.toLowerCase()) || wanted === "";
+      const passed = fillAccepted(wanted, actual);
       return single(passed, "readBack", passed ? actual : `expected "${wanted}", read "${actual}"`);
     }
     case "navigate": {
@@ -220,20 +269,6 @@ function defaultPostcondition(
 
 function single(passed: boolean, name: string, detail: string): Verification {
   return { status: passed ? "passed" : "failed", checks: [{ passed, detail, predicate: name }] };
-}
-
-function urlMatchesIntent(actual: string, target: string): boolean {
-  if (!target) return false;
-  try {
-    const want = new URL(target);
-    const got = new URL(actual);
-    if (got.host !== want.host) return false;
-    const path = want.pathname.replace(/\/$/, "");
-    if (!path || path === "") return true;
-    return got.pathname.startsWith(path) || actual.includes(path);
-  } catch {
-    return actual.includes(target);
-  }
 }
 
 async function buildFailure(

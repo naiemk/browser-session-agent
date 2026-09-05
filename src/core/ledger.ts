@@ -79,6 +79,8 @@ export type LedgerInput = Omit<LedgerEvent, "id" | "ts" | "goalId">;
 export interface LedgerSink {
   readonly artifactsDir: string;
   append(input: LedgerInput): Promise<LedgerEvent>;
+  /** Present when the sink can be read back, which is what makes an approval stick after resume. */
+  read?(): Promise<LedgerEvent[]>;
 }
 
 function capPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> | undefined {

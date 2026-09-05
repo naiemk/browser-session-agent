@@ -160,7 +160,7 @@ describe("task selection", () => {
   it("returns everything by default", () => {
     assert.equal(
       selectTasks(SUITE_TASKS).length,
-      SUITE_TASKS.filter((task) => !task.perceiver || task.perceiver === "reference").length,
+      SUITE_TASKS.filter((task) => !task.perceiver || task.perceiver === "lean").length,
       "tasks that name another perceiver stay out of the default set",
     );
     assert.ok(

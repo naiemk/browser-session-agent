@@ -6,6 +6,8 @@
  * the core, so a tool cannot skip it by accident.
  */
 
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
@@ -26,6 +28,7 @@ import {
   TOOL_PEEK,
   TOOL_PROBE,
   TOOL_REMEMBER,
+  TOOL_SAVE,
   TOOL_SIDE_CLOSE,
   TOOL_SIDE_OPEN,
   TOOL_STRANGER,
@@ -97,6 +100,12 @@ interface RuntimeTool {
 
 function reply(value: unknown, details: unknown = value): Result {
   return { content: [{ type: "text", text: wireText(value) }], details };
+}
+
+/** A file name, not a path. Paste-site hunting started with nowhere local to write. */
+export function safeArtifactName(name: string): string {
+  const base = name.replace(/\\/g, "/").split("/").pop() ?? "";
+  return base.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
 }
 
 /**
@@ -398,6 +407,36 @@ export function buildTools(context: ToolContext): AgentTool[] {
       },
     },
     {
+      name: TOOL_SAVE,
+      label: "Save artifact",
+      description:
+        "Write a text document to this goal's artifacts on disk. Use it for trackers, drafts, and notes you must keep. Do not hunt paste sites, spreadsheets, or public pads to persist work.",
+      promptSnippet: "Persist a document here, not on a paste site.",
+      parameters: Type.Object({
+        name: Type.String({ description: "File name, e.g. outreach-tracker.md" }),
+        content: Type.String({ description: "The full document" }),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const raw = params as { name?: unknown; content?: unknown };
+        const name = safeArtifactName(String(raw.name ?? ""));
+        const content = String(raw.content ?? "");
+        if (!name) return reply({ error: "save_artifact needs a file name" });
+        const dir = context.evidence.ledger.artifactsDir;
+        if (!dir) return reply({ error: "this session has nowhere to write artifacts" });
+        const file = path.join(dir, name);
+        await mkdir(dir, { recursive: true });
+        await writeFile(file, content, "utf8");
+        const event = await context.evidence.ledger.append({
+          type: "note",
+          entityId: context.evidence.entityId,
+          intent: `saved artifact ${name}`,
+          outcome: { ok: true, detail: file },
+          artifacts: [file],
+        });
+        return reply({ saved: name, path: file, bytes: Buffer.byteLength(content, "utf8"), evidence: event?.id ?? null });
+      },
+    },
+    {
       name: TOOL_SURVEY,
       label: "Survey",
       description:
@@ -448,8 +487,10 @@ export function buildTools(context: ToolContext): AgentTool[] {
             matched: result.matched,
             ...(result.identity ? { identity: describeCheck(result.identity) } : {}),
             ...(result.matched
-              ? {}
-              : { note: "This is not what you asked for. Do not read anything into it." }),
+              ? result.identity && !result.identity.passed
+                ? { note: "The URL opened, but it is not the entity you expected." }
+                : {}
+              : { note: "This URL did not open the page you asked for. Do not read anything into it." }),
             stillOn: result.origin.url,
             ...(spent ? { budget: spent } : {}),
           });

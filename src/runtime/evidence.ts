@@ -82,6 +82,9 @@ export function memoryEvidence(overrides: Partial<Evidence> = {}): MemoryEvidenc
         events.push(event);
         return event;
       },
+      async read() {
+        return events;
+      },
     },
     facts: {
       async mergeGoalFacts(facts: Record<string, unknown>) {

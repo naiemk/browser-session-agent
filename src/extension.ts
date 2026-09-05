@@ -42,6 +42,10 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   // which turn they belong to. Without it every tool result is stamped turn 0.
   const clock = turnClock();
 
+  const confirm = {
+    ui: undefined as { confirm(title: string, message: string): Promise<boolean> } | undefined,
+  };
+
   const composed = composeAgent({
     card: {
       objective:
@@ -60,6 +64,14 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       // Named on the environment because a chat has no flags. The default is the format
       // being measured; this is how an operator puts the baseline back mid-investigation.
       view: viewByName(process.env.BSA_VIEW),
+      policy: "ask",
+      approve: async (request) => {
+        if (!confirm.ui) return false;
+        return confirm.ui.confirm(
+          "Approve irreversible action",
+          `${request.request.kind} — ${request.reason}\n${request.url}`,
+        );
+      },
     },
   });
 
@@ -67,7 +79,15 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   for (const tool of composed.tools) {
     // The view is added here, at the Pi boundary: the tools themselves do not know that
     // anything is drawing them.
-    pi.registerTool(withToolView(tool as unknown as RegisteredTool));
+    const viewed = withToolView(tool as unknown as RegisteredTool);
+    const execute = viewed.execute;
+    pi.registerTool({
+      ...viewed,
+      execute: async (id, params, signal, onUpdate, ctx) => {
+        confirm.ui = ctx.ui;
+        return execute(id, params, signal, onUpdate, ctx);
+      },
+    });
     names.push((tool as unknown as { name: string }).name);
   }
 

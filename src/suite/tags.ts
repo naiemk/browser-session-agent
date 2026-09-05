@@ -7,6 +7,7 @@
  * one noisy page, one template. The full set is still there behind `--all`.
  */
 
+import { DEFAULT_PERCEIVER } from "../core/perception/index.ts";
 import type { SuiteTask } from "./types.ts";
 
 export const SMOKE_TASK_IDS = [
@@ -42,6 +43,8 @@ export function selectTasks(tasks: SuiteTask[], options: SelectOptions = {}): Su
     const ids = new Set(options.only);
     selected = selected.filter((task) => ids.has(task.id));
   }
-  selected = selected.filter((task) => !task.perceiver || task.perceiver === (options.perceiver ?? "reference"));
+  selected = selected.filter(
+    (task) => !task.perceiver || task.perceiver === (options.perceiver ?? DEFAULT_PERCEIVER.name),
+  );
   return selected;
 }

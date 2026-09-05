@@ -9,6 +9,8 @@ export const TOOL_DONE = "report";
 export const TOOL_STRANGER = "view_without_session";
 /** Record something established, with the evidence that established it. */
 export const TOOL_REMEMBER = "remember";
+/** Write a document to this goal's artifacts, instead of hunting for a paste site. */
+export const TOOL_SAVE = "save_artifact";
 /** Read a URL in a side tab without leaving the page you are on. */
 export const TOOL_PEEK = "peek";
 /** List the routes this page offers, following none of them. */
@@ -27,6 +29,7 @@ export const ALL_TOOLS = [
   TOOL_ASK,
   TOOL_STRANGER,
   TOOL_REMEMBER,
+  TOOL_SAVE,
   TOOL_PEEK,
   TOOL_SURVEY,
   TOOL_SIDE_OPEN,

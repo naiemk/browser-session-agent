@@ -20,6 +20,7 @@ import {
   TOOL_PEEK,
   TOOL_PROBE,
   TOOL_REMEMBER,
+  TOOL_SAVE,
   TOOL_SIDE_CLOSE,
   TOOL_SIDE_OPEN,
   TOOL_STRANGER,
@@ -108,7 +109,12 @@ function describeTool(tool: string, details: unknown): string {
       // Deliberately terser than a page description: a peek is judged on whether it
       // found the right thing and left you where you were, and both must fit the line.
       const page = findWireObservation(details);
-      const identity = get(details, "matched") === false ? "wrong thing" : "as expected";
+      const identity =
+        get(details, "matched") === false
+          ? "wrong url"
+          : str(get(details, "note"))?.includes("entity")
+            ? "wrong entity"
+            : "as expected";
       const where = page ? `${short(page.url)}, ${page.controls.length} controls` : "no page";
       return `${where} (${identity}), still on ${short(str(get(details, "stillOn")))}`;
     }
@@ -146,6 +152,9 @@ function describeTool(tool: string, details: unknown): string {
     }
     case TOOL_REMEMBER: {
       return `noted ${str(get(details, "remembered")) ?? "nothing"}`;
+    }
+    case TOOL_SAVE: {
+      return `saved ${str(get(details, "saved")) ?? "nothing"}`;
     }
     case TOOL_FORK: {
       return `"${str(get(details, "recorded")) ?? "?"}" had ${get(details, "candidates")} meanings, ${str(

@@ -9,8 +9,10 @@
  * second rewrite.
  *
  * So perception is a strategy, exactly as the description of a page already is
- * (`ViewStrategy`). `reference` is what we shipped before this seam existed and stays the
- * baseline every candidate is measured against.
+ * (`ViewStrategy`). `reference` is what we shipped before this seam existed and remains
+ * selectable (`--perceiver reference`, `BSA_PERCEIVER=reference`) as the baseline every
+ * candidate is measured against. The default is `lean`: drop controls a click cannot
+ * reach, so a crowded page still puts the thing you opened it for on the wire.
  *
  * The seam is deliberately not just `observe`. A ref is not data: it is a promise that
  * whatever minted it can hand the element back. Ours are `data-core-ref` attributes found
@@ -70,7 +72,7 @@ export const PERCEIVERS: Record<string, Perceiver> = {
   [leanPerceiver.name]: leanPerceiver,
 };
 
-export const DEFAULT_PERCEIVER: Perceiver = referencePerceiver;
+export const DEFAULT_PERCEIVER: Perceiver = leanPerceiver;
 
 /** Resolve a name, falling back to the default so a typo is not a crash mid-run. */
 export function perceiverByName(name?: string): Perceiver {

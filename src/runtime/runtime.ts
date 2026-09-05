@@ -20,7 +20,7 @@ import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort, type UsageSplit } 
 import {
   measureContext,
   normalizeToolResultContent,
-  pruneMessages,
+  compactFinishedWork,
   type PrunableMessage,
   type PruneOptions,
 } from "./prune.ts";
@@ -46,6 +46,11 @@ export interface RuntimeOptions {
   model?: Model<never>;
   maxTurns?: number;
   prune?: PruneOptions | false;
+  /**
+   * Further operator messages in the same run, each a new sub-goal. Compaction fires at
+   * these boundaries (D52). The first prompt is the card objective.
+   */
+  followUps?: string[];
 }
 
 export interface RunOutcome {
@@ -151,11 +156,13 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     streamFn: stream,
     transformContext: async (messages) => {
       currentTurn += 1;
-      const pruned =
-        options.prune === false ? messages : pruneMessages(messages as never[], options.prune);
+      const compacted =
+        options.prune === false
+          ? messages
+          : compactFinishedWork(messages as never[], options.prune);
       // Shape is not optional with pruning. A suite task on an OpenAI-compat model
       // crashes the same way the chat did if a tool result is still a string.
-      const shaped = normalizeToolResultContent(pruned as unknown as PrunableMessage[]);
+      const shaped = normalizeToolResultContent(compacted as unknown as PrunableMessage[]);
       const measured = measureContext(
         messages as unknown as PrunableMessage[],
         shaped,
@@ -206,6 +213,13 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
       content: [{ type: "text", text: options.card.objective }],
       timestamp: Date.now(),
     } as never);
+    for (const followUp of options.followUps ?? []) {
+      await agent.prompt({
+        role: "user",
+        content: [{ type: "text", text: followUp }],
+        timestamp: Date.now(),
+      } as never);
+    }
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   } finally {
