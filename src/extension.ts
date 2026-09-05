@@ -1,7 +1,7 @@
 import type { ExtensionAPI, RegisteredTool } from "./pi-api.ts";
 import { bindBrowserCommands } from "./host/bind-extension.ts";
 import { fileEvidence, goalDir } from "./host/evidence.ts";
-import { meterPiSession } from "./host/pi-metering.ts";
+import { meterPiSession, turnClock } from "./host/pi-metering.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
@@ -35,6 +35,10 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   const goalId = shortId("goal");
   const evidence = fileEvidence({ goalId, goal: "browser chat session" });
 
+  // Shared with the metering below, so a payload and the context that carried it agree on
+  // which turn they belong to. Without it every tool result is stamped turn 0.
+  const clock = turnClock();
+
   const composed = composeAgent({
     card: {
       objective:
@@ -49,6 +53,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       browser: WorkerBrowserPort.lazy(session.worker),
       askUser: (question) => session.askUser(question),
       evidence,
+      turn: () => clock.current(),
     },
   });
 
@@ -60,7 +65,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     names.push((tool as unknown as { name: string }).name);
   }
 
-  meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId });
+  meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId }, clock);
 
   /*
    * Browser tools only, for the whole session.

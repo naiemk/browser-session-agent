@@ -17,7 +17,12 @@ import type { ParkedOutcome } from "../core/types.ts";
 import { composeAgent, fixedOverhead } from "./agent.ts";
 import type { TaskCardInput } from "./card.ts";
 import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort, type UsageSplit } from "./model.ts";
-import { PLACEHOLDER, pruneMessages, type PrunableMessage, type PruneOptions } from "./prune.ts";
+import {
+  measureContext,
+  pruneMessages,
+  type PrunableMessage,
+  type PruneOptions,
+} from "./prune.ts";
 import type { ReportPayload, ToolContext } from "./tools.ts";
 
 /** Placeholder model descriptor for the mock port, which never calls a provider. */
@@ -40,36 +45,6 @@ export interface RuntimeOptions {
   model?: Model<never>;
   maxTurns?: number;
   prune?: PruneOptions | false;
-}
-
-/**
- * Bytes of context for one turn, and where the prompt cache was invalidated.
- *
- * Exported so the accounting is testable without running an agent.
- */
-export function measureContext(
-  before: readonly PrunableMessage[],
-  after: readonly PrunableMessage[],
-): { bytes: number; liveBytes: number; placeholderBytes: number; rewrittenFrom: number } {
-  let bytes = 0;
-  let liveBytes = 0;
-  let placeholderBytes = 0;
-  let rewrittenFrom = -1;
-
-  for (const [index, message] of after.entries()) {
-    const size = JSON.stringify(message ?? null).length;
-    bytes += size;
-    if (message?.content === PLACEHOLDER) placeholderBytes += size;
-    else liveBytes += size;
-
-    // Providers cache on an exact prefix, so the earliest rewrite is where the cache
-    // stops being usable for this request.
-    if (rewrittenFrom < 0 && before[index] && before[index]!.content !== message?.content) {
-      rewrittenFrom = index;
-    }
-  }
-
-  return { bytes, liveBytes, placeholderBytes, rewrittenFrom };
 }
 
 export interface RunOutcome {

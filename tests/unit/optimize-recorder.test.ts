@@ -5,7 +5,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { FileRecorder, MemoryRecorder, readMetrics } from "../../src/optimize/recorder.ts";
 import { hashOf, observationStats } from "../../src/runtime/metrics.ts";
-import { measureContext } from "../../src/runtime/runtime.ts";
+import { measureContext } from "../../src/runtime/prune.ts";
 import { PLACEHOLDER, type PrunableMessage } from "../../src/runtime/prune.ts";
 import type { WireObservation } from "../../src/runtime/wire.ts";
 

@@ -118,6 +118,7 @@ suite options:
   --all                    every task
   --only <id,id>           specific task ids
   --tags <tag,tag>         tasks carrying any of these tags
+  --view <name>            page description to measure (default: flat)
   --out <file>             write the JSON report
   --optimize-out <file>    write just the cost summary, for a committed baseline
   --pause <ms>             gap between tasks (live default: 2000)
@@ -272,7 +273,10 @@ async function commandSuite(args: ParsedArgs): Promise<number> {
   const root = flagString(args.flags, "root") ?? (await mkdtemp(path.join(os.tmpdir(), "suite-")));
 
   try {
-    const driver = await buildDriver(target, root, flagString(args.flags, "model"));
+    const driver = await buildDriver(target, root, {
+      model: flagString(args.flags, "model"),
+      view: flagString(args.flags, "view"),
+    });
     process.stderr.write(`${tasks.length} task(s), target ${driver.name}, evidence ${root}\n`);
 
     const report = await runSuite({
@@ -329,18 +333,24 @@ async function commandSuite(args: ParsedArgs): Promise<number> {
   }
 }
 
-async function buildDriver(target: string, root: string, model?: string) {
+async function buildDriver(target: string, root: string, options: { model?: string; view?: string } = {}) {
   const { ReferenceDriver } = await import("../suite/reference-driver.ts");
   if (target === "reference") return new ReferenceDriver();
 
   const { RuntimeDriver } = await import("../suite/runtime-driver.ts");
   const { createMockModel } = await import("../runtime/mock-model.ts");
   const { planForTask } = await import("../suite/mock-plan.ts");
+  const { viewByName } = await import("../runtime/view/index.ts");
+
+  // Named on the command line so a candidate description can be measured against the
+  // baseline without editing code, which is the whole point of the seam.
+  const view = viewByName(options.view);
 
   if (target === "mock") {
     return new RuntimeDriver({
-      name: "mock",
+      name: options.view ? `mock:${view.name}` : "mock",
       root,
+      view,
       policy: "auto",
       answers: { name: "Ada Lovelace", email: "ada@example.com", password: "hunter2" },
       createStream: (task, origin) => createMockModel({ plan: planForTask(task, origin) }),
@@ -348,11 +358,12 @@ async function buildDriver(target: string, root: string, model?: string) {
   }
 
   if (target === "live") {
-    const live = await createLiveModel({ model });
+    const live = await createLiveModel({ model: options.model });
     process.stderr.write(`live model: ${live.name}\n`);
     return new RuntimeDriver({
       name: `live:${live.name}`,
       root,
+      view,
       model: live.model,
       // Fixtures are disposable, so a live run commits without pausing for a human.
       policy: "auto",

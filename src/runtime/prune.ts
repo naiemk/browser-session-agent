@@ -52,6 +52,39 @@ export function isPerishable(
 
 export const PLACEHOLDER = "[stale snapshot dropped; observe again if you need it]";
 
+/**
+ * Bytes of context for one turn, and where the prompt cache was invalidated.
+ *
+ * Lives beside pruning because pruning is what rewrites a prefix, and next to
+ * `PLACEHOLDER` because that is how a replaced message is recognised. Exported so the
+ * accounting is testable without running an agent, and so a host that does not own the
+ * loop can do the same sum over whatever context it is shown.
+ */
+export function measureContext(
+  before: readonly PrunableMessage[],
+  after: readonly PrunableMessage[],
+): { bytes: number; liveBytes: number; placeholderBytes: number; rewrittenFrom: number } {
+  let bytes = 0;
+  let liveBytes = 0;
+  let placeholderBytes = 0;
+  let rewrittenFrom = -1;
+
+  for (const [index, message] of after.entries()) {
+    const size = JSON.stringify(message ?? null).length;
+    bytes += size;
+    if (message?.content === PLACEHOLDER) placeholderBytes += size;
+    else liveBytes += size;
+
+    // Providers cache on an exact prefix, so the earliest rewrite is where the cache
+    // stops being usable for this request.
+    if (rewrittenFrom < 0 && before[index] && before[index]!.content !== message?.content) {
+      rewrittenFrom = index;
+    }
+  }
+
+  return { bytes, liveBytes, placeholderBytes, rewrittenFrom };
+}
+
 export function pruneMessages<T extends PrunableMessage>(
   messages: T[],
   options: PruneOptions = {},
