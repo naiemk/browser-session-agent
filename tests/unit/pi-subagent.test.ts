@@ -18,14 +18,18 @@ import {
   PLAN_DIGEST_HEADER,
   prependPlanDigest,
   shouldAutoPlan,
+  SCRATCH_WRITE_TOOL_NAME,
   SUBAGENT_TOOL_NAME,
 } from "../../src/host/pi-subagent/bind.ts";
 import { AUTO_PLAN_TIMEOUT_MS } from "../../src/host/pi-subagent/auto-plan.ts";
 import { discoverPackagedAgents, findAgent } from "../../src/host/pi-subagent/discover.ts";
 import {
   buildChildInvocation,
+  childModelFlag,
+  childPrompt,
   parsePiJsonLine,
   piCliPath,
+  ROUTER_MODEL,
   runWorker,
   type SpawnImpl,
 } from "../../src/host/pi-subagent/spawn.ts";
@@ -98,6 +102,7 @@ describe("packaged worker agents", () => {
     const writer = findAgent("writer", agents)!;
     assert.ok(writer.tools.includes("write"));
     assert.ok(!writer.tools.includes("bash"));
+    assert.equal(writer.description.includes("CV"), false);
 
     const reviewer = findAgent("reviewer", agents)!;
     assert.ok(reviewer.tools.includes("read"));
@@ -145,8 +150,20 @@ describe("worker spawn isolation", () => {
     assert.ok(extFlag >= 0);
     assert.equal(invocation.args[extFlag + 1], "/opt/pi-model-auto/src/index.ts");
     assert.equal(invocation.args[invocation.args.indexOf("--tools") + 1], "read,grep,find,ls");
-    assert.equal(invocation.args[invocation.args.indexOf("--model") + 1], "@ultra");
-    assert.ok(invocation.args.includes("Task: apply to three jobs"));
+    assert.equal(invocation.args[invocation.args.indexOf("--model") + 1], ROUTER_MODEL);
+    assert.equal(invocation.args.includes("@ultra"), false);
+    assert.ok(invocation.args.includes("@ultra Task: apply to three jobs"));
+  });
+
+  it("does not pass @ultra as --model", () => {
+    assert.equal(childModelFlag("@ultra", ["/opt/pi-model-auto/src/index.ts"]), ROUTER_MODEL);
+    assert.equal(childModelFlag("@medium", []), undefined);
+    assert.equal(childModelFlag("anthropic/claude-opus-4-8", []), "anthropic/claude-opus-4-8");
+    assert.equal(
+      childPrompt("three jobs", "@ultra", ["/opt/pi-model-auto/src/index.ts"]),
+      "@ultra Task: three jobs",
+    );
+    assert.equal(childPrompt("three jobs", "@ultra", []), "Task: three jobs");
   });
 
   it("spawns with cwd = scratch and the isolated argv", async () => {
@@ -184,6 +201,8 @@ describe("worker spawn isolation", () => {
       calls[0]?.args.some((arg) => arg.endsWith(path.join("src", "extension.ts"))),
       false,
     );
+    assert.equal(calls[0]?.args.includes("--model"), false);
+    assert.ok(calls[0]?.args.includes("Task: three jobs"));
   });
 
   it("parses Pi JSONL assistant text", () => {
@@ -227,6 +246,11 @@ describe("subagent bind", () => {
     });
 
     assert.equal(api.tools.has(SUBAGENT_TOOL_NAME), true);
+    assert.equal(api.tools.has(SCRATCH_WRITE_TOOL_NAME), true);
+    assert.deepEqual(
+      [...api.tools.keys()].sort(),
+      [SCRATCH_WRITE_TOOL_NAME, SUBAGENT_TOOL_NAME].sort(),
+    );
     assert.equal(api.commands.has(PLAN_COMMAND), true);
 
     await api.commands.get(PLAN_COMMAND)!.handler(
@@ -243,8 +267,11 @@ describe("subagent bind", () => {
     browserSessionAgent(pi);
     await pi.startSession();
     assert.equal(pi.tools.has(SUBAGENT_TOOL_NAME), true);
+    assert.equal(pi.tools.has(SCRATCH_WRITE_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes(SUBAGENT_TOOL_NAME), true);
+    assert.equal(pi.getActiveTools().includes(SCRATCH_WRITE_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes("bash"), false);
+    assert.match(CHAT_WORKER_HINT, /scratch_write/);
     assert.match(CHAT_WORKER_HINT, /no shell/);
   });
 
@@ -302,6 +329,53 @@ describe("subagent bind", () => {
     });
     await runCommand(pi, PLAN_COMMAND, "  ");
     assert.match(pi.notifications.at(-1) ?? "", /Usage: \/plan/);
+  });
+
+  it("writes a scratch file and rejects traversal", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    bindSubagent(pi, { goalId: "goal_scratch", root });
+
+    const written = await runTool(pi, SCRATCH_WRITE_TOOL_NAME, {
+      name: "extracts/page.md",
+      content: "# Extract\n",
+    });
+    assert.equal(written.isError, false);
+    const dest = written.details?.path;
+    assert.equal(typeof dest, "string");
+    assert.equal(dest, path.join(root, "goals", "goal_scratch", "scratch", "extracts", "page.md"));
+    assert.equal(await readFile(String(dest), "utf8"), "# Extract\n");
+
+    const escaped = await runTool(pi, SCRATCH_WRITE_TOOL_NAME, {
+      name: "../outside.md",
+      content: "nope",
+    });
+    assert.equal(escaped.isError, true);
+  });
+
+  it("does not put scratch_write on composeAgent", async () => {
+    const { composeAgent } = await import("../../src/runtime/agent.ts");
+    const { nullEvidence } = await import("../../src/runtime/evidence.ts");
+    const composed = composeAgent({
+      card: { objective: "x", criteria: [] },
+      tools: { browser: {} as never, evidence: nullEvidence() },
+    });
+    assert.equal(
+      composed.tools.some((tool) => (tool as { name: string }).name === SCRATCH_WRITE_TOOL_NAME),
+      false,
+    );
+    assert.equal(
+      composed.tools.some((tool) => (tool as { name: string }).name === SUBAGENT_TOOL_NAME),
+      false,
+    );
+  });
+
+  it("hosted customTools takes every api.tools entry, not one named tool", async () => {
+    const source = await readFile(path.join(ROOT, "src/hosts/web/runtime.ts"), "utf8");
+    assert.match(source, /this\.api\.tools\.values\(\)/);
+    assert.match(source, /parentTools/);
+    assert.equal(source.includes("tools.get(SUBAGENT_TOOL_NAME)"), false);
   });
 });
 

@@ -18,6 +18,8 @@ import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
+import { goalPaths } from "../core/paths.ts";
+import { resolveUploadFiles } from "../core/scratch.ts";
 import {
   TOOL_ACT,
   TOOL_ASK,
@@ -283,9 +285,21 @@ export function buildTools(context: ToolContext): AgentTool[] {
         const request = params as unknown as ActionRequest;
         try {
           countStep();
+          let files = request.files;
+          if (request.kind === "upload" && files?.length && context.evidence.goal) {
+            const scratchDir = goalPaths(
+              context.evidence.goal.root,
+              context.evidence.goal.goalId,
+            ).scratchDir;
+            const resolved = resolveUploadFiles(scratchDir, files);
+            if (!resolved) {
+              return reply({ error: "upload path must be absolute or a name under scratch" });
+            }
+            files = resolved;
+          }
           const outcome = await guardedAct(
             context.browser,
-            { ...request, tabId: tab() },
+            { ...request, tabId: tab(), files },
             {
               policy: context.policy,
               approve: context.approve,

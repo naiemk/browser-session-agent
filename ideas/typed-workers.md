@@ -101,3 +101,11 @@ Idea plus additive code: scratch dir, four packaged agents, `subagent` + `/plan`
 ### 2026-09-06 — auto-plan heuristic
 
 Zero-token first-message gate is live: campaign-shaped chat may spawn the planner and inject a digest into that turn. `/plan` still forces. Unsure skips. A tiny classifier is still deferred.
+
+### 2026-09-06 — scratch file seam
+
+Parent `scratch_write` puts bytes into the workers' cwd. Relative `act upload` names resolve there. Absolute paths (suite fixtures) pass through. Not a jobs loop: no `/tailor`, no parent `read`/`ls`, `save_artifact` stays the ledger.
+
+### 2026-09-06 — @ultra is a prompt floor
+
+`--model @ultra` is not a Pi model id (Pi: "Model not found. Use --list-models"). Workers select `pi-router/auto` and prefix the first turn `@ultra` so pi-model-auto routes. Concrete `provider/id` still passes through. Without the router extension, omit `--model` rather than crash.

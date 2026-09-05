@@ -3,7 +3,7 @@ import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
-import { bindSubagent, CHAT_WORKER_HINT, maybeAutoPlan, prependPlanDigest, SUBAGENT_TOOL_NAME, type SubagentRuntime } from "../../host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, maybeAutoPlan, prependPlanDigest, type SubagentRuntime } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -119,7 +119,7 @@ export class OperatorRuntime {
       return startRun(goal, startUrl);
     };
     this.api = createExtensionApi(this.host);
-    // Product commands, plus the worker tool. Browser tools still come from composeAgent
+    // Product commands, plus parent-only worker tools. Browser tools still come from composeAgent
     // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
     bindSubagent(this.api, { goalId: this.evidenceGoalId, runtime: this.options.subagentRuntime });
@@ -240,8 +240,9 @@ export class OperatorRuntime {
          * task does not. What the agent is, and what drives it, are different questions.
          */
         const composedTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
-        const worker = this.api.tools.get(SUBAGENT_TOOL_NAME);
-        const customTools = worker ? [...composedTools, this.toPiTool(worker)] : composedTools;
+        // Parent-only tools already registered on this host (`subagent`, `scratch_write`).
+        const parentTools = [...this.api.tools.values()].map((tool) => this.toPiTool(tool));
+        const customTools = [...composedTools, ...parentTools];
         const result = await createAgentSession({
           cwd,
           agentDir,
