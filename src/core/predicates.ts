@@ -280,3 +280,14 @@ export function parsePredicate(value: unknown): Predicate {
   }
   return value as Predicate;
 }
+
+/**
+ * A predicate the caller offered, or nothing.
+ *
+ * Used at the tool boundary. Evaluating a missing `text` is how `url includes
+ * "undefined"` appeared: `String.prototype.includes` stringifies the hole.
+ */
+export function optionalPredicate(value: unknown): Predicate | undefined {
+  if (value === undefined || value === null) return undefined;
+  return validatePredicate(value).length === 0 ? (value as Predicate) : undefined;
+}

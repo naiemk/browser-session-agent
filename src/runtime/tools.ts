@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek } from "../core/peek.ts";
-import { describeCheck } from "../core/predicates.ts";
+import { describeCheck, optionalPredicate } from "../core/predicates.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
@@ -474,10 +474,11 @@ export function buildTools(context: ToolContext): AgentTool[] {
         const raw = params as { url?: unknown; expect?: unknown };
         try {
           countStep();
+          const expect = optionalPredicate(raw.expect);
           const result = await peek(context.browser, {
             url: String(raw.url ?? ""),
             tabId: tab(),
-            ...(raw.expect ? { expect: raw.expect as Predicate } : {}),
+            ...(expect ? { expect } : {}),
             ledger: context.evidence.ledger,
             entityId: context.evidence.entityId,
           });

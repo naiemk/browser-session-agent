@@ -54,7 +54,7 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 | [AGENT-07-T01](../tasks/agent-07-t01-session-strategy-experiment.md) | AGENT-07 | partial — bounded session built and running; the A/B comparison needs credits |
 | [AGENT-07-T02](../tasks/agent-07-t02-memory-instrumentation.md) | AGENT-07 | todo |
 | [AGENT-09-T01](../tasks/agent-09-t01-cutover-and-delete.md) | AGENT-09 | blocked — see the task for the two open conditions |
-| [AGENT-10-T01](../tasks/agent-10-t01-peek-expect.md) | AGENT-10 | todo |
+| [AGENT-10-T01](../tasks/agent-10-t01-peek-expect.md) | AGENT-10 | done |
 | [AGENT-10-T02](../tasks/agent-10-t02-url-intent.md) | AGENT-10 | todo |
 | [AGENT-10-T03](../tasks/agent-10-t03-document-navigate.md) | AGENT-10 | todo |
 | [AGENT-10-T04](../tasks/agent-10-t04-probe-data-document.md) | AGENT-10 | todo |
