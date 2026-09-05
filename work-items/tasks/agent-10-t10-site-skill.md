@@ -3,7 +3,7 @@ id: AGENT-10-T10
 title: Consume-only capped site skill
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T10 — Consume-only capped site skill

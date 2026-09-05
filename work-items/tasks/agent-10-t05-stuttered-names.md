@@ -3,7 +3,7 @@ id: AGENT-10-T05
 title: Collapse stuttered accessible names
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T05 — Collapse stuttered accessible names

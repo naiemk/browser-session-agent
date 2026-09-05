@@ -1,6 +1,6 @@
 # AGENT-10: Honest loop after a live run
 
-Status: in progress
+Status: done
 
 As the operator, when the agent peeks, navigates, probes, and reports, the harness
 tells the truth: a bad expectation is dropped, a URL that did not land is a miss, a

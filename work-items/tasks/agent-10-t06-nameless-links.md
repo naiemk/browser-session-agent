@@ -3,7 +3,7 @@ id: AGENT-10-T06
 title: Nameless links get a path name
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T06 — Nameless links get a path name

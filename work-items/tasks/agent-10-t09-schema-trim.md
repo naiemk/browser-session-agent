@@ -3,7 +3,7 @@ id: AGENT-10-T09
 title: Shorten tool schemas
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T09 — Shorten tool schemas

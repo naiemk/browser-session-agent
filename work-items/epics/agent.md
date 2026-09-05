@@ -57,15 +57,13 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 | [AGENT-10-T01](../tasks/agent-10-t01-peek-expect.md) | AGENT-10 | done |
 | [AGENT-10-T02](../tasks/agent-10-t02-url-intent.md) | AGENT-10 | done |
 | [AGENT-10-T03](../tasks/agent-10-t03-document-navigate.md) | AGENT-10 | done |
-| [AGENT-10-T03](../tasks/agent-10-t03-document-navigate.md) | AGENT-10 | done |
 | [AGENT-10-T04](../tasks/agent-10-t04-probe-data-document.md) | AGENT-10 | done |
-| [AGENT-10-T04](../tasks/agent-10-t04-probe-data-document.md) | AGENT-10 | todo |
-| [AGENT-10-T05](../tasks/agent-10-t05-stuttered-names.md) | AGENT-10 | todo |
-| [AGENT-10-T06](../tasks/agent-10-t06-nameless-links.md) | AGENT-10 | todo |
-| [AGENT-10-T07](../tasks/agent-10-t07-page-identity.md) | AGENT-10 | todo |
-| [AGENT-10-T08](../tasks/agent-10-t08-report-yields.md) | AGENT-10 | todo |
-| [AGENT-10-T09](../tasks/agent-10-t09-schema-trim.md) | AGENT-10 | todo |
-| [AGENT-10-T10](../tasks/agent-10-t10-site-skill.md) | AGENT-10 | todo |
+| [AGENT-10-T05](../tasks/agent-10-t05-stuttered-names.md) | AGENT-10 | done |
+| [AGENT-10-T06](../tasks/agent-10-t06-nameless-links.md) | AGENT-10 | done |
+| [AGENT-10-T07](../tasks/agent-10-t07-page-identity.md) | AGENT-10 | done |
+| [AGENT-10-T08](../tasks/agent-10-t08-report-yields.md) | AGENT-10 | done |
+| [AGENT-10-T09](../tasks/agent-10-t09-schema-trim.md) | AGENT-10 | done |
+| [AGENT-10-T10](../tasks/agent-10-t10-site-skill.md) | AGENT-10 | done |
 
 Also built beyond the original table, because the todo list called for them: the
 independent evaluator (`src/core/evaluator.ts`), the living task graph

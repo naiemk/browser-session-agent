@@ -3,7 +3,7 @@ id: AGENT-10-T04
 title: Probe does not ingest a data document
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T04 — Probe does not ingest a data document

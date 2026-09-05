@@ -3,7 +3,7 @@ id: AGENT-10-T07
 title: Identity facts on the snapshot
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T07 — Identity facts on the snapshot
