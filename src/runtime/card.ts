@@ -7,6 +7,7 @@
 
 import { describePredicate } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
+import { renderSiteSkill, siteSkillFromFacts } from "./site-skill.ts";
 import {
   TOOL_ACT,
   TOOL_ASK,
@@ -43,11 +44,16 @@ export function buildTaskCard(input: TaskCardInput): string {
     .map((criterion, index) => `${index + 1}. ${describePredicate(criterion)}`)
     .join("\n");
 
-  const facts = input.knownFacts && Object.keys(input.knownFacts).length > 0
-    ? `\nKnown already (do not ask again):\n${Object.entries(input.knownFacts)
+  const skill = siteSkillFromFacts(input.knownFacts);
+  const factEntries = input.knownFacts
+    ? Object.entries(input.knownFacts).filter(([key]) => key !== "siteSkill" && key !== "site_skill")
+    : [];
+  const facts = factEntries.length > 0
+    ? `\nKnown already (do not ask again):\n${factEntries
         .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
         .join("\n")}\n`
     : "";
+  const skillBlock = skill ? `\n${renderSiteSkill(skill)}\n` : "";
 
   const commit =
     input.policy === "never"
@@ -71,7 +77,7 @@ ${input.objective}
 ${input.startUrl ? `Start at ${input.startUrl}\n` : ""}
 SUCCESS (checked against the live page by code you do not control; claiming success does not make it so)
 ${criteria}
-${facts}
+${facts}${skillBlock}
 RULES
 ${input.format ? `- ${input.format}\n` : ""}- Refs stay valid while the element is on the page, so ${TOOL_OBSERVE} when you arrive somewhere new or a ref is reported gone, not between every action.
 - ${TOOL_PROBE} when you do not understand a form or widget. It cannot change anything, so prefer it over a hopeful click.

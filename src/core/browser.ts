@@ -9,6 +9,7 @@
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { DEFAULT_PERCEIVER, type Perceiver } from "./perception/index.ts";
+import { inspectPageDocument } from "./document.ts";
 import { probe, type ProbeResult } from "./probe.ts";
 import { surveyAffordances, type AffordanceSurvey } from "./survey.ts";
 import { CoreError, type Observation, type PageFacts, type WaitSpec } from "./types.ts";
@@ -352,8 +353,10 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   async facts(tabId?: string): Promise<PageFacts> {
     tabId = await this.ensurePage(tabId);
     const observation = await this.observe(tabId);
-    const text = await this.perceiver.text(this.pageFor(tabId));
-    return { url: observation.url, title: observation.title, text, observation };
+    const page = this.pageFor(tabId);
+    const text = await this.perceiver.text(page);
+    const document = await inspectPageDocument(page);
+    return { url: observation.url, title: observation.title, text, observation, document };
   }
 
   lastObservation(tabId?: string): Observation | undefined {

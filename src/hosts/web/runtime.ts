@@ -33,6 +33,11 @@ export interface OperatorRuntimeOptions {
 
 let piStartLock: Promise<void> = Promise.resolve();
 
+/** Stop the current prompt without disposing the session. A report yields; it does not hang up. */
+export function abortCurrentPrompt(pi: { abort: () => void | Promise<void> } | null | undefined): void {
+  void pi?.abort();
+}
+
 function withPiStartLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = piStartLock.then(fn, fn);
   piStartLock = run.then(
@@ -508,6 +513,7 @@ export class OperatorRuntime {
             "Approve irreversible action",
             `${request.request.kind} — ${request.reason}\n${request.url}`,
           ),
+        onReport: () => abortCurrentPrompt(this.pi),
       },
     });
     this.browserPrompt = `${composed.systemPrompt}\n\n${CHAT_WORKER_HINT}`;
@@ -616,7 +622,8 @@ export class OperatorRuntime {
           onUpdate,
           extensionContext(this.host),
         );
-        return { ...result, details: result.details ?? {} };
+        const terminate = (result as { terminate?: boolean }).terminate;
+        return { ...result, details: result.details ?? {}, ...(terminate ? { terminate: true } : {}) };
       },
     });
   }

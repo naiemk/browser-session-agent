@@ -97,6 +97,23 @@ describe("what the model sees", () => {
     assert.match(wire.controls[0]!.name, /…$/);
   });
 
+  it("omits identity when the page has none, and sends it when it does", () => {
+    const bare = toWireObservation(observation());
+    assert.equal("identity" in bare, false);
+    const wire = toWireObservation(
+      observation({
+        identity: {
+          heading: "Ada Lovelace",
+          stats: [{ label: "followers", value: "12,345" }],
+        },
+      }),
+    );
+    assert.deepEqual(wire.identity, {
+      heading: "Ada Lovelace",
+      stats: [{ label: "followers", value: "12,345" }],
+    });
+  });
+
   it("explains a failure and stays quiet on success", () => {
     const base: ActionResult = {
       ok: true,

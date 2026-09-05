@@ -1,4 +1,5 @@
 import type { ActionName, Expectation, Observation, Verification, VerificationCheck } from "./types.ts";
+import { urlMatchesIntent } from "../core/url-intent.ts";
 
 export interface ActVerificationInput {
   action: ActionName;
@@ -144,20 +145,6 @@ export function evaluateDefaultPostcondition(
     checks.push({ name: action, passed: true, detail: `${action} succeeded` });
   }
   return { status: checks.every((c) => c.passed) ? "passed" : "failed", checks };
-}
-
-function urlMatchesIntent(actual: string, target: string): boolean {
-  if (!target) return false;
-  try {
-    const want = new URL(target);
-    const got = new URL(actual);
-    if (got.host !== want.host) return false;
-    if (!want.pathname || want.pathname === "/") return true;
-    const path = want.pathname.replace(/\/$/, "") || "/";
-    return got.pathname.startsWith(path) || actual.includes(path);
-  } catch {
-    return actual.includes(target);
-  }
 }
 
 export function recoveryNote(verification: Verification, observation: Observation): string {

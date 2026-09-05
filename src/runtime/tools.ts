@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek } from "../core/peek.ts";
-import { describeCheck } from "../core/predicates.ts";
+import { describeCheck, optionalPredicate } from "../core/predicates.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
@@ -171,6 +171,17 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Closed predicate shape the model fills in. Nested `of` stays loosely typed. */
+const PredicateSchema = Type.Object({
+  kind: Type.String(),
+  text: Type.Optional(Type.String()),
+  name: Type.Optional(Type.String()),
+  ref: Type.Optional(Type.String()),
+  role: Type.Optional(Type.String()),
+  open: Type.Optional(Type.Boolean()),
+  of: Type.Optional(Type.Any()),
+});
+
 export function buildTools(context: ToolContext): AgentTool[] {
   const view = context.view ?? DEFAULT_VIEW;
   let strangerViews = 0;
@@ -182,6 +193,13 @@ export function buildTools(context: ToolContext): AgentTool[] {
   // whole point: there is no position to restore because nothing moved.
   let sideTab: string | undefined;
   const tab = () => sideTab ?? context.tabId;
+
+  const closeSideTab = async (): Promise<void> => {
+    if (!sideTab) return;
+    const closing = sideTab;
+    sideTab = undefined;
+    await context.browser.closeTab(closing).catch(() => undefined);
+  };
 
   const countStep = () => {
     steps += 1;
@@ -211,8 +229,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_OBSERVE,
       label: "Observe",
-      description:
-        "Snapshot the page: url, title, controls with refs and values, dialogs, page errors, and what changed since the last look.",
+      description: "Snapshot this tab: url, title, controls with refs, dialogs, errors, and what changed.",
       promptSnippet: "Look at the page. Refs come from here.",
       parameters: Type.Object({}),
       execute: async () => reply(view.observation(await context.browser.observe(tab()))),
@@ -220,8 +237,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_PROBE,
       label: "Probe",
-      description:
-        'Read-only question about the page. {"kind":"form_inventory"} lists fields with required flags and wire names. {"kind":"elements","select":"select","fields":["name","options"]} lists option values. Other kinds: page_meta, text, count, table, links. Cannot change the page or read credentials.',
+      description: "Read-only query: page_meta, text, count, elements, form_inventory, table, or links. Cannot change the page or read credentials.",
       promptSnippet: "Read anything about the page without touching it.",
       parameters: Type.Object({ query: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
@@ -244,8 +260,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_CHECK,
       label: "Check",
-      description:
-        'Assert something about the page now, evaluated in code. {"predicate":{"kind":"text_visible","text":"Submitted"}}. Several at once: {"kind":"all","of":[...]}. Kinds: text_visible, text_absent, url_includes, title_includes, ref_exists, control_exists, control_absent, value_equals, value_includes, no_console_error, dialog_open, all, any, not.',
+      description: "Evaluate a predicate on the live page (text_visible, url_includes, all, …).",
       promptSnippet: "Verify a claim instead of assuming it.",
       parameters: Type.Object({ predicate: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
@@ -264,8 +279,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_ACT,
       label: "Act",
-      description:
-        "One verified browser action. kind is navigate, click, type, select, scroll, wait, or upload. Address controls by ref. Waits for the page to settle and re-reads it before reporting, so never follow one with a wait. The result says whether it actually worked, and why not.",
+      description: "One verified action: navigate, click, type, select, scroll, wait, or upload. Address by ref.",
       promptSnippet: "One verified browser action.",
       parameters: Type.Object({
         kind: Type.String({ description: "navigate | click | type | select | scroll | wait | upload" }),
@@ -346,8 +360,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_STRANGER,
       label: "View without session",
-      description:
-        "Load a URL with no cookies and no session, and compare it with the same URL as you. Use it when it matters who can see something, or to find out what your session grants. Returns what a stranger sees plus the differences; it draws no conclusion, and a difference can also come from A/B tests or geography. Each call is a real anonymous request, so it is budgeted.",
+      description: "Load a URL with no session and compare it to what you see.",
       promptSnippet: "See a page as an anonymous visitor, and how that differs.",
       parameters: Type.Object({
         url: Type.Optional(Type.String({ description: "Defaults to the current page" })),
@@ -380,8 +393,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_REMEMBER,
       label: "Remember",
-      description:
-        "Record something you established, in your own words, so it outlives this task. Use it for what you worked out about the situation: who you are acting as, what your session grants, what you confirmed about a page. Free-form: pick your own keys.",
+      description: "Record something you established, in your own words.",
       promptSnippet: "Record what you established, with the evidence for it.",
       parameters: Type.Object({
         key: Type.String({ description: "Short name, e.g. operating-identity" }),
@@ -409,8 +421,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_SAVE,
       label: "Save artifact",
-      description:
-        "Write a text document to this goal's artifacts on disk. Use it for trackers, drafts, and notes you must keep. Do not hunt paste sites, spreadsheets, or public pads to persist work.",
+      description: "Write a text document to this goal's artifacts.",
       promptSnippet: "Persist a document here, not on a paste site.",
       parameters: Type.Object({
         name: Type.String({ description: "File name, e.g. outreach-tracker.md" }),
@@ -439,8 +450,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_SURVEY,
       label: "Survey",
-      description:
-        "List what this page offers — navigation, tabs, search boxes, content links, buttons — grouped and deduped, following none of them. Use it before choosing a route, so you weigh the options against each other instead of taking the first that could work. It changes nothing.",
+      description: "List what this page offers, following none of it.",
       promptSnippet: "See the routes on offer before picking one.",
       parameters: Type.Object({}),
       execute: async () => {
@@ -461,23 +471,21 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_PEEK,
       label: "Peek",
-      description:
-        `Read a URL in a side tab and come straight back, without leaving the page you are on. Use it to inspect items in a list: navigating away loses your place in the list, and peeking does not. Give expect (a predicate) when you built the URL from a name or id, so a URL that resolves to the wrong thing is caught instead of believed. The page is closed again, so refs from it cannot be acted on — use ${TOOL_SIDE_OPEN} when you need to do something there. Costs one action.`,
+      description: `Read a URL in a side tab and return. Pass expect when you built the URL. Refs from it cannot be acted on; use ${TOOL_SIDE_OPEN} to work there.`,
       promptSnippet: "Read something elsewhere without losing your place.",
       parameters: Type.Object({
         url: Type.String(),
-        expect: Type.Optional(
-          Type.Object({}, { additionalProperties: true, description: "Predicate proving identity" }),
-        ),
+        expect: Type.Optional(PredicateSchema),
       }),
       execute: async (_id: string, params: unknown) => {
         const raw = params as { url?: unknown; expect?: unknown };
         try {
           countStep();
+          const expect = optionalPredicate(raw.expect);
           const result = await peek(context.browser, {
             url: String(raw.url ?? ""),
             tabId: tab(),
-            ...(raw.expect ? { expect: raw.expect as Predicate } : {}),
+            ...(expect ? { expect } : {}),
             ledger: context.evidence.ledger,
             entityId: context.evidence.entityId,
           });
@@ -502,8 +510,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_SIDE_OPEN,
       label: "Open side tab",
-      description:
-        `Open a side tab and work in it. Use it when reading is not enough — searching for something, filling a form — and you must not lose the page you are on. Every tool then targets the side tab until ${TOOL_SIDE_CLOSE}. One at a time.`,
+      description: `Open a side tab and work there until ${TOOL_SIDE_CLOSE}. One at a time.`,
       promptSnippet: "Work somewhere else without losing your place.",
       parameters: Type.Object({ url: Type.String() }),
       execute: async (_id: string, params: unknown) => {
@@ -557,8 +564,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_FORK,
       label: "Note fork",
-      description:
-        "Record that a word in the task matched more than one thing on this site, and what you did about it. Cover every branch and label results by source when that is cheap and bounded; ask the operator when it is not. Either way record it, because choosing one meaning silently gives a confident answer to a question nobody asked.",
+      description: "Record that a task word matched more than one thing here.",
       promptSnippet: "Record an ambiguity instead of silently resolving it.",
       parameters: Type.Object({
         term: Type.String({ description: 'The word from the task, e.g. "friend list"' }),
@@ -604,8 +610,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_DONE,
       label: "Report",
-      description:
-        "Report the outcome and stop. status is success, blocked, or failed. The criteria are checked independently, so be truthful.",
+      description: "Report the outcome and stop. status is success, blocked, or failed.",
       promptSnippet: "Finish with a truthful report.",
       parameters: Type.Object({
         status: Type.String({ description: "success | blocked | failed" }),
@@ -617,6 +622,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           ? (String(raw.status) as ReportPayload["status"])
           : "failed";
         const report: ReportPayload = { status, summary: String(raw.summary ?? "") };
+        await closeSideTab();
         context.onReport?.(report);
         // Terminate: the report ends the task, so no follow-up model turn is needed.
         return { ...reply(report, report), terminate: true };

@@ -79,6 +79,32 @@ describe("AGENT-00-T01 action harness", () => {
     assert.equal(result.reversibility, "navigational");
   });
 
+  it("refuses a JSON payload and restores the previous page", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(browser, {
+      kind: "navigate",
+      tabId: tab,
+      url: `${origin}/api/search`,
+    });
+    assert.equal(result.ok, false, "a JSON body is not a successful navigation");
+    assert.match(result.failure?.recovery ?? "", /not a page/);
+    assert.match(result.failure?.recovery ?? "", /json/i);
+    const here = await browser.observe(tab);
+    assert.match(here.url, /\/apply$/);
+  });
+
+  it("still navigates to HTML whose path contains /api/", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(browser, {
+      kind: "navigate",
+      tabId: tab,
+      url: `${origin}/api/page`,
+    });
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
+    assert.match(result.observation.url, /\/api\/page$/);
+    assert.match(result.observation.title, /API page/);
+  });
+
   it("drives the combobox: opening changes the page, choosing commits", async () => {
     const tab = await browser.openTab(`${origin}/combobox?mode=united-states-first`);
     const comboRef = await refFor(tab, "Country");

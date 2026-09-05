@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { LocalBrowser } from "../../src/core/browser.ts";
 import { act } from "../../src/core/act.ts";
+import { toWireObservation } from "../../src/runtime/wire.ts";
 import { FixtureServer } from "../helpers/fixture-server.ts";
 
 const server = new FixtureServer();
@@ -103,5 +104,41 @@ describe("AGENT-00-T01 perception", () => {
     const reread = after.controls.find((control) => control.ref === editor.ref);
     assert.match(reread?.value ?? "", /"a"/);
     assert.deepEqual(after.changes, [], "a second look at an unchanged page has no delta");
+  });
+
+  it("collapses a label that the page concatenated twice", async () => {
+    const tab = await browser.openTab(`${origin}/stutter`);
+    const observation = await browser.observe(tab);
+    const names = observation.controls.map((control) => control.name);
+    assert.ok(names.includes("Search"), `Search missing in ${names.join(", ")}`);
+    assert.equal(names.includes("SearchSearch"), false);
+    assert.ok(names.includes("Messages 1"), `Messages 1 missing in ${names.join(", ")}`);
+    assert.ok(names.includes("Home"), `Home missing in ${names.join(", ")}`);
+  });
+
+  it("names a nameless image link from its href path", async () => {
+    const tab = await browser.openTab(`${origin}/grid`);
+    const observation = await browser.observe(tab);
+    const names = observation.controls.map((control) => control.name);
+    assert.ok(names.includes("abc"), `abc missing in ${names.join(", ")}`);
+    assert.ok(names.includes("xyz"), `xyz missing in ${names.join(", ")}`);
+    assert.ok(names.includes("hello-world"), `hello-world missing in ${names.join(", ")}`);
+    const abc = observation.controls.find((control) => control.name === "abc");
+    assert.ok(abc?.ref, "still addressed by ref");
+    assert.equal(abc?.tag, "a");
+  });
+
+  it("puts heading and labeled stats on the snapshot", async () => {
+    const tab = await browser.openTab(`${origin}/profile-stats`);
+    const observation = await browser.observe(tab);
+    assert.equal(observation.identity?.heading, "Ada Lovelace");
+    const stats = observation.identity?.stats ?? [];
+    assert.ok(
+      stats.some((stat) => /followers/i.test(stat.label) && stat.value.includes("12,345")),
+      JSON.stringify(stats),
+    );
+    const wire = toWireObservation(observation);
+    assert.equal(wire.identity?.heading, "Ada Lovelace");
+    assert.ok(wire.identity?.stats?.some((stat) => stat.value.includes("12,345")));
   });
 });
