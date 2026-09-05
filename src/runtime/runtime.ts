@@ -156,19 +156,23 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     streamFn: stream,
     transformContext: async (messages) => {
       currentTurn += 1;
+      const incoming = messages as unknown as PrunableMessage[];
       const compacted =
-        options.prune === false
-          ? messages
-          : compactFinishedWork(messages as never[], options.prune);
+        options.prune === false ? incoming : compactFinishedWork(incoming, options.prune);
       // Shape is not optional with pruning. A suite task on an OpenAI-compat model
       // crashes the same way the chat did if a tool result is still a string.
-      const shaped = normalizeToolResultContent(compacted as unknown as PrunableMessage[]);
-      const measured = measureContext(
-        messages as unknown as PrunableMessage[],
-        shaped,
-      );
+      const shaped = normalizeToolResultContent(compacted);
+      const measured = measureContext(incoming, shaped);
       metrics.record({ kind: "context", turn: currentTurn, ...measured, messages: shaped.length });
-      return shaped as unknown as typeof messages;
+      // Pi applies this as a view over context.messages and then appends to the original.
+      // Writing the compacted prefix back is how the next turn's provider request can
+      // reuse the cache: without it, every follow-up turn looks like a rewrite of the
+      // same early index even when the bytes sent to the model did not change.
+      if (shaped !== incoming) {
+        incoming.length = 0;
+        incoming.push(...shaped);
+      }
+      return incoming as unknown as typeof messages;
     },
   });
 

@@ -146,6 +146,10 @@ export class FixtureServer {
           send(res, 302, "", { location: "/jobs" });
           return;
         }
+        if (url.pathname === "/jobs" && !hasSession(req)) {
+          send(res, 302, "", { location: "/login" });
+          return;
+        }
         // The plain roster shows handles as text with nothing to click, so reaching a
         // person needs a built URL or the search page.
         if (url.pathname === "/roster-plain") {
