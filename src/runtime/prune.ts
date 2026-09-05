@@ -17,7 +17,7 @@
  */
 
 import { PERISHABLE_TOOLS } from "./names.ts";
-import { observationInContent } from "./wire.ts";
+import { extractText, observationInContent } from "./wire.ts";
 
 export interface PrunableMessage {
   role: string;
@@ -62,6 +62,28 @@ export function isPerishable(
 export const PLACEHOLDER = "[stale snapshot dropped; observe again if you need it]";
 
 /**
+ * Whether this content is a dropped snapshot, in either shape a tool result can have.
+ *
+ * The suite stores a bare string. Pi stores `[{ type: "text", text }]`. Comparing against
+ * the string alone is how compaction looked like it worked while the next GLM turn
+ * crashed on `toolMsg.content.filter`.
+ */
+export function isPlaceholder(content: unknown, placeholder = PLACEHOLDER): boolean {
+  return extractText(content) === placeholder;
+}
+
+/**
+ * The same placeholder, in the shape the original result used.
+ *
+ * Pi's OpenAI-compat path (GLM included) does `toolMsg.content.filter(...)`. A string
+ * here is not a cheaper tool result. It is not a tool result at all.
+ */
+export function placeholderContent(original: unknown, placeholder = PLACEHOLDER): unknown {
+  if (typeof original === "string") return placeholder;
+  return [{ type: "text", text: placeholder }];
+}
+
+/**
  * Bytes of context for one turn, and where the prompt cache was invalidated.
  *
  * Lives beside pruning because pruning is what rewrites a prefix, and next to
@@ -81,12 +103,18 @@ export function measureContext(
   for (const [index, message] of after.entries()) {
     const size = JSON.stringify(message ?? null).length;
     bytes += size;
-    if (message?.content === PLACEHOLDER) placeholderBytes += size;
+    if (isPlaceholder(message?.content)) placeholderBytes += size;
     else liveBytes += size;
 
-    // Providers cache on an exact prefix, so the earliest rewrite is where the cache
-    // stops being usable for this request.
-    if (rewrittenFrom < 0 && before[index] && before[index]!.content !== message?.content) {
+    // Providers cache on an exact prefix. Compare by value: Pi clones the transcript
+    // every turn, so a new array with the same parts is not a rewrite, and treating it
+    // as one is how rewrittenFrom said 0 on every turn of a run that was caching.
+    if (
+      rewrittenFrom < 0 &&
+      before[index] &&
+      before[index]!.content !== message?.content &&
+      JSON.stringify(before[index]!.content) !== JSON.stringify(message?.content)
+    ) {
       rewrittenFrom = index;
     }
   }
@@ -173,7 +201,11 @@ export function pruneMessages<T extends PrunableMessage>(
     seen.set(group, count);
     if (count <= keepLatest) continue;
 
-    out[index] = { ...message, content: placeholder, pruned: true };
+    out[index] = {
+      ...message,
+      content: placeholderContent(message.content, placeholder),
+      pruned: true,
+    };
   }
 
   return out;
