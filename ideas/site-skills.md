@@ -1,154 +1,172 @@
-# Site skills: a shared, versioned, obsolete-able how-to for websites
+# Published site skills, enterprise policy, and a record sandwich
 
 **Status:** discussing
 **Captured:** 2026-09-05
-**Do not promote until:** the maturity bar at the bottom is met. D26 already recorded “we over-engineered flow knowledge within minutes of a good example.” This idea is that same temptation, with a better commercial story.
+**Do not promote until:** the maturity bar at the bottom is met.
 
-## The problem
+Cold start on a new host is expensive. A **global lesson database** is the wrong product (poisoning, PII, no publisher). The product is: someone **publishes** a short capability map; someone else **opts in** (paste a link, or the org attaches it); a **cheap model** may only emit a tight schema after a human (or a dummy-train run) showed the hidden doors.
 
-A large share of spend on a new site is not doing the job. It is discovering *how this site works*: where search lives, that Instagram search is not “people in a city,” that a filter is behind a chip, that the composer is a contenteditable not a textarea.
+## Current shape
 
-The agent probes, fails, retries, and sometimes gives up. The next session on the same site starts over. Another operator on another machine starts over again.
+Two objects, not one dump.
 
-That is the cold-start tax. The idea is to pay it once, store the lesson as a **skill**, and reuse it.
+| Object | Who publishes | When it loads | What it is |
+| --- | --- | --- | --- |
+| **Site skill** | Site owner, or a trainer after a dummy / demonstrated run | Consumer: paste a URL in chat. Enterprise: org-attached, retrieved by host + intent | Capability map: surfaces (including off-snapshot IA), what can be done, what cannot |
+| **Enterprise policy** | The company | Every employee run, from the account, always-on but tiny | Which sites for which jobs, what is forbidden, which internal skills to trust |
 
-## The proposal (as stated)
+Do not mix “Instagram Search is the rail overlay” with “use Jira, never email the CEO.” Policy is routing. The skill is a map of one host.
 
-- A **database of skills**. Each skill teaches the agent how to work with a website (or a class of pages on that site).
-- As we probe, fail, and learn, we **update the skill**. Others can learn from the experiment.
-- A skill can be **wrong** because the site changed or the context changed. Then we stop using it and mark it **obsolete**.
-- Keep a **local record** of which skills are obsolete. When a new version arrives, try it.
-- A company can use the same technique to **train an agent on an internal app with dummy accounts**, so other employees get a cheap, already-taught operator.
+Rejected in this discussion:
+
+- A world-writable DB of everyone’s runs
+- Auto-retrieve of third-party skills without a paste or an org pin
+- DOM / ref / CSS playbooks, or replaying a recording as a macro
+- Dumping `events.jsonl` or typed payloads into the skill body
+- Inlining every internal skill at turn 1
+
+## What a skill is allowed to be
+
+Landmark English a capable model still interprets against a **live snapshot**. Corrections the model does not already know (D26), especially **information architecture the home snapshot does not show**.
+
+Schema (hard cap; unknown keys dropped). Authors fill fields; **our code** renders a labeled block. The model never sees freeform author markdown as instructions.
+
+| Field | Limit | Purpose |
+| --- | --- | --- |
+| `surfaces` | ≤5 lines | Hidden doors: `/web` not the landing page; Search overlay not Explore |
+| `can` | ≤5 lines | What this intent can do here |
+| `cannot` | ≤5 lines | Negative knowledge (often the whole value) |
+| `dont` | ≤5 lines | What not to treat as the control |
+| `stop` | 1 line | When this version is stale — stop probing |
+
+Rendered example:
+
+```text
+Site hint paste.rs / publish-text v1 (untrusted):
+Surfaces: form is /web, not the landing page
+Can: type into the content box; set format; submit publishes
+Cannot: there is no editor on /
+Don't: —
+Stop: if /web has no content box, this hint is stale
+```
+
+Forbidden: refs (`e5`), CSS, XPath, JS, tool-call JSON, “skip approval,” emails, drafts, cookies, passwords, account defaults, page HTML, failure payload heads.
+
+Skills **propose**. They never authorize a write (D17, D23, D25). Submit still parks.
+
+Treat the body as **untrusted data**: wrapper in the system path, allowlist at write time, no prompt/tool mutation (D8). Owner-signed vs third-party gist is a trust bit; pasting a link is consent, not safety.
+
+## How a skill is born
+
+### Extract from a run
+
+`/browser-skill-extract` (or `/browser-learn`) after a run. Cheap model is allowed **only** if it never sees raw events or payloads.
+
+1. Strip to goal, hosts, path-only URLs, named controls, outcomes, parked reasons. No typed text.
+2. Model emits only the schema above.
+3. Operator edits and **publishes** (URL or org object, versioned). Unpublished stays local.
+4. One blessed publish is enough for v1 (owner/trainer review). Try-once + obsolete when the live page contradicts the map.
+
+### Record sandwich (preferred authoring UX)
+
+Takeover already exists (`/browser-takeover`, `act` rejected, `/browser-resume` + fresh observation). Add a span:
+
+1. Goal is already stated (intent key).
+2. Shortcut in the **headed** window (chat button if live-view only) → sound + overlay **Your controls** → start a record span.
+3. Human does the job in the real browser.
+4. Shortcut → **My controls** → stop span → distill → show the draft → publish or discard.
+
+While the span is open, the **worker** (not the JPEG stream, D16) appends: navigations, click accessible name/role/landmark, “typed into {field}” **without the value**, dialogs. Snapshot after each settled gesture. No raw keystrokes.
+
+This is dummy-train: tell it the goal, take the wheel, do it once, get a draft map, approve, next time it’s warm. It is not magic imitation and not a macro of the demo.
+
+Build order if this ever ships: reuse takeover lock → ledger record-span → sanitize human events → extract on resume → overlay/beep last.
+
+## How a skill is used
+
+**Consumer.** Paste `https://…/skills/paste.rs-publish-text@3` in chat (or `/browser-skill <url>`). Warm start. Cold start stays cold until someone hands you a link. Acceptable.
+
+**Enterprise.** Employees do not paste. The org account attaches policy + internal skills at session start. Token-cheap:
+
+- **Always-on:** a short policy card (allowed sites for this job type, forbidden actions, trusted skill ids). Like operator `SKILL.md`, not a handbook.
+- **On demand:** when URL or intent matches, pull **one** skill body. Reuse lazy catalogue (`src/runtime/skills.ts`). A 40-app dump at turn 1 is a regression (D29).
+
+`/browser-learn` (or `/browser-start --learn`) makes sharing explicit: this run may propose lessons; default runs must not. Dummy/training account expected. End of run: candidate rows, operator approves, publish to org registry. Default is never the public internet.
+
+## Obsolescence
+
+Same three signals as before:
+
+1. Prediction error (D25) — skill said Search overlay, got Explore → drop this version for the rest of the run.
+2. Local obsolete list — `id@version`, machine or company env.
+3. New version → try once, not restored trust.
+
+Clock decay is wrong. Obsolete is not deleted.
 
 ## What already exists (do not rediscover)
 
-This idea overlaps three live systems. If we treat it as greenfield we will rebuild them badly.
+| Layer | What it is |
+| --- | --- |
+| Pi `SKILL.md` | How to be the operator. Not site-specific. |
+| `src/runtime/skills.ts` | Lazy technique catalogue; non-`generic` dirs already tag `host`. Site packs empty on purpose. |
+| Knowledge store | `user_fact` (approval) vs `strategy` (successful run). Not versioned, not a published map. |
+| Takeover | Human drives; agent `act` rejected; resume inspects. No record-span yet. |
+| `/browser-approve`, `/browser-knowledge` | Opt-in knowledge (D8). Closest command surface for publish review. |
 
-| Layer | What it is | What it is not |
-| --- | --- | --- |
-| Pi `SKILL.md` | How to *be* the operator (tools, evidence, when to stop). Always in play. | Not site-specific. |
-| Lazy technique skills (`src/runtime/skills.ts`) | Host-independent technique. Catalogue of names/descriptions in context; body on disk until asked. Loader already groups by directory and can tag a `host`. **Site packs are deliberately empty.** | Not a flow encyclopedia. |
-| Knowledge store | `user_fact` (approval) vs `strategy` (linked to a successful run). Lexical retrieval. D8, D25. | Not versioned, not shared across machines, not obsolete-as-a-first-class-state. |
+Related: D8, D16 (JPEGs are for humans), D17, D23, D24 (no site mapping ahead of need — a skill names doors from **this** run, not a crawl), D25, D26, D28, D29, D33.
 
-Related decisions:
+## Evidence from 2026-09-05 (goal_mtoh3nmr001)
 
-- **D8** — user facts are opt-in. Strategies are outcome-linked. No silent prompt or code mutation.
-- **D17** — the harness still accepts or rejects. A skill must not skip checks.
-- **D23** — reversibility is per action. A remembered flow does not make a write “safe.”
-- **D25** — remembered knowledge may *propose*, never *authorize*. Dangerous cache is a selector that still resolves and points at the wrong control. Memory decays by **prediction error**, not a clock.
-- **D26** — flow knowledge starts as a planner-emitted outline, not a schema store. Persist only once we hold **corrections the model does not already know**. Status: accepted, revisit when corrections accumulate.
-- **D28** — memory tiers gated on measured archetype repeat rate. Session → per-account → curated repo-file. Still a hypothesis. AGENT-07-T02 (instrumentation) is **todo**.
-- **D29** — prefer mechanisms that reduce turns. Stuffing skills into every card can cost more than they save.
-- **D33** — quality, not throughput. Sharing “how to automate Instagram” may hit platform policy.
+~20 minutes Sheets → EtherCalc → HackMD → Telegraph → Rentry → paste.rs to persist a tracker that was already in the goal store.
 
-Code already says the quiet part: *site-specific packs have to be earned from repeated traces, and a candidate is not knowledge until it has worked more than once.*
+A paste.rs skill / an org policy “notes go here, not random pastebins” would skip the tour **next** time. Skills would not have fixed: `SearchSearch` unmatched, `Import` parked four times, paste.rs `readBack` (newlines; **fixed** in current `act.ts` `fillAccepted`), submit parked twice after chat-yes (sticky approvals exist; dual channel `ask_user` vs `ui.confirm` still broken), Telegraph `ql-clipboard` as `e1` (`editorLike` bypasses visibility).
 
-## Three different things named “skill”
+Those are harness/perception tasks, not this idea. Do not ship skills and call the stalls “need a better map.”
 
-Keep them separate or the design collapses.
+## Failure modes
 
-1. **Operator skill** — how this product uses a browser. Already shipped.
-2. **Technique skill** — “prefer landmark chrome,” “search is usually a combobox.” Generic. Cheap to share. Low obsolescence.
-3. **Site skill** — “on this host, for this intent, do it this way.” This idea. High value, high rot, high poison risk.
+- **Verbose feature encyclopedias** — cheap model writes 2k words. Hard cap + compiler.
+- **Distiller sees payloads** — outreach table leaks even if output looks clean. Sanitize first.
+- **Replay of the demo** — refs rot; wrong-but-clickable (D25).
+- **Policy that authorizes clicks** — policy says use Jira; skill says create is behind +; harness still parks Submit.
+- **Dummy ≠ prod** — flags, role, locale. Obsolete by environment.
+- **Shortcut only on desk Chromium** — don’t sell F9 on a phone. Chat toggle for live view.
 
-The interesting object is (3). (1) and (2) should not grow a versioned obsolete database.
+## Maturity bar (still an idea)
 
-## What a site skill is allowed to be
-
-Guidance a capable model still has to interpret against a live snapshot.
-
-Good (stable under ref churn):
-
-- Where the capability lives (“people search is the Search item in the left rail, not Explore, not a `/search?q=` people filter”).
-- Order of a flow (“composer, then audience, then post — not the reverse”).
-- Negative knowledge (“this query box does not search users by city”).
-- What *not* to treat as the control (“the first textbox is the composer, not search”).
-
-Bad (dies on the next paint, or skips the harness):
-
-- `click e5` / CSS / XPath baked in as the method.
-- A script of writes that should still go through reversibility and `act`.
-- Personal quirks (this user’s saved searches, this account’s language). D28: those stay per-account.
-- Secrets, cookies, dummy-account passwords. The skill is the *map*, not the *keys*.
-
-If the skill is a recording, it is already obsolete. If it is a short, versioned correction the model does not already know, it matches D26.
-
-## Obsolescence (the part that makes this honest)
-
-A shared skill without a way to die is a malware vector for the next session.
-
-Three signals, not one:
-
-1. **Prediction error (D25).** The skill said search is in the left rail; the rail has no Search, or Search opened Explore. That is a failed prediction. Stop trusting this version. Do not keep clicking because the skill is “approved.”
-2. **Local obsolete list.** This machine (or this company) records `skill-id@version` as obsolete after (1), or after a human marks it. We do not wait for the publisher. Local truth beats a stale remote “latest.”
-3. **New version → try once.** When `vN+1` appears, it is a *candidate*, not a restoration of trust. One bounded trial. If it predicts well, it becomes current. If not, it joins the obsolete list. No automatic rollback to vN.
-
-Obsolete is not deleted. We want the history (“v3 lied about the composer”) so we do not re-learn a known-bad map.
-
-A clock (“unused for 30 days”) is the wrong decay. Instagram can sit unchanged for months and then move Search in a week.
-
-## Sharing and the fourth trust tier
-
-D28’s tiers are session → account → curated repo-file. This idea adds a fourth: **community or company catalogue**.
-
-That tier is the product. It is also the danger.
-
-| Audience | Why it is strong | Why it is dangerous |
-| --- | --- | --- |
-| This operator, this profile | Highest precision. Matches D28 “earned.” | Does not cut cold start for anyone else. |
-| Company, dummy-account trained | Best commercial fit. Controlled app, controlled accounts, controlled publisher. Skill is an onboarding artifact. | Still rot when the internal app ships. Obsolete list is per environment (staging vs prod). |
-| Public / community | Everyone pays the Instagram tax once. | Poisoning, TOS (D33), PII in traces, incentive to over-claim. |
-
-The company dummy-account story is the one that should lead. Public sharing of “how to automate Instagram” is a policy question, not a feature checkbox.
-
-Authoring for the company case is a **distillation pass**, not a dump of `events.jsonl`. A human (or a later model with a tight rubric) writes the skill from successful traces. Auto-extracting selectors from one lucky run is how we get D25’s dangerous cache.
-
-## Failure modes we already named
-
-**Premature persistence (D26).** We do not yet have a corpus of corrections the model does not know. Until AGENT-07-T02 measures repeat rate, we do not know if cold start is “Instagram is uniquely weird” or “every host needs a pack.” Building the database first inverts the evidence.
-
-**Context tax (D29).** A skill that is always inlined can cost more tokens than the probing it saves. Retrieval must stay lazy: catalogue line in context, body on demand, and only for the *current host + intent*. A 2k-token Instagram essay on a settings page is a regression.
-
-**Wrong-but-clickable (D25).** The worst skill is not “file not found.” It is “click the control that still exists and is now Delete.” Harness checks do not save you if the ref is valid and the label drifted. Skills propose; the snapshot is the authority.
-
-**Personalization leak.** “This user always posts as the brand account” is not a site skill. If we share it, we share the wrong default to the next person.
-
-**Version races.** Two publishers update v4 with different maps. Without identity `(host, intent, publisher, version)` the obsolete list cannot name what it is refusing.
-
-**Training with dummy accounts ≠ production identity.** The skill may be valid on the dummy tenant and wrong on the real one (feature flags, role, locale). Obsolete-by-environment, not only obsolete-by-host.
-
-## What would have to be true for this to be an epic
-
-Not “we like the story.” All of:
-
-1. **Evidence** — AGENT-07-T02 (or an equivalent) shows a high enough archetype repeat rate, *or* we already hold a small set of corrections the model demonstrably does not know (D26). Cold-start turns with vs without a hand-written skill, same model, same task.
-2. **Shape** — skill-as-data is specified: identity, intent key, version, body rules (guidance not scripts), publisher, environment.
-3. **Load path** — lazy, host-scoped, does not blow the card (D29). Reuses `src/runtime/skills.ts` rather than a second catalogue if that still fits.
-4. **Obsolescence** — prediction-error hook, local obsolete store, try-once on new version. Skills never authorize writes (D17, D23, D25).
-5. **Share protocol** — at least company-local (files in a repo, or an internal registry). Public sharing is an explicit later decision under D33.
-6. **Authoring** — who writes v1 (human distillation vs auto from traces) and how a conflict between two skills for the same host+intent is resolved.
-7. **Measurement after ship** — skill hit rate, prediction-error rate, turns saved, and “skill caused a committing miss.” If the last one is non-zero, the skill is a liability.
-
-Until then this stays an idea.
+1. Hand-written or demonstrated **one** skill, same task with vs without, same model; turns and misses.
+2. Schema + renderer + untrusted wrapper; extract never reads raw payloads.
+3. Consume: paste-link path; org policy card + lazy body (not built until we mean it).
+4. Record-span is optional v1; extract-from-sanitized-agent-run can come first.
+5. Skills never skip parks. Metric after ship: skill-caused committing miss must be ~0.
+6. AGENT-07-T02 still informs whether archetypes repeat enough to bother. Dummy-train / owner-publish can proceed as a **product** before that if a customer will bless maps; a public Instagram wiki cannot.
 
 ## Open questions
 
-- Identity: is the key `host + intent` (e.g. `instagram.com` + `search-people`), or finer (`host + path pattern + intent`)?
-- Intent vocabulary: planner-emitted (D26) or a closed enum? Closed enums rot; free text does not retrieve.
-- Does the local obsolete list sync, or is it strictly per machine / per company env?
-- When two skills match, do we pick publisher trust, recency, or ask the user (D8)?
-- Is a failed probe during *training* allowed to write a negative skill (“this is not people search”) without a successful run? Negative knowledge is often the whole value.
-- How do we keep dummy-account traces out of the skill body (no user ids, no URLs with tokens)?
-- Does “try the new version” need a user-visible flag on a committing path, or is a single bounded read-only probe enough?
+- Owner-signed vs third-party: how is the bit stored on the URL?
+- Intent key: `host + intent` vs `host + path pattern + intent`?
+- Does org policy name skill ids, or only “for notes use X”?
+- Record-span: in-page key vs chat button first?
+- After extract, is the draft a file in the repo, a gist, or an org object?
 
 ## Discussion notes
 
 ### 2026-09-05 — capture
 
-The cold-start tax is real and we have watched it: Instagram search, parked Search after a reversibility mismatch, landmark chrome that does not exist on that host. The instinct to save the lesson is correct.
+First framing: a database of site how-tos, update on fail, local obsolete list, company dummy accounts. Overlaps D8/D25/D26/D28. Global share was the weakest frame.
 
-The instinct to build a **database** now is the same move D26 already rejected, plus a distribution problem D28 and D33 have not answered. The company dummy-account frame is the strongest reason to keep discussing rather than shelve. The public “everyone’s Instagram skill” frame is the weakest.
+### 2026-09-05 — 20-minute paste tour
 
-Implementation hook if this ever promotes: `loadSkillCatalogue` already treats a non-`generic` group directory as `host`. That is a seam, not permission to fill `skills/instagram/` this week.
+Cold-start tax is real; mixed with harness walls. Technique “prefer a native textarea” would have helped first contact more than six site packs. First-party persist would have made the tour unnecessary.
 
-Next useful move is not a schema. It is (a) finish the memory instrumentation so we know whether site-level repeat exists, and (b) if someone hand-writes **one** skill from a real failed session, treat it as an experiment: same task with/without the file, measure turns and misses. That experiment can live in this folder as evidence without becoming an epic.
+### 2026-09-05 — compact non-DOM schema
+
+Four fields, no DOM, injection = data not instructions, few tries then drop. Format that has a chance; product loop only if retrieval is automatic (enterprise) or explicit (paste), `stop` is enforced in runtime, authoring stays distillation.
+
+### 2026-09-05 — global DB rejected; publish + policy
+
+World-writable lessons are not the product. Owner/trainer **publish**, consumer **paste a link**, enterprise **auto-attaches** a short policy and retrieves one body by host/intent. Cheap model extract from a **sanitized** run. Selling sentence: walk the internal app once on a dummy account; others get the map, not the traces.
+
+### 2026-09-05 — record sandwich
+
+Human assistance: goal → shortcut Your controls → drive → shortcut My controls → draft skill. Practical as authoring for the maps above; not as watching video or replaying clicks. Reuse takeover; add span + compiler; beep last.
