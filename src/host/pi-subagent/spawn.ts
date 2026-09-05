@@ -15,6 +15,10 @@ import { discoverPackagedAgents, findAgent } from "./discover.ts";
 
 const PI_CLI = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
 const DEFAULT_TIMEOUT_MS = 180_000;
+const FLOORS = new Set(["low", "medium", "high", "ultra"]);
+
+/** The model pi-model-auto registers. `@ultra` is a first-turn prefix, not this id. */
+export const ROUTER_MODEL = "pi-router/auto";
 
 export interface ChildInvocation {
   command: string;
@@ -43,20 +47,73 @@ export function piCliPath(root = packageRootFrom()): string {
   return path.join(root, "node_modules", ...PI_CLI.split(path.sep));
 }
 
+/** `@ultra` / `ultra` are Pi Router floors (D12), not `--model` ids. */
+export function capabilityFloor(model?: string): string | undefined {
+  const raw = model?.trim() ?? "";
+  if (!raw) return undefined;
+  const name = (raw.startsWith("@") ? raw.slice(1) : raw).toLowerCase();
+  return FLOORS.has(name) ? name : undefined;
+}
+
+export function loadsModelAuto(paths: readonly string[]): boolean {
+  return paths.some((item) => item.replace(/\\/g, "/").includes("pi-model-auto"));
+}
+
+/**
+ * `--model @ultra` is not a Pi model. With the router loaded, select `pi-router/auto`
+ * and prefix the first (only) turn. Without it, omit `--model` rather than crashing.
+ * Concrete `provider/id` still passes through.
+ */
+export function childModelFlag(agentModel: string | undefined, extraExtensions: readonly string[]): string | undefined {
+  const floor = capabilityFloor(agentModel);
+  if (floor) return loadsModelAuto(extraExtensions) ? ROUTER_MODEL : undefined;
+  const concrete = agentModel?.trim();
+  return concrete || undefined;
+}
+
+export function childPrompt(task: string, agentModel: string | undefined, extraExtensions: readonly string[]): string {
+  const body = `Task: ${task}`;
+  const floor = capabilityFloor(agentModel);
+  if (floor && loadsModelAuto(extraExtensions)) return `@${floor} ${body}`;
+  return body;
+}
+
+/** Map `--model @ultra` in a Pi argv to `pi-router/auto`, or drop the flag. */
+export function rewriteArgvModelFlag(args: string[], extraExtensions: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--model" && args[i + 1] !== undefined) {
+      const mapped = childModelFlag(args[i + 1], extraExtensions);
+      i += 1;
+      if (mapped) {
+        out.push("--model", mapped);
+      }
+      continue;
+    }
+    out.push(args[i]!);
+  }
+  return out;
+}
+
 /** Optional: @ultra / @medium need the router; --no-extensions would otherwise drop it. */
 export function modelAutoExtensionPath(): string | undefined {
   try {
     const require = createRequire(import.meta.url);
-    const pkg = require.resolve("pi-model-auto/package.json");
-    const dir = path.dirname(pkg);
-    for (const rel of ["src/index.ts", "dist/pi/extension.js", "dist/extension.js"]) {
-      const file = path.join(dir, rel);
-      if (existsSync(file)) return file;
+    try {
+      const pkg = require.resolve("pi-model-auto/package.json");
+      const dir = path.dirname(pkg);
+      for (const rel of ["src/index.ts", "dist/pi/extension.js", "dist/extension.js"]) {
+        const file = path.join(dir, rel);
+        if (existsSync(file)) return file;
+      }
+    } catch {
+      /* package.json is not in "exports"; the main entry is the extension. */
     }
+    const main = require.resolve("pi-model-auto");
+    return existsSync(main) ? main : undefined;
   } catch {
     return undefined;
   }
-  return undefined;
 }
 
 export function buildChildInvocation(input: {
@@ -74,14 +131,16 @@ export function buildChildInvocation(input: {
     "--no-session",
     "--no-extensions",
   ];
-  for (const ext of input.extraExtensions ?? []) {
+  const extra = input.extraExtensions ?? [];
+  for (const ext of extra) {
     args.push("-e", ext);
   }
-  if (input.agent.model) args.push("--model", input.agent.model);
+  const model = childModelFlag(input.agent.model, extra);
+  if (model) args.push("--model", model);
   if (input.agent.thinking) args.push("--thinking", input.agent.thinking);
   if (input.agent.tools.length > 0) args.push("--tools", input.agent.tools.join(","));
   args.push("--append-system-prompt", input.promptFile);
-  args.push(`Task: ${input.task}`);
+  args.push(childPrompt(input.task, input.agent.model, extra));
   return { command: process.execPath, args };
 }
 

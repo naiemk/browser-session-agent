@@ -97,3 +97,9 @@ Execution resources (disk, coding tools, later sqlite and a jail) without making
 ### 2026-09-05 — Phase 1 scope
 
 Idea plus additive code: scratch dir, four packaged agents, `subagent` + `/plan`, no parallel/chain, no suite change.
+
+### 2026-09-06 — @ultra is a prompt floor
+
+`--model @ultra` is not a Pi model id (Pi: "Model not found. Use --list-models"). Workers select `pi-router/auto` and prefix the first turn `@ultra` so pi-model-auto routes. The parent TUI also loads that extension and remaps a floor `--model` the same way. Concrete `provider/id` still passes through. Without the router extension, omit `--model` rather than crash.
+
+`require.resolve("pi-model-auto/package.json")` throws because the package `exports` map omits `package.json`. Resolve the main entry (`src/index.ts`) instead.

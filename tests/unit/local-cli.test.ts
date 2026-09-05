@@ -14,6 +14,7 @@ import {
   repoRootFrom,
   takeHeadless,
 } from "../../src/hosts/local-cli/launch.ts";
+import { ROUTER_MODEL, modelAutoExtensionPath } from "../../src/host/pi-subagent/spawn.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BIN = path.join(ROOT, "bin", "bsa-cli.mjs");
@@ -50,11 +51,50 @@ describe("local CLI (no VPS)", () => {
     }
     assert.equal(args.includes("--api"), false);
     assert.equal(args.some((arg) => arg.includes("trustless-commerce")), false);
+    assert.ok(
+      args.some((arg) => arg.replace(/\\/g, "/").includes("pi-model-auto")),
+      "parent TUI must load pi-model-auto so floors are not --model ids",
+    );
   });
 
   it("does not duplicate Pi flags the caller already set", () => {
     const args = buildPiArgs("/tmp/ext.ts", ["-e", "/other.ts", "-nbt", "-ns", "-nc", "--print"]);
-    assert.deepEqual(args, ["-e", "/other.ts", "-nbt", "-ns", "-nc", "--print"]);
+    assert.equal(args.filter((arg) => arg === "-nbt").length, 1);
+    assert.equal(args.filter((arg) => arg === "-ns").length, 1);
+    assert.equal(args.filter((arg) => arg === "-nc").length, 1);
+    assert.ok(args.includes("/other.ts"));
+    assert.ok(args.includes("--print"));
+  });
+
+  it("rewrites --model @ultra to pi-router/auto", () => {
+    const args = buildPiArgs("/tmp/ext.ts", ["--model", "@ultra"]);
+    assert.equal(args[args.indexOf("--model") + 1], ROUTER_MODEL);
+    assert.equal(args.includes("@ultra"), false);
+  });
+
+  it("Pi help does not fail with Model @ultra not found", async () => {
+    const router = modelAutoExtensionPath();
+    assert.ok(router);
+    const args = buildPiArgs("/tmp/unused-ext.ts", ["-e", router, "--model", "@ultra", "--help"]);
+    assert.equal(args.includes("@ultra"), false);
+    const result = await new Promise<{ code: number; out: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [piEntryPath(ROOT), ...args], {
+        cwd: ROOT,
+        env: { ...process.env, PI_OFFLINE: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let out = "";
+      child.stdout.on("data", (chunk) => {
+        out += String(chunk);
+      });
+      child.stderr.on("data", (chunk) => {
+        out += String(chunk);
+      });
+      child.on("error", reject);
+      child.on("exit", (code) => resolve({ code: code ?? 1, out }));
+    });
+    assert.doesNotMatch(result.out, /Model "@ultra" not found/);
+    assert.equal(result.code, 0);
   });
 
   it("strips --headless before forwarding to Pi", () => {

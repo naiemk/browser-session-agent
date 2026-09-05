@@ -31,7 +31,12 @@ function resolvePackageRoot(name: string): string | undefined {
     return path.dirname(pkg);
   } catch {
     try {
-      return path.dirname(require.resolve(name));
+      const main = require.resolve(name);
+      let dir = path.dirname(main);
+      if (path.basename(dir) === "src" || path.basename(dir) === "dist") {
+        dir = path.dirname(dir);
+      }
+      return dir;
     } catch {
       return undefined;
     }
