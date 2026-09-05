@@ -3,6 +3,7 @@ import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
+import { bindSubagent, CHAT_WORKER_HINT, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -115,9 +116,10 @@ export class OperatorRuntime {
       return startRun(goal, startUrl);
     };
     this.api = createExtensionApi(this.host);
-    // Commands only. The tools come from composeAgent when the session boots, so the
-    // chat runs the same agent as the CLI and the suite rather than a parallel one.
+    // Product commands, plus the worker tool. Browser tools still come from composeAgent
+    // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
+    bindSubagent(this.api, { goalId: this.evidenceGoalId });
     this.api.on("before_agent_start", () =>
       this.browserPrompt ? { systemPrompt: this.browserPrompt } : undefined,
     );
@@ -234,7 +236,9 @@ export class OperatorRuntime {
          * thinking levels, compaction and session files, which a chat needs and a bounded
          * task does not. What the agent is, and what drives it, are different questions.
          */
-        const customTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
+        const composedTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
+        const worker = this.api.tools.get(SUBAGENT_TOOL_NAME);
+        const customTools = worker ? [...composedTools, this.toPiTool(worker)] : composedTools;
         const result = await createAgentSession({
           cwd,
           agentDir,
@@ -506,7 +510,7 @@ export class OperatorRuntime {
           ),
       },
     });
-    this.browserPrompt = composed.systemPrompt;
+    this.browserPrompt = `${composed.systemPrompt}\n\n${CHAT_WORKER_HINT}`;
     this.browserTools = new Map(
       composed.tools.map((tool) => [
         (tool as { name: string }).name,

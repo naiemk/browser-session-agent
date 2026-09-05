@@ -24,3 +24,4 @@ An idea that fails the argument is marked `shelved` with the reason. Shelved is 
 | File | Status | One line |
 | --- | --- | --- |
 | [site-skills.md](./site-skills.md) | discussing | Versioned site skills, shared and obsolete-able, to cut cold-start probing |
+| [typed-workers.md](./typed-workers.md) | discussing | Scratch + typed Pi workers (plan/write/review/code); parent stays a browser operator |

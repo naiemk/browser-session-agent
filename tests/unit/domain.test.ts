@@ -228,6 +228,8 @@ describe("Pi package and extension contract", () => {
 
     assert.equal(pi.commands.has("browser-status"), true);
     assert.equal(pi.commands.has("browser-start"), true);
+    assert.equal(pi.commands.has("plan"), true);
+    assert.equal(pi.tools.has("subagent"), true);
     await runCommand(pi, "browser-status");
     assert.match(pi.notifications.at(-1) ?? "", /currentRun/);
   });
@@ -263,5 +265,6 @@ describe("Pi package and extension contract", () => {
       "appending is why the chat used to answer 'what can you do?' like a coding assistant",
     );
     assert.match(result.systemPrompt!, /You drive a real web browser/);
+    assert.match(result.systemPrompt!, /subagent tool or \/plan/);
   });
 });
