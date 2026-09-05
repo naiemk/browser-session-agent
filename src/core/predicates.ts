@@ -29,6 +29,24 @@ function includesInsensitive(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.toLowerCase());
 }
 
+/**
+ * What the page says, including what has been typed into it.
+ *
+ * `facts.text` is the body's innerText, and the value of an input is not part of it:
+ * type a name into a box and the page's text does not change, so asking whether the
+ * text you just typed is visible answers no however well the typing worked. That is a
+ * false failure with a real cost — it was one of the failures in the trace that
+ * prompted this — and it is also simply wrong, because a person looking at the screen
+ * can see it. Values come from the same snapshot the model is shown, where passwords
+ * are already redacted, so nothing secret is searchable here that was not already out.
+ */
+function readableText(facts: PageFacts): string {
+  const values = facts.observation.controls
+    .map((control) => control.value)
+    .filter((value): value is string => Boolean(value));
+  return values.length === 0 ? facts.text : `${facts.text}\n${values.join("\n")}`;
+}
+
 function matchesControl(
   facts: PageFacts,
   role: string | undefined,
@@ -93,9 +111,15 @@ export function evaluatePredicate(pred: Predicate, facts: PageFacts): CheckResul
     case "title_includes":
       return result(includesInsensitive(facts.title, pred.text), `title=${facts.title}`);
     case "text_visible":
-      return result(includesInsensitive(facts.text, pred.text), `text not found: "${pred.text}"`);
+      return result(
+        includesInsensitive(readableText(facts), pred.text),
+        `text not found: "${pred.text}"`,
+      );
     case "text_absent":
-      return result(!includesInsensitive(facts.text, pred.text), `text present: "${pred.text}"`);
+      return result(
+        !includesInsensitive(readableText(facts), pred.text),
+        `text present: "${pred.text}"`,
+      );
     case "ref_exists":
       return result(
         facts.observation.controls.some((c) => c.ref === pred.ref),
