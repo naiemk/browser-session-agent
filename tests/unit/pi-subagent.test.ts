@@ -19,8 +19,13 @@ import {
 import { discoverPackagedAgents, findAgent } from "../../src/host/pi-subagent/discover.ts";
 import {
   buildChildInvocation,
+  childModelFlag,
+  childPrompt,
+  modelAutoExtensionPath,
   parsePiJsonLine,
   piCliPath,
+  rewriteArgvModelFlag,
+  ROUTER_MODEL,
   runWorker,
   type SpawnImpl,
 } from "../../src/host/pi-subagent/spawn.ts";
@@ -140,8 +145,40 @@ describe("worker spawn isolation", () => {
     assert.ok(extFlag >= 0);
     assert.equal(invocation.args[extFlag + 1], "/opt/pi-model-auto/src/index.ts");
     assert.equal(invocation.args[invocation.args.indexOf("--tools") + 1], "read,grep,find,ls");
-    assert.equal(invocation.args[invocation.args.indexOf("--model") + 1], "@ultra");
-    assert.ok(invocation.args.includes("Task: apply to three jobs"));
+    assert.equal(invocation.args[invocation.args.indexOf("--model") + 1], ROUTER_MODEL);
+    assert.equal(invocation.args.includes("@ultra"), false);
+    assert.ok(invocation.args.includes("@ultra Task: apply to three jobs"));
+  });
+
+  it("does not pass @ultra as --model", () => {
+    assert.equal(childModelFlag("@ultra", ["/opt/pi-model-auto/src/index.ts"]), ROUTER_MODEL);
+    assert.equal(childModelFlag("@medium", []), undefined);
+    assert.equal(childModelFlag("anthropic/claude-opus-4-8", []), "anthropic/claude-opus-4-8");
+    assert.equal(
+      childPrompt("three jobs", "@ultra", ["/opt/pi-model-auto/src/index.ts"]),
+      "@ultra Task: three jobs",
+    );
+    assert.equal(childPrompt("three jobs", "@ultra", []), "Task: three jobs");
+  });
+
+  it("resolves pi-model-auto even when package.json is not exported", () => {
+    const file = modelAutoExtensionPath();
+    assert.ok(file);
+    assert.match(file.replace(/\\/g, "/"), /pi-model-auto/);
+  });
+
+  it("rewrites argv --model floors and leaves concrete ids", () => {
+    const router = ["/opt/pi-model-auto/src/index.ts"];
+    assert.deepEqual(rewriteArgvModelFlag(["--model", "@ultra", "-p"], router), [
+      "--model",
+      ROUTER_MODEL,
+      "-p",
+    ]);
+    assert.deepEqual(rewriteArgvModelFlag(["--model", "@ultra"], []), []);
+    assert.deepEqual(rewriteArgvModelFlag(["--model", "openrouter/foo"], []), [
+      "--model",
+      "openrouter/foo",
+    ]);
   });
 
   it("spawns with cwd = scratch and the isolated argv", async () => {
@@ -179,6 +216,8 @@ describe("worker spawn isolation", () => {
       calls[0]?.args.some((arg) => arg.endsWith(path.join("src", "extension.ts"))),
       false,
     );
+    assert.equal(calls[0]?.args.includes("--model"), false);
+    assert.ok(calls[0]?.args.includes("Task: three jobs"));
   });
 
   it("parses Pi JSONL assistant text", () => {
