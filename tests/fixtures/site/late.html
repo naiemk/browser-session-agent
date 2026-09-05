@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Late page</title>
+  </head>
+  <body>
+    <h1>Answers late</h1>
+
+    <!--
+      Every effect on this page lands after a delay, which is what an animating dialog,
+      a next-frame render, or a round trip look like from the outside. Read the page the
+      instant the click returns and none of them have happened yet.
+    -->
+    <button id="open" type="button">Open confirmation</button>
+    <button id="reveal" type="button">Load details</button>
+    <button id="dead" type="button">Do nothing</button>
+    <label>Notes <input id="notes" name="notes" type="text" /></label>
+
+    <div id="host"></div>
+
+    <script>
+      // Set by the fixture server from ?delay=, so a test can pick a delay that its
+      // assertion can rely on rather than racing whatever the machine happens to do.
+      const DELAY_MS = Number("{{delay}}") || 350;
+      const host = document.getElementById("host");
+
+      document.getElementById("open").addEventListener("click", () => {
+        setTimeout(() => {
+          const dialog = document.createElement("div");
+          dialog.setAttribute("role", "dialog");
+          dialog.setAttribute("aria-label", "Confirm removal");
+          dialog.id = "confirm";
+          dialog.innerHTML = '<p>Really remove it?</p><button id="dismiss" type="button">Dismiss</button>';
+          host.appendChild(dialog);
+          document.getElementById("dismiss").addEventListener("click", () => {
+            setTimeout(() => dialog.remove(), DELAY_MS);
+          });
+        }, DELAY_MS);
+      });
+
+      document.getElementById("reveal").addEventListener("click", () => {
+        setTimeout(() => {
+          const next = document.createElement("button");
+          next.type = "button";
+          next.textContent = "Continue";
+          next.id = "continue";
+          host.appendChild(next);
+        }, DELAY_MS);
+      });
+    </script>
+  </body>
+</html>

@@ -70,6 +70,7 @@ Append, never rewrite.
 | Date | Change | Effect | Notes |
 | --- | --- | --- | --- |
 | 2026-09-04 | Instrumentation, view seam, prune by payload shape, unique delta keys | Baseline established at 2,569 B of context per task across 29 mock tasks | First measurement. The two fixes below were made because they are defects, not because a number asked for them. |
+| 2026-09-05 | Settle a failing verdict before believing it | No notable change against the baseline | Expected, and the reason it is worth logging. A pass still costs one read, so the structural numbers cannot move; what moves is on real pages, where a false failure used to buy a retry and retries are turns. The wait costs latency and no tokens, which on a run already 75% idle is the cheap side of the trade. |
 
 ### What the first measurement found
 

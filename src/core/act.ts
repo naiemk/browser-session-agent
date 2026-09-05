@@ -8,6 +8,7 @@
 
 import { visibleText } from "./perceive.ts";
 import { evaluatePredicate, verify } from "./predicates.ts";
+import { describeVerification, settleVerification, DEFAULT_SETTLE_MS } from "./settle.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { LedgerSink } from "./ledger.ts";
 import { classifyAction, type Classification } from "./reversibility.ts";
@@ -33,6 +34,11 @@ export interface ActOptions {
   /** When set, every action is traced: intent, before, action, after, outcome. */
   ledger?: LedgerSink;
   entityId?: string;
+  /**
+   * How long a failing postcondition is given to become true before it is believed.
+   * Zero means judge the first look, which is only useful for proving the race exists.
+   */
+  settleMs?: number;
 }
 
 export const MAX_RECOVERY_CHARS = 600;
@@ -98,10 +104,14 @@ export async function act(
     }
   }
 
-  const facts = await browser.facts(request.tabId);
-  const verification = request.expect
-    ? verify([request.expect], facts)
-    : defaultPostcondition(request, before, facts, control);
+  const { facts, verification } = await settleVerification(
+    browser,
+    (settled) =>
+      request.expect
+        ? verify([request.expect], settled)
+        : defaultPostcondition(request, before, settled, control),
+    { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
+  );
 
   const result: ActionResult = {
     ok: verification.status === "passed",
@@ -142,7 +152,7 @@ export async function act(
     },
     outcome: {
       ok: result.ok,
-      detail: verification.checks.map((check) => `${check.predicate}: ${check.detail}`).join("; "),
+      detail: describeVerification(verification),
     },
     payload: result.failure ? { failure: result.failure } : undefined,
     artifacts: result.failure?.screenshot ? [result.failure.screenshot] : undefined,
@@ -234,9 +244,14 @@ async function buildFailure(
   options: ActOptions,
 ): Promise<FailureBundle> {
   const failed = verification.checks.filter((check) => !check.passed);
-  const recovery = (
+  const detail =
     failed.map((check) => check.detail).join(" | ") ||
-    `action did not meet expectations at ${facts.url}`
+    `action did not meet expectations at ${facts.url}`;
+  // How long we waited belongs in the recovery text: "has not happened yet" and "is not
+  // going to happen" read identically without it, and they call for different next moves.
+  const waited = verification.waitedMs ?? 0;
+  const recovery = (
+    waited > 0 ? `${detail} (still failing ${waited}ms after the action)` : detail
   ).slice(0, MAX_RECOVERY_CHARS);
 
   let screenshot: string | undefined;
@@ -256,15 +271,31 @@ async function buildFailure(
   };
 }
 
-/** Evaluate a predicate against the live page without mutating anything. */
+/**
+ * Evaluate a predicate against the live page without mutating anything.
+ *
+ * Settles like a postcondition does, for the same reason: a check issued straight after
+ * something asynchronous would otherwise report the page as it was a moment ago. An
+ * assertion that is genuinely false pays the full wait, which costs latency and no
+ * tokens — the cheaper of the two ways to be wrong.
+ */
 export async function check(
   browser: BrowserPort,
   predicate: Predicate,
   tabId?: string,
+  settleMs = DEFAULT_SETTLE_MS,
 ): Promise<Verification> {
-  const facts = await browser.facts(tabId);
-  const result = evaluatePredicate(predicate, facts);
-  return { status: result.passed ? "passed" : "failed", checks: [result] };
+  const { verification } = await settleVerification(
+    browser,
+    (facts) => {
+      const result = evaluatePredicate(predicate, facts);
+      return { status: result.passed ? "passed" : "failed", checks: [result] };
+    },
+    // No `since`: predicates read the page, never what changed on it, so a check stays
+    // at one read on the happy path.
+    { tabId, budgetMs: settleMs },
+  );
+  return verification;
 }
 
 export { visibleText };

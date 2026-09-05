@@ -93,6 +93,26 @@ run from the ledger, which is the only way to see procedure at all. A page canno
 difference between an agent that weighed two readings and one that guessed, since both end
 up somewhere valid.
 
+## Believing a "no"
+
+Every verdict about a page — an action's postcondition, the task oracle, a standalone
+check — goes through `settleVerification` in [src/core/settle.ts](../src/core/settle.ts).
+It reads once and, only if the answer is no, keeps reading with a growing backoff until a
+bounded budget is spent. A pass is final immediately, so the happy path is one read and
+costs nothing extra; a failure is provisional, because a page that has not answered yet
+looks exactly like a page that never will (D50).
+
+The verdict carries `waitedMs` and `samples`, and the ledger line says either "settled
+after 300ms" or "still failing after 1500ms". That distinction is the point: a failure
+that survived the window is worth replanning around, and one taken instantly is usually
+just impatience. `ActOptions.settleMs` sets the budget, and zero means judge the first
+look — used in tests to prove the race is real rather than to run anything that way.
+
+Because the page may be read more than once, the delta reported by an action is measured
+from the observation taken before it, not from whatever the port last saw. And a read
+that throws counts as "not yet": mid-navigation the execution context is torn down, and
+that says something about when we asked, not about whether the click worked.
+
 ## When the model says no
 
 A model that answers in prose and calls no tools is otherwise indistinguishable from a task
