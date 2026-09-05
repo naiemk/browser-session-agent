@@ -18,6 +18,7 @@ import type { LedgerSink } from "./ledger.ts";
 import { ensureGoalDirs, goalPaths, type GoalPaths } from "./paths.ts";
 import { parsePredicate, verify } from "./predicates.ts";
 import { redactDeep } from "./redact.ts";
+import { describeVerification, settleVerification } from "./settle.ts";
 import {
   CoreError,
   type Predicate,
@@ -141,6 +142,8 @@ export interface ResolveOptions {
   tabId?: string;
   /** Set when the turn cap stopped the task rather than the task finishing. */
   capped?: boolean;
+  /** How long the criteria are given to come true. Defaults to the settle budget. */
+  settleMs?: number;
 }
 
 export interface TaskResolution {
@@ -161,8 +164,15 @@ export async function resolveTaskOutcome(
   options: ResolveOptions = {},
 ): Promise<TaskResolution> {
   const record = await store.require(taskId);
-  const facts = await browser.facts(options.tabId);
-  const verification = verify(record.criteria, facts);
+  // The oracle settles like any other verdict, and it matters most here: this is the
+  // one judgement that decides whether the whole task succeeded, and it is taken the
+  // instant the executor stops, which is exactly when the last action may still be
+  // landing.
+  const { facts, verification } = await settleVerification(
+    browser,
+    (settled) => verify(record.criteria, settled),
+    { tabId: options.tabId, budgetMs: options.settleMs },
+  );
 
   const outcome: TaskOutcome =
     verification.status === "passed"
@@ -206,11 +216,20 @@ function summarize(verification: Verification): string {
 export async function stepCheck(
   browser: BrowserPort,
   rawPredicate: unknown,
-  options: { ledger?: LedgerSink; entityId?: string; intent?: string; tabId?: string } = {},
+  options: {
+    ledger?: LedgerSink;
+    entityId?: string;
+    intent?: string;
+    tabId?: string;
+    settleMs?: number;
+  } = {},
 ): Promise<Verification> {
   const predicate = parsePredicate(rawPredicate);
-  const facts = await browser.facts(options.tabId);
-  const verification = verify([predicate], facts);
+  const { facts, verification } = await settleVerification(
+    browser,
+    (settled) => verify([predicate], settled),
+    { tabId: options.tabId, budgetMs: options.settleMs },
+  );
 
   await options.ledger?.append({
     type: "check",
@@ -219,7 +238,7 @@ export async function stepCheck(
     after: { url: facts.url, title: facts.title, changes: facts.observation.changes },
     outcome: {
       ok: verification.status === "passed",
-      detail: verification.checks.map((check) => `${check.predicate}: ${check.detail}`).join("; "),
+      detail: describeVerification(verification),
     },
   });
 

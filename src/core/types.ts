@@ -80,6 +80,16 @@ export interface CheckResult {
 export interface Verification {
   status: "passed" | "failed";
   checks: CheckResult[];
+  /**
+   * How long the page was given to settle before this verdict was final.
+   *
+   * Absent when the first look answered it. Present and non-zero means the first look
+   * said no and we kept asking, which is the difference between "this failed" and "this
+   * had not happened yet".
+   */
+  waitedMs?: number;
+  /** How many times the page was read to reach the verdict. */
+  samples?: number;
 }
 
 export type ActionKind =
