@@ -11,6 +11,7 @@ describe("collapseAccessibleName", () => {
     ["Submit application", "Submit application"],
     ["  SearchSearch  ", "Search"],
     ["NavNavItem", "Nav Item"],
+    ["follower37", "follower37"],
   ];
   for (const [input, expected] of cases) {
     it(`${JSON.stringify(input)} → ${JSON.stringify(expected)}`, () => {

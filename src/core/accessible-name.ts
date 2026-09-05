@@ -18,33 +18,22 @@ function collapseRepeatedHalves(value: string): string {
   return current;
 }
 
-function tokenizeName(value: string): string[] {
-  const tokens: string[] = [];
-  for (const part of value.split(/\s+/)) {
-    const bits = part.split(
-      /(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=\D)(?=\d)|(?<=\d)(?=[A-Za-z])/,
-    );
-    tokens.push(...bits.filter(Boolean));
-  }
-  return tokens;
+function tokenizeCamel(value: string): string[] {
+  return value.split(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/).filter(Boolean);
 }
 
 export function collapseAccessibleName(name: string): string {
   const trimmed = name.trim().replace(/\s+/g, " ");
   if (!trimmed) return "";
   const halved = collapseRepeatedHalves(trimmed);
-  const tokens = tokenizeName(halved);
+  const aroundDigit = halved.match(/^([A-Za-z]+)(\d+)\1$/i);
+  if (aroundDigit) return `${aroundDigit[1]} ${aroundDigit[2]}`;
+  const tokens = tokenizeCamel(halved);
   const out: string[] = [];
   for (const token of tokens) {
     const previous = out[out.length - 1];
     if (previous && previous.toLowerCase() === token.toLowerCase()) continue;
     out.push(token);
-  }
-  if (
-    out.length >= 3 &&
-    out[0]!.toLowerCase() === out[out.length - 1]!.toLowerCase()
-  ) {
-    out.pop();
   }
   return out.join(" ");
 }
