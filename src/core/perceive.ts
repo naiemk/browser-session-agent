@@ -246,9 +246,27 @@ export interface PerceiveContext {
   failedRequests?: string[];
 }
 
-export async function perceive(page: Page, context: PerceiveContext): Promise<Observation> {
+/**
+ * A chance to drop controls the page is carrying but the agent cannot act on.
+ *
+ * Runs before the budget, and that ordering is the whole value of it. A control buried
+ * under an open modal which keeps its slot in an 80-control cap has taken that slot from
+ * something clickable, so filtering afterwards would fix what the model is shown without
+ * fixing what it is shown *instead*.
+ */
+export type ControlFilter = (controls: Control[], page: Page) => Promise<Control[]>;
+
+export async function perceive(
+  page: Page,
+  context: PerceiveContext,
+  filter?: ControlFilter,
+): Promise<Observation> {
   const collected = (await page.evaluate(COLLECT)) as Collected;
-  const { controls, truncated } = compactControls(collected.controls);
+  // Everything downstream counts, diffs and ranks what is present, not what was found: a
+  // control we are deliberately not offering should not appear in the delta, and should
+  // not inflate the remainder the model is told about.
+  const present = filter ? await filter(collected.controls, page) : collected.controls;
+  const { controls, truncated } = compactControls(present);
   return {
     id: shortId("obs"),
     tabId: context.tabId,
@@ -259,9 +277,9 @@ export async function perceive(page: Page, context: PerceiveContext): Promise<Ob
     errors: dedupe(collected.errors),
     consoleErrors: (context.consoleErrors ?? []).slice(-8),
     failedRequests: (context.failedRequests ?? []).slice(-8),
-    changes: diffControls(context.previous?.controls, collected.controls),
+    changes: diffControls(context.previous?.controls, present),
     truncated: truncated || undefined,
-    totalControls: collected.controls.length,
+    totalControls: present.length,
     capturedAt: new Date().toISOString(),
   };
 }
