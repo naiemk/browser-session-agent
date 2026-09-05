@@ -1,0 +1,412 @@
+{
+  "perceiver": "lean",
+  "path": "/nav-shell",
+  "totalControls": 89,
+  "offered": 80,
+  "dropped": {
+    "containment": 0,
+    "occlusion": 4
+  },
+  "controls": [
+    {
+      "ref": "e1",
+      "role": "a",
+      "name": "Home"
+    },
+    {
+      "ref": "e2",
+      "role": "a",
+      "name": "Inbox"
+    },
+    {
+      "ref": "e3",
+      "role": "a",
+      "name": "Calendar"
+    },
+    {
+      "ref": "e4",
+      "role": "a",
+      "name": "Search"
+    },
+    {
+      "ref": "e5",
+      "role": "a",
+      "name": "Help"
+    },
+    {
+      "ref": "e6",
+      "role": "a",
+      "name": "Settings"
+    },
+    {
+      "ref": "e7",
+      "role": "a",
+      "name": "Workspace 1"
+    },
+    {
+      "ref": "e8",
+      "role": "a",
+      "name": "Workspace 2"
+    },
+    {
+      "ref": "e9",
+      "role": "a",
+      "name": "Workspace 3"
+    },
+    {
+      "ref": "e10",
+      "role": "a",
+      "name": "Workspace 4"
+    },
+    {
+      "ref": "e11",
+      "role": "a",
+      "name": "Workspace 5"
+    },
+    {
+      "ref": "e12",
+      "role": "a",
+      "name": "Workspace 6"
+    },
+    {
+      "ref": "e13",
+      "role": "a",
+      "name": "Workspace 7"
+    },
+    {
+      "ref": "e14",
+      "role": "a",
+      "name": "Workspace 8"
+    },
+    {
+      "ref": "e15",
+      "role": "a",
+      "name": "Workspace 9"
+    },
+    {
+      "ref": "e16",
+      "role": "a",
+      "name": "Workspace 10"
+    },
+    {
+      "ref": "e17",
+      "role": "a",
+      "name": "Workspace 11"
+    },
+    {
+      "ref": "e18",
+      "role": "a",
+      "name": "Workspace 12"
+    },
+    {
+      "ref": "e19",
+      "role": "a",
+      "name": "Workspace 13"
+    },
+    {
+      "ref": "e21",
+      "role": "a",
+      "name": "Workspace 15"
+    },
+    {
+      "ref": "e22",
+      "role": "a",
+      "name": "Workspace 16"
+    },
+    {
+      "ref": "e23",
+      "role": "a",
+      "name": "Workspace 17"
+    },
+    {
+      "ref": "e24",
+      "role": "a",
+      "name": "Workspace 18"
+    },
+    {
+      "ref": "e25",
+      "role": "a",
+      "name": "Workspace 19"
+    },
+    {
+      "ref": "e26",
+      "role": "a",
+      "name": "Workspace 20"
+    },
+    {
+      "ref": "e27",
+      "role": "a",
+      "name": "Workspace 21"
+    },
+    {
+      "ref": "e28",
+      "role": "a",
+      "name": "Workspace 22"
+    },
+    {
+      "ref": "e29",
+      "role": "a",
+      "name": "Workspace 23"
+    },
+    {
+      "ref": "e30",
+      "role": "a",
+      "name": "Workspace 24"
+    },
+    {
+      "ref": "e31",
+      "role": "a",
+      "name": "Workspace 25"
+    },
+    {
+      "ref": "e32",
+      "role": "a",
+      "name": "Workspace 26"
+    },
+    {
+      "ref": "e34",
+      "role": "a",
+      "name": "Workspace 28"
+    },
+    {
+      "ref": "e35",
+      "role": "a",
+      "name": "Workspace 29"
+    },
+    {
+      "ref": "e36",
+      "role": "a",
+      "name": "Workspace 30"
+    },
+    {
+      "ref": "e37",
+      "role": "a",
+      "name": "Workspace 31"
+    },
+    {
+      "ref": "e38",
+      "role": "a",
+      "name": "Workspace 32"
+    },
+    {
+      "ref": "e39",
+      "role": "a",
+      "name": "Workspace 33"
+    },
+    {
+      "ref": "e40",
+      "role": "a",
+      "name": "Workspace 34"
+    },
+    {
+      "ref": "e41",
+      "role": "a",
+      "name": "Workspace 35"
+    },
+    {
+      "ref": "e42",
+      "role": "a",
+      "name": "Workspace 36"
+    },
+    {
+      "ref": "e43",
+      "role": "a",
+      "name": "Workspace 37"
+    },
+    {
+      "ref": "e44",
+      "role": "a",
+      "name": "Workspace 38"
+    },
+    {
+      "ref": "e45",
+      "role": "a",
+      "name": "Workspace 39"
+    },
+    {
+      "ref": "e47",
+      "role": "a",
+      "name": "Workspace 41"
+    },
+    {
+      "ref": "e48",
+      "role": "a",
+      "name": "Workspace 42"
+    },
+    {
+      "ref": "e49",
+      "role": "a",
+      "name": "Workspace 43"
+    },
+    {
+      "ref": "e50",
+      "role": "a",
+      "name": "Workspace 44"
+    },
+    {
+      "ref": "e51",
+      "role": "a",
+      "name": "Workspace 45"
+    },
+    {
+      "ref": "e52",
+      "role": "a",
+      "name": "Workspace 46"
+    },
+    {
+      "ref": "e53",
+      "role": "a",
+      "name": "Workspace 47"
+    },
+    {
+      "ref": "e54",
+      "role": "a",
+      "name": "Workspace 48"
+    },
+    {
+      "ref": "e55",
+      "role": "a",
+      "name": "Workspace 49"
+    },
+    {
+      "ref": "e56",
+      "role": "a",
+      "name": "Workspace 50"
+    },
+    {
+      "ref": "e57",
+      "role": "a",
+      "name": "Workspace 51"
+    },
+    {
+      "ref": "e58",
+      "role": "a",
+      "name": "Workspace 52"
+    },
+    {
+      "ref": "e60",
+      "role": "a",
+      "name": "Workspace 54"
+    },
+    {
+      "ref": "e61",
+      "role": "a",
+      "name": "Workspace 55"
+    },
+    {
+      "ref": "e62",
+      "role": "a",
+      "name": "Workspace 56"
+    },
+    {
+      "ref": "e63",
+      "role": "a",
+      "name": "Workspace 57"
+    },
+    {
+      "ref": "e64",
+      "role": "a",
+      "name": "Workspace 58"
+    },
+    {
+      "ref": "e65",
+      "role": "a",
+      "name": "Workspace 59"
+    },
+    {
+      "ref": "e66",
+      "role": "a",
+      "name": "Workspace 60"
+    },
+    {
+      "ref": "e67",
+      "role": "text",
+      "name": "Title"
+    },
+    {
+      "ref": "e68",
+      "role": "textbox",
+      "name": "Notes"
+    },
+    {
+      "ref": "e69",
+      "role": "submit",
+      "name": "Save report"
+    },
+    {
+      "ref": "e70",
+      "role": "a",
+      "name": "Footer 1"
+    },
+    {
+      "ref": "e71",
+      "role": "a",
+      "name": "Footer 2"
+    },
+    {
+      "ref": "e72",
+      "role": "a",
+      "name": "Footer 3"
+    },
+    {
+      "ref": "e73",
+      "role": "a",
+      "name": "Footer 4"
+    },
+    {
+      "ref": "e74",
+      "role": "a",
+      "name": "Footer 5"
+    },
+    {
+      "ref": "e75",
+      "role": "a",
+      "name": "Footer 6"
+    },
+    {
+      "ref": "e76",
+      "role": "a",
+      "name": "Footer 7"
+    },
+    {
+      "ref": "e77",
+      "role": "a",
+      "name": "Footer 8"
+    },
+    {
+      "ref": "e78",
+      "role": "a",
+      "name": "Footer 9"
+    },
+    {
+      "ref": "e79",
+      "role": "a",
+      "name": "Footer 10"
+    },
+    {
+      "ref": "e80",
+      "role": "a",
+      "name": "Footer 11"
+    },
+    {
+      "ref": "e81",
+      "role": "a",
+      "name": "Footer 12"
+    },
+    {
+      "ref": "e82",
+      "role": "a",
+      "name": "Footer 13"
+    },
+    {
+      "ref": "e83",
+      "role": "a",
+      "name": "Footer 14"
+    },
+    {
+      "ref": "e84",
+      "role": "a",
+      "name": "Footer 15"
+    }
+  ]
+}

@@ -279,7 +279,10 @@ export async function perceive(
     failedRequests: (context.failedRequests ?? []).slice(-8),
     changes: diffControls(context.previous?.controls, present),
     truncated: truncated || undefined,
-    totalControls: present.length,
+    // The page, not the filtered list: a buried control still exists, and the remainder
+    // the model is told has to count it. Filtering decides what is offered, not what was
+    // there.
+    totalControls: collected.controls.length,
     capturedAt: new Date().toISOString(),
   };
 }

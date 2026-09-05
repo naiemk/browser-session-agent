@@ -1,0 +1,17 @@
+This product includes algorithms transcribed from browser-use
+(https://github.com/browser-use/browser-use), MIT License,
+Copyright (c) 2024 Gregor Zunic.
+
+The transcribed sources, with the upstream commit recorded in each file header, are:
+
+  src/core/perception/containment.ts
+    from browser_use/dom/serializer/serializer.py at cfe10a2
+      DEFAULT_CONTAINMENT_THRESHOLD, PROPAGATING_ELEMENTS, _is_contained,
+      and the five exception rules that keep a contained child.
+
+  src/core/perception/occlusion.ts
+    from browser_use/dom/serializer/paint_order.py at cfe10a2
+      the question (is this control covered?), answered here by a native
+      hit test rather than their paint-order rectangle union.
+
+The rest of the perception pipeline — collection, refs, ranking — is original.

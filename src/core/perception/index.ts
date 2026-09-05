@@ -22,6 +22,7 @@
 import type { Locator, Page } from "playwright";
 import type { PerceiveContext } from "../perceive.ts";
 import type { Observation } from "../types.ts";
+import { leanPerceiver } from "./lean.ts";
 import { referencePerceiver } from "./reference.ts";
 
 /**
@@ -56,7 +57,7 @@ export interface Perceiver {
   locate(page: Page, ref: string): Locator;
 }
 
-export { referencePerceiver };
+export { leanPerceiver, referencePerceiver };
 
 /**
  * The perceivers a run can choose between, by name.
@@ -66,6 +67,7 @@ export { referencePerceiver };
  */
 export const PERCEIVERS: Record<string, Perceiver> = {
   [referencePerceiver.name]: referencePerceiver,
+  [leanPerceiver.name]: leanPerceiver,
 };
 
 export const DEFAULT_PERCEIVER: Perceiver = referencePerceiver;

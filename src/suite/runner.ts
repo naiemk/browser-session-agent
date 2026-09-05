@@ -8,6 +8,7 @@
  */
 
 import { LocalBrowser, type BrowserPort } from "../core/browser.ts";
+import type { Perceiver } from "../core/perception/index.ts";
 import { Ledger } from "../core/ledger.ts";
 import { verify } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
@@ -59,6 +60,8 @@ export interface RunSuiteOptions {
    * The suite must measure the agent, not the rate limiter.
    */
   pauseMs?: number;
+  /** Which perception to measure. Default is the reference collector. */
+  perceiver?: Perceiver;
 }
 
 export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
@@ -68,7 +71,9 @@ export async function runSuite(options: RunSuiteOptions): Promise<SuiteReport> {
     : options.tasks;
 
   const ownBrowser = !options.browser;
-  const browser = options.browser ?? (await LocalBrowser.launch({ headless: options.headless ?? true }));
+  const browser =
+    options.browser ??
+    (await LocalBrowser.launch({ headless: options.headless ?? true, perceiver: options.perceiver }));
   const runs: TaskRun[] = [];
 
   try {

@@ -29,8 +29,9 @@ export const referencePerceiver: Perceiver = {
     frames: false,
   },
 
-  observe(page: Page, context: PerceiveContext): Promise<Observation> {
-    return perceive(page, context);
+  async observe(page: Page, context: PerceiveContext): Promise<Observation> {
+    const observation = await perceive(page, context);
+    return { ...observation, perception: { perceiver: "reference", dropped: {} } };
   },
 
   text(page: Page): Promise<string> {

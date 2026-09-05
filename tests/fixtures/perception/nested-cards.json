@@ -1,0 +1,412 @@
+{
+  "perceiver": "lean",
+  "path": "/nested-cards",
+  "totalControls": 180,
+  "offered": 80,
+  "dropped": {
+    "containment": 90,
+    "occlusion": 0
+  },
+  "controls": [
+    {
+      "ref": "e1",
+      "role": "a",
+      "name": "card1"
+    },
+    {
+      "ref": "e3",
+      "role": "a",
+      "name": "card2"
+    },
+    {
+      "ref": "e5",
+      "role": "a",
+      "name": "card3"
+    },
+    {
+      "ref": "e7",
+      "role": "a",
+      "name": "card4"
+    },
+    {
+      "ref": "e9",
+      "role": "a",
+      "name": "card5"
+    },
+    {
+      "ref": "e11",
+      "role": "a",
+      "name": "card6"
+    },
+    {
+      "ref": "e13",
+      "role": "a",
+      "name": "card7"
+    },
+    {
+      "ref": "e15",
+      "role": "a",
+      "name": "card8"
+    },
+    {
+      "ref": "e17",
+      "role": "a",
+      "name": "card9"
+    },
+    {
+      "ref": "e19",
+      "role": "a",
+      "name": "card10"
+    },
+    {
+      "ref": "e21",
+      "role": "a",
+      "name": "card11"
+    },
+    {
+      "ref": "e23",
+      "role": "a",
+      "name": "card12"
+    },
+    {
+      "ref": "e25",
+      "role": "a",
+      "name": "card13"
+    },
+    {
+      "ref": "e27",
+      "role": "a",
+      "name": "card14"
+    },
+    {
+      "ref": "e29",
+      "role": "a",
+      "name": "card15"
+    },
+    {
+      "ref": "e31",
+      "role": "a",
+      "name": "card16"
+    },
+    {
+      "ref": "e33",
+      "role": "a",
+      "name": "card17"
+    },
+    {
+      "ref": "e35",
+      "role": "a",
+      "name": "card18"
+    },
+    {
+      "ref": "e37",
+      "role": "a",
+      "name": "card19"
+    },
+    {
+      "ref": "e39",
+      "role": "a",
+      "name": "card20"
+    },
+    {
+      "ref": "e41",
+      "role": "a",
+      "name": "card21"
+    },
+    {
+      "ref": "e43",
+      "role": "a",
+      "name": "card22"
+    },
+    {
+      "ref": "e45",
+      "role": "a",
+      "name": "card23"
+    },
+    {
+      "ref": "e47",
+      "role": "a",
+      "name": "card24"
+    },
+    {
+      "ref": "e49",
+      "role": "a",
+      "name": "card25"
+    },
+    {
+      "ref": "e51",
+      "role": "a",
+      "name": "card26"
+    },
+    {
+      "ref": "e53",
+      "role": "a",
+      "name": "card27"
+    },
+    {
+      "ref": "e55",
+      "role": "a",
+      "name": "card28"
+    },
+    {
+      "ref": "e57",
+      "role": "a",
+      "name": "card29"
+    },
+    {
+      "ref": "e59",
+      "role": "a",
+      "name": "card30"
+    },
+    {
+      "ref": "e61",
+      "role": "a",
+      "name": "card31"
+    },
+    {
+      "ref": "e63",
+      "role": "a",
+      "name": "card32"
+    },
+    {
+      "ref": "e65",
+      "role": "a",
+      "name": "card33"
+    },
+    {
+      "ref": "e67",
+      "role": "a",
+      "name": "card34"
+    },
+    {
+      "ref": "e69",
+      "role": "a",
+      "name": "card35"
+    },
+    {
+      "ref": "e71",
+      "role": "a",
+      "name": "card36"
+    },
+    {
+      "ref": "e73",
+      "role": "a",
+      "name": "card37"
+    },
+    {
+      "ref": "e75",
+      "role": "a",
+      "name": "card38"
+    },
+    {
+      "ref": "e77",
+      "role": "a",
+      "name": "card39"
+    },
+    {
+      "ref": "e79",
+      "role": "a",
+      "name": "card40"
+    },
+    {
+      "ref": "e81",
+      "role": "a",
+      "name": "card41"
+    },
+    {
+      "ref": "e83",
+      "role": "a",
+      "name": "card42"
+    },
+    {
+      "ref": "e85",
+      "role": "a",
+      "name": "card43"
+    },
+    {
+      "ref": "e87",
+      "role": "a",
+      "name": "card44"
+    },
+    {
+      "ref": "e89",
+      "role": "a",
+      "name": "card45"
+    },
+    {
+      "ref": "e91",
+      "role": "a",
+      "name": "card46"
+    },
+    {
+      "ref": "e93",
+      "role": "a",
+      "name": "card47"
+    },
+    {
+      "ref": "e95",
+      "role": "a",
+      "name": "card48"
+    },
+    {
+      "ref": "e97",
+      "role": "a",
+      "name": "card49"
+    },
+    {
+      "ref": "e99",
+      "role": "a",
+      "name": "card50"
+    },
+    {
+      "ref": "e101",
+      "role": "a",
+      "name": "card51"
+    },
+    {
+      "ref": "e103",
+      "role": "a",
+      "name": "card52"
+    },
+    {
+      "ref": "e105",
+      "role": "a",
+      "name": "card53"
+    },
+    {
+      "ref": "e107",
+      "role": "a",
+      "name": "card54"
+    },
+    {
+      "ref": "e109",
+      "role": "a",
+      "name": "card55"
+    },
+    {
+      "ref": "e111",
+      "role": "a",
+      "name": "card56"
+    },
+    {
+      "ref": "e113",
+      "role": "a",
+      "name": "card57"
+    },
+    {
+      "ref": "e115",
+      "role": "a",
+      "name": "card58"
+    },
+    {
+      "ref": "e117",
+      "role": "a",
+      "name": "card59"
+    },
+    {
+      "ref": "e119",
+      "role": "a",
+      "name": "card60"
+    },
+    {
+      "ref": "e121",
+      "role": "a",
+      "name": "card61"
+    },
+    {
+      "ref": "e123",
+      "role": "a",
+      "name": "card62"
+    },
+    {
+      "ref": "e125",
+      "role": "a",
+      "name": "card63"
+    },
+    {
+      "ref": "e127",
+      "role": "a",
+      "name": "card64"
+    },
+    {
+      "ref": "e129",
+      "role": "a",
+      "name": "card65"
+    },
+    {
+      "ref": "e131",
+      "role": "a",
+      "name": "card66"
+    },
+    {
+      "ref": "e133",
+      "role": "a",
+      "name": "card67"
+    },
+    {
+      "ref": "e135",
+      "role": "a",
+      "name": "card68"
+    },
+    {
+      "ref": "e137",
+      "role": "a",
+      "name": "card69"
+    },
+    {
+      "ref": "e139",
+      "role": "a",
+      "name": "card70"
+    },
+    {
+      "ref": "e141",
+      "role": "a",
+      "name": "card71"
+    },
+    {
+      "ref": "e143",
+      "role": "a",
+      "name": "card72"
+    },
+    {
+      "ref": "e145",
+      "role": "a",
+      "name": "card73"
+    },
+    {
+      "ref": "e147",
+      "role": "a",
+      "name": "card74"
+    },
+    {
+      "ref": "e149",
+      "role": "a",
+      "name": "card75"
+    },
+    {
+      "ref": "e151",
+      "role": "a",
+      "name": "card76"
+    },
+    {
+      "ref": "e153",
+      "role": "a",
+      "name": "card77"
+    },
+    {
+      "ref": "e155",
+      "role": "a",
+      "name": "card78"
+    },
+    {
+      "ref": "e157",
+      "role": "a",
+      "name": "card79"
+    },
+    {
+      "ref": "e159",
+      "role": "a",
+      "name": "card80"
+    }
+  ]
+}

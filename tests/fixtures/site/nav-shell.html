@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Application shell</title>
+  </head>
+  <body>
+    <!--
+      A nav-heavy shell past the control cap. The furniture is the site; the form is why
+      anyone opened the page. Below the cap nothing is ranked, so this page exists to make
+      ranking visible to the suite the way a real application already is to a person.
+    -->
+    <header>
+      <a href="/">Home</a>
+      <a href="/inbox">Inbox</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/search">Search</a>
+      <a href="/help">Help</a>
+      <a href="/settings">Settings</a>
+    </header>
+    <nav id="sidebar"></nav>
+    <main>
+      <h1>New report</h1>
+      <form id="report">
+        <label>Title <input name="title" type="text" required /></label>
+        <label>Notes <textarea name="notes"></textarea></label>
+        <button type="submit">Save report</button>
+      </form>
+      <p id="status" hidden></p>
+    </main>
+    <footer id="footer"></footer>
+    <script>
+      const sidebar = document.getElementById("sidebar");
+      for (let index = 1; index <= 60; index += 1) {
+        const link = document.createElement("a");
+        link.href = "/s/" + index;
+        link.textContent = "Workspace " + index;
+        sidebar.appendChild(link);
+      }
+      // 60 workspaces: 6 header + 60 nav + 3 form + 20 footer = 89, past the cap.
+      const footer = document.getElementById("footer");
+      for (let index = 1; index <= 20; index += 1) {
+        const link = document.createElement("a");
+        link.href = "/f/" + index;
+        link.textContent = "Footer " + index;
+        footer.appendChild(link);
+      }
+      document.getElementById("report").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const title = document.querySelector("input[name=title]").value;
+        const status = document.getElementById("status");
+        status.hidden = false;
+        status.textContent = "Saved " + title;
+      });
+    </script>
+  </body>
+</html>

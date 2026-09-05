@@ -79,6 +79,14 @@ export interface SuiteTask {
    * which is what stops us measuring agents against impossible tasks.
    */
   reference: ReferenceStep[];
+  /**
+   * When set, this task is only selected if the suite is running that perceiver.
+   *
+   * A page that is only solvable once buried controls are dropped cannot be in the
+   * default set: the default perceiver would fail it, and a failing default is a
+   * broken scoreboard, not a measurement.
+   */
+  perceiver?: string;
 }
 
 export type TaskOutcomeKind = "passed" | "failed" | "capped" | "error";

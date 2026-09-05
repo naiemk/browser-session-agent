@@ -72,6 +72,7 @@ Append, never rewrite.
 | 2026-09-04 | Instrumentation, view seam, prune by payload shape, unique delta keys | Baseline established at 2,569 B of context per task across 29 mock tasks | First measurement. The two fixes below were made because they are defects, not because a number asked for them. |
 | 2026-09-05 | Settle a failing verdict before believing it | No notable change against the baseline | Expected, and the reason it is worth logging. A pass still costs one read, so the structural numbers cannot move; what moves is on real pages, where a false failure used to buy a retry and retries are turns. The wait costs latency and no tokens, which on a run already 75% idle is the cheap side of the trade. |
 | 2026-09-05 | Control lists as a table; ranked control budget; refs that survive; fewer instructed round trips; compaction at sub-goal boundaries | Tool result bytes per task 1,722 → 1,359 (-21.1%). Card 2,749 → 3,009 B, tool schemas 5,834 → 5,936 B, both resent per turn | A net loss **on this suite** and expected to be a clear win on real pages. See below. |
+| 2026-09-05 | Perception seam; lean candidate (occlusion + containment) | Fixture suite: structural numbers unchanged. Corpus: a follower dialog at 99 controls, reference offered 80 and could not put follower37 on the wire; lean offered 48 and could, having dropped 51 buried under the backdrop. Nested cards: 90 contained listboxes dropped. | The mock suite cannot see this. The corpus can, and is now a suite task (`nav-shell-save`) plus a lean-gated one (`followers-under-dialog`). |
 
 ### Why the suite says one thing and the run will say another
 
@@ -140,6 +141,12 @@ The aria-snapshot strategy, repetition collapse, diff-only reads, and extraction
 traversal. Each is a candidate behind the seam, to land with a before and after in the log
 above.
 
-Also missing, and the gap that matters most: a suite task with more than one sub-goal, and
-a task on a page crowded enough to exceed the control cap. Without them the suite cannot
-measure turn count or compaction, which are the two largest levers identified so far.
+The crowded-page gap is closed: `nav-shell-save` is a default suite task on a page past
+the cap, and `followers-under-dialog` is the same idea under a modal, gated on the lean
+perceiver. Still missing, and now the gap that matters most: a suite task with more than
+one sub-goal. Without it the suite cannot measure compaction.
+
+The additive perception candidates — listener detection, pointer-cursor heuristics, shadow
+DOM, iframes, a CDP perceiver — stay off this list until a real page says we are missing
+routes rather than wasting slots. `browser-agent perceive diff` is how that question gets
+asked.

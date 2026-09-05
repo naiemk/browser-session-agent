@@ -51,6 +51,9 @@ const ROUTES: Record<string, string> = {
   "/rows": "rows.html",
   "/crowded": "crowded.html",
   "/prepend": "prepend.html",
+  "/modal-list": "modal-list.html",
+  "/nav-shell": "nav-shell.html",
+  "/nested-cards": "nested-cards.html",
 };
 
 /**

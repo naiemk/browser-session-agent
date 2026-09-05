@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cards</title>
+  </head>
+  <body>
+    <!--
+      Each card is one link with a nested listbox inside it. The collector finds both.
+      Containment should drop the inner control: it is 99% inside a propagating <a>, it
+      is not a form field, and role=listbox is not one of the five exceptions Browser Use
+      keeps. Without that drop, a hundred cards arrive as two hundred controls and the
+      budget is spent on furniture nobody can use on its own.
+    -->
+    <h1>People</h1>
+    <ul id="cards"></ul>
+    <script>
+      const cards = document.getElementById("cards");
+      for (let index = 1; index <= 90; index += 1) {
+        const row = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = "/u/card" + index;
+        link.style.display = "inline-block";
+        link.style.padding = "8px";
+        link.setAttribute("aria-label", "card" + index);
+        link.textContent = "card" + index;
+        const extra = document.createElement("div");
+        extra.setAttribute("role", "listbox");
+        extra.textContent = "";
+        extra.style.width = "16px";
+        extra.style.height = "16px";
+        extra.style.display = "inline-block";
+        link.appendChild(extra);
+        row.appendChild(link);
+        cards.appendChild(row);
+      }
+    </script>
+  </body>
+</html>

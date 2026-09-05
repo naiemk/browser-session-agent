@@ -447,6 +447,39 @@ export const SUITE_TASKS: SuiteTask[] = [
       { do: "click", name: "Mark this one" },
     ],
   },
+  {
+    /**
+     * A form buried in an application shell past the control cap. Ranking, not
+     * occlusion, is what has to work: the furniture is clickable, it just is not why
+     * anyone opened the page. Lives in the default set so the suite can finally see
+     * a page crowded enough to exceed the cap.
+     */
+    id: "nav-shell-save",
+    goal: "Save a report titled Quarterly.",
+    path: "/nav-shell",
+    tags: ["perception", "crowded", "form"],
+    maxSteps: 8,
+    criteria: [{ kind: "text_visible", text: "Saved Quarterly" }],
+    reference: [
+      { do: "type", name: "Title", text: "Quarterly" },
+      { do: "click", name: "Save report" },
+    ],
+  },
+  {
+    /**
+     * A follower in a dialog, under a backdrop that eats clicks to everything else.
+     * follower37 is past the wire cap unless the buried posts and chrome are dropped
+     * first, so this task is only selected when the lean perceiver is running.
+     */
+    id: "followers-under-dialog",
+    goal: "Open follower37's profile.",
+    path: "/modal-list",
+    tags: ["perception", "crowded", "occlusion"],
+    perceiver: "lean",
+    maxSteps: 6,
+    criteria: [{ kind: "url_includes", text: "/u/follower37" }],
+    reference: [{ do: "click", name: "follower37" }],
+  },
 ];
 
 export function taskById(id: string): SuiteTask | undefined {
