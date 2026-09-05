@@ -498,6 +498,12 @@ export class OperatorRuntime {
         evidence: this.evidence,
         turn: () => this.clock.current(),
         view: viewByName(process.env.BSA_VIEW),
+        policy: "ask",
+        approve: async (request) =>
+          this.host.confirm(
+            "Approve irreversible action",
+            `${request.request.kind} — ${request.reason}\n${request.url}`,
+          ),
       },
     });
     this.browserPrompt = composed.systemPrompt;

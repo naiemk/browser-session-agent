@@ -103,7 +103,7 @@ describe("AGENT-00-T01 action harness", () => {
     assert.equal(committed.status, "passed", JSON.stringify(committed.checks));
   });
 
-  it("honours an explicit expectation over the default postcondition", async () => {
+  it("does not let a page-text expect fail a fill that stuck", async () => {
     const tab = await browser.openTab(`${origin}/apply`);
     const ref = await refFor(tab, "Full name");
     const result = await act(browser, {
@@ -113,8 +113,36 @@ describe("AGENT-00-T01 action harness", () => {
       text: "Ada",
       expect: { kind: "text_visible", text: "definitely not on this page" },
     });
-    assert.equal(result.ok, false, "an explicit expectation must be able to fail a working action");
-    assert.match(result.failure?.recovery ?? "", /definitely not on this page/);
+    assert.equal(result.ok, true, "read-back is the fill oracle; page text is a check, not a fill postcondition");
+    assert.equal(result.verification.checks[0]?.predicate, "readBack");
+  });
+
+  it("still lets a value expect fail a fill", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const ref = await refFor(tab, "Full name");
+    const result = await act(browser, {
+      kind: "type",
+      tabId: tab,
+      ref,
+      text: "Ada",
+      expect: { kind: "value_equals", name: "Full name", text: "Grace" },
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.failure?.recovery ?? "", /Grace/);
+  });
+
+  it("reads back a multiline fill after collapsing whitespace", async () => {
+    const tab = await browser.openTab(`${origin}/notes`);
+    const ref = await refFor(tab, "Tracker");
+    const tracker = "# Outreach\n\n- Ada\n- Grace\n";
+    const result = await act(browser, {
+      kind: "type",
+      tabId: tab,
+      ref,
+      text: tracker,
+      expect: { kind: "text_visible", text: tracker },
+    });
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
   });
 
   it("refuses an unknown ref instead of guessing", async () => {

@@ -73,6 +73,7 @@ Append, never rewrite.
 | 2026-09-05 | Settle a failing verdict before believing it | No notable change against the baseline | Expected, and the reason it is worth logging. A pass still costs one read, so the structural numbers cannot move; what moves is on real pages, where a false failure used to buy a retry and retries are turns. The wait costs latency and no tokens, which on a run already 75% idle is the cheap side of the trade. |
 | 2026-09-05 | Control lists as a table; ranked control budget; refs that survive; fewer instructed round trips; compaction at sub-goal boundaries | Tool result bytes per task 1,722 → 1,359 (-21.1%). Card 2,749 → 3,009 B, tool schemas 5,834 → 5,936 B, both resent per turn | A net loss **on this suite** and expected to be a clear win on real pages. See below. |
 | 2026-09-05 | Perception seam; lean candidate (occlusion + containment) | Fixture suite: structural numbers unchanged. Corpus: a follower dialog at 99 controls, reference offered 80 and could not put follower37 on the wire; lean offered 48 and could, having dropped 51 buried under the backdrop. Nested cards: 90 contained listboxes dropped. | The mock suite cannot see this. The corpus can, and is now a suite task (`nav-shell-save`) plus a lean-gated one (`followers-under-dialog`). |
+| 2026-09-05 | Lean is the default; fill read-back; sticky approval; compact at sub-goal in runTask; `save_artifact`; `fill-then-save` | 30→32 tasks. Card 3,009→3,115 B, schemas 5,936→6,372 B (14th tool). Context 2,538→2,603 B/task. `followers-under-dialog` joins the default mock set. | Product Chromium was still on reference (`WorkerBrowserPort` called `super()` with no args). CLI/suite `runTask` still pruned every turn; hosted Pi did not. Compaction is now a suite fact: `fill-then-save` is two operator messages, and the prefix is rewritten once. |
 
 ### Why the suite says one thing and the run will say another
 
@@ -92,8 +93,9 @@ Everything else on that row is invisible to this suite by construction:
   before every action; refs now survive while their element does. A mock plan has a fixed
   number of steps, so a saved turn cannot show up. On the metered run a turn cost the card
   and every tool schema again, so removing twenty of 112 turns dwarfs 362 bytes a turn.
-- **Compaction.** It fires at a sub-goal boundary, and a suite task is one sub-goal. Only
-  a chat has boundaries.
+- **Compaction.** It fires at a sub-goal boundary. `fill-then-save` is the one suite
+  task with a second operator message, so the average still looks like a single-goal
+  run; the e2e asserts the rewrite happens once and then stops.
 - **Ranked control budgets.** Nothing in the suite exceeds the cap, so nothing is ranked.
 
 That is a gap in the apparatus, not a reason to distrust the changes: the suite measures

@@ -10,7 +10,6 @@ import { evaluateTask } from "../../src/core/evaluator.ts";
 import { actStep, createMockModel } from "../../src/runtime/mock-model.ts";
 import { TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE, TOOL_PROBE } from "../../src/runtime/names.ts";
 import { runTask } from "../../src/runtime/runtime.ts";
-import { toWireObservation, wireText } from "../../src/runtime/wire.ts";
 import { ledgerEvidence } from "../helpers/evidence.ts";
 import { FixtureServer } from "../helpers/fixture-server.ts";
 
@@ -198,7 +197,7 @@ describe("runtime end to end with a mock model", () => {
     assert.match(failures[0]?.outcome?.detail ?? "", /noop click/);
   });
 
-  it("keeps only one live snapshot in context, and that saves real tokens", async () => {
+  it("does not drop snapshots while a sub-goal is still live", async () => {
     const LOOKS = 6;
 
     async function lookRepeatedly(goalId: string, prune: false | { keepLatest: number }) {
@@ -230,28 +229,24 @@ describe("runtime end to end with a mock model", () => {
       return { snapshotsPerTurn, finalSize };
     }
 
-    const pruned = await lookRepeatedly("g_pruned", { keepLatest: 1 });
+    // D52: compacting every turn invalidates the prompt cache. keepLatest is honoured
+    // at a sub-goal boundary, not while the current request is still in progress, so a
+    // single-goal run keeps its snapshots the same way a prune:false run does.
+    const live = await lookRepeatedly("g_live", { keepLatest: 1 });
     const unpruned = await lookRepeatedly("g_unpruned", false);
 
-    assert.ok(pruned.snapshotsPerTurn.length >= LOOKS, "several turns should have happened");
+    assert.ok(live.snapshotsPerTurn.length >= LOOKS, "several turns should have happened");
     assert.ok(
-      pruned.snapshotsPerTurn.every((count) => count <= 1),
-      `expected at most one live snapshot per turn, saw ${pruned.snapshotsPerTurn.join(",")}`,
+      Math.max(...live.snapshotsPerTurn) > 1,
+      `live work must keep snapshots addressable, saw ${live.snapshotsPerTurn.join(",")}`,
     );
     assert.ok(
       Math.max(...unpruned.snapshotsPerTurn) > 1,
       "without pruning, snapshots should pile up — otherwise this test proves nothing",
     );
-
-    // The comparison is the point, measured against what was actually dropped rather
-    // than an arbitrary ratio. Each look after the first should stop costing a snapshot.
-    // The absolute saving scales with page size: a real page carries far more controls
-    // than this fixture, so this is the pessimistic case.
-    const snapshotCost = wireText(toWireObservation(await browser.observe())).length;
-    const saved = unpruned.finalSize - pruned.finalSize;
     assert.ok(
-      saved > snapshotCost * 2,
-      `saved ${saved} chars, less than two snapshots (${snapshotCost} each)`,
+      live.finalSize >= unpruned.finalSize * 0.8,
+      `mid-goal compaction would shrink the transcript; live ${live.finalSize} vs unpruned ${unpruned.finalSize}`,
     );
   });
 });

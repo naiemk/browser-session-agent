@@ -54,6 +54,7 @@ const ROUTES: Record<string, string> = {
   "/modal-list": "modal-list.html",
   "/nav-shell": "nav-shell.html",
   "/nested-cards": "nested-cards.html",
+  "/notes": "notes.html",
 };
 
 /**
@@ -139,6 +140,10 @@ export class FixtureServer {
         }
         if (req.method === "POST" && url.pathname === "/tmpl-b") {
           await templatePost(req, res, "tmpl-b.html");
+          return;
+        }
+        if (url.pathname === "/go-jobs") {
+          send(res, 302, "", { location: "/jobs" });
           return;
         }
         if (url.pathname === "/jobs" && !hasSession(req)) {

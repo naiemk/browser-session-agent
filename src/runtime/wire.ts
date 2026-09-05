@@ -209,3 +209,18 @@ export function observationInContent(content: unknown): WireObservation | undefi
   const payload = payloadInContent(content);
   return payload === undefined ? undefined : findWireObservation(payload);
 }
+
+function isControlList(value: unknown): boolean {
+  return Array.isArray(value) || (typeof value === "string" && value.length > 0);
+}
+
+/**
+ * Whether this tool result carried a page, in either view's format.
+ *
+ * The table view writes controls as a string. Matching only arrays is how compaction
+ * at a sub-goal boundary dropped nothing once the table became the default.
+ */
+export function contentCarriesSnapshot(content: unknown): boolean {
+  const payload = payloadInContent(content);
+  return payload !== undefined && Boolean(findSnapshot(payload, isControlList));
+}

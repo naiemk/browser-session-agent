@@ -63,7 +63,11 @@ export class ReferenceDriver implements AgentDriver {
       ? await Ledger.open(context.evidence.root, context.evidence.goalId)
       : undefined;
 
-    for (const step of context.task.reference) {
+    const steps = [
+      ...context.task.reference,
+      ...(context.task.followUps ?? []).flatMap((follow) => follow.reference),
+    ];
+    for (const step of steps) {
       const limit = step.until ? (step.maxRepeat ?? 10) : 1;
       for (let attempt = 0; attempt < limit; attempt++) {
         if (step.until) {
@@ -80,10 +84,10 @@ export class ReferenceDriver implements AgentDriver {
             ...(ledger ? { ledger } : {}),
             intent: `reference: peek ${step.url ?? ""}`.trim(),
           });
-          if (!result.matched && !step.allowFailure) {
+          if ((!result.matched || result.identity?.passed === false) && !step.allowFailure) {
             throw new CoreError(
               "reference_step_failed",
-              `reference peek ${step.url} did not match: ${result.identity?.detail ?? "no expectation"}`,
+              `reference peek ${step.url} did not match: ${result.identity?.detail ?? "wrong url"}`,
             );
           }
           continue;

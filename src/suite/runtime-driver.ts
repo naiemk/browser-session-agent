@@ -79,6 +79,7 @@ export class RuntimeDriver implements AgentDriver {
         startUrl: `${context.origin}${context.task.path}`,
         policy: this.options.policy ?? "auto",
       },
+      followUps: context.task.followUps?.map((follow) => follow.prompt),
       maxTurns: context.task.maxSteps,
       stream: this.options.createStream(context.task, context.origin),
       model: this.options.model,

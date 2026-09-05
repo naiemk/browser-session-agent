@@ -73,6 +73,31 @@ export const SUITE_TASKS: SuiteTask[] = [
     ],
   },
   {
+    /**
+     * Two operator messages in one run, so compaction at a sub-goal boundary is a thing
+     * the suite can measure. Fill first, then "now submit" — the form is still there.
+     */
+    id: "fill-then-save",
+    goal: "Fill this application as Ada Lovelace, email ada@example.com. Do not submit yet.",
+    path: "/apply",
+    tags: ["form", "compaction"],
+    maxSteps: 12,
+    criteria: [
+      { kind: "text_visible", text: "Thanks Ada Lovelace" },
+      { kind: "url_includes", text: "/apply" },
+    ],
+    reference: [
+      { do: "type", name: "Full name", text: "Ada Lovelace" },
+      { do: "type", name: "Email", text: EMAIL },
+    ],
+    followUps: [
+      {
+        prompt: "Now submit the application.",
+        reference: [{ do: "click", name: "Submit application" }],
+      },
+    ],
+  },
+  {
     id: "apply-validation",
     goal: "Submit this application empty and report the validation message.",
     path: "/apply",

@@ -13,6 +13,7 @@
  */
 
 import { act, type ActOptions } from "./act.ts";
+import { approvalKey, approvalsFromEvents, hostOf, type ApprovalIdentity } from "./approvals.ts";
 import type { BrowserPort } from "./browser.ts";
 import { saveCheckpoint } from "./checkpoint.ts";
 import type { LedgerSink } from "./ledger.ts";
@@ -120,14 +121,29 @@ export async function guardedAct(
     };
   }
 
+  const identity: ApprovalIdentity | undefined = control?.name
+    ? {
+        host: hostOf(facts.url),
+        kind: request.kind,
+        name: control.name,
+        ruleId: classification.ruleId,
+      }
+    : undefined;
+
   if (policy === "ask") {
-    const approved = await options.approve?.({
-      request,
-      reversibility: classification.reversibility,
-      reason: classification.reason,
-      url: facts.url,
-      precondition,
-    });
+    const remembered =
+      Boolean(identity) &&
+      options.ledger?.read &&
+      approvalsFromEvents(await options.ledger.read()).has(approvalKey(identity!));
+    const approved =
+      remembered ||
+      (await options.approve?.({
+        request,
+        reversibility: classification.reversibility,
+        reason: classification.reason,
+        url: facts.url,
+        precondition,
+      }));
     if (!approved) {
       const parked: ParkedOutcome = {
         status: "parked",
@@ -151,6 +167,22 @@ export async function guardedAct(
         payload: { policy, wake: parked.wake, perishable: parked.perishable },
       });
       return { status: "parked", parked };
+    }
+    // Record the yes before the act, so a click that then fails does not re-ask.
+    if (identity && !remembered) {
+      await options.ledger?.append({
+        type: "approval",
+        entityId: options.entityId,
+        intent: request.intent ?? `${request.kind} ${control?.name ?? request.ref ?? ""}`.trim(),
+        outcome: { ok: true, detail: "approved by user" },
+        payload: {
+          policy,
+          host: identity.host,
+          controlKind: identity.kind,
+          controlName: identity.name,
+          ruleId: identity.ruleId,
+        },
+      });
     }
   }
 
@@ -177,9 +209,23 @@ export async function guardedAct(
       reversibility: classification.reversibility,
       reversibilityReason: classification.reason,
     },
-    outcome: { ok: result.ok, detail: policy === "auto" ? "auto-approved" : "approved by user" },
+    outcome: {
+      ok: result.ok,
+      detail: policy === "auto" ? "auto-approved" : "approved by user",
+    },
     // Recorded so the value of relaxing to "auto" can be argued from data later.
-    payload: { policy, preconditionMet: precondition?.status === "passed" },
+    payload: {
+      policy,
+      preconditionMet: precondition?.status === "passed",
+      ...(identity
+        ? {
+            host: identity.host,
+            controlKind: identity.kind,
+            controlName: identity.name,
+            ruleId: identity.ruleId,
+          }
+        : {}),
+    },
     artifacts: [beforeShot, afterShot].filter((entry): entry is string => Boolean(entry)),
   });
 

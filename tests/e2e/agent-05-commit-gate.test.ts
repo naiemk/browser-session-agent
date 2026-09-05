@@ -187,6 +187,80 @@ describe("AGENT-05-T02 commit gate", () => {
     assert.equal(asked, 0, "paging is not a decision worth a human's attention");
   });
 
+  it("does not re-ask after the operator approved the same named action", async () => {
+    const ledger = await Ledger.open(root, "goal_sticky");
+    const asked: string[] = [];
+    const options = {
+      policy: "ask" as const,
+      approve: async (request: ApprovalRequest) => {
+        asked.push(request.reason);
+        return true;
+      },
+      ledger,
+    };
+
+    const firstTab = await browser.openTab(`${origin}/apply`);
+    const first = await guardedAct(
+      browser,
+      { kind: "click", tabId: firstTab, ref: await refFor(firstTab, "Submit application") },
+      options,
+    );
+    assert.equal(first.status, "acted");
+    assert.equal(asked.length, 1);
+
+    const secondTab = await browser.openTab(`${origin}/apply`);
+    const second = await guardedAct(
+      browser,
+      { kind: "click", tabId: secondTab, ref: await refFor(secondTab, "Submit application") },
+      options,
+    );
+    assert.equal(second.status, "acted");
+    assert.equal(asked.length, 1, "a second identical click must not park again");
+  });
+
+  it("still asks for a different control after a sticky yes", async () => {
+    const ledger = await Ledger.open(root, "goal_sticky_other");
+    const tab = await browser.openTab(`${origin}/apply`);
+    let asked = 0;
+    const options = {
+      policy: "ask" as const,
+      approve: async () => {
+        asked += 1;
+        return true;
+      },
+      ledger,
+    };
+
+    const submit = await guardedAct(
+      browser,
+      { kind: "click", tabId: tab, ref: await refFor(tab, "Submit application") },
+      options,
+    );
+    assert.equal(submit.status, "acted");
+    assert.equal(asked, 1);
+
+    const tab2 = await browser.openTab(`${origin}/once`);
+    await guardedAct(browser, {
+      kind: "type",
+      tabId: tab2,
+      ref: await refFor(tab2, "Recipient"),
+      text: "ada",
+    });
+    await guardedAct(browser, {
+      kind: "type",
+      tabId: tab2,
+      ref: await refFor(tab2, "Message"),
+      text: "Hello there",
+    });
+    const other = await guardedAct(
+      browser,
+      { kind: "click", tabId: tab2, ref: await refFor(tab2, "Send invitation") },
+      options,
+    );
+    assert.equal(other.status, "acted");
+    assert.equal(asked, 2, "a different name is a different decision");
+  });
+
   it("checkpoints before navigation and restores what was typed", async () => {
     const tab = await browser.openTab(`${origin}/apply`);
     await guardedAct(browser, {

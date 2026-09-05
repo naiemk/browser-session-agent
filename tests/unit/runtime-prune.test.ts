@@ -144,6 +144,20 @@ describe("pruning by payload shape", () => {
     assert.match(String(pruned[1]?.content), /bob/);
   });
 
+  it("recognises the table view's control string as a snapshot", () => {
+    const table = (url: string) =>
+      JSON.stringify({
+        ok: true,
+        observation: { url, title: "x", controls: "ref\trole\tname\ne1\tbutton\tGo" },
+      });
+    const pruned = pruneMessages([
+      toolResult(TOOL_ACT, table("/a")),
+      toolResult(TOOL_ACT, table("/b")),
+    ]);
+    assert.equal(isPlaceholder(pruned[0]?.content), true);
+    assert.match(String(pruned[1]?.content), /\/b/);
+  });
+
   it("gives each tool its own newest snapshot", () => {
     const pruned = pruneMessages([
       toolResult(TOOL_ACT, actResult("/a")),

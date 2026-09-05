@@ -43,6 +43,11 @@ export interface MockTurn {
 
 export interface MockModelOptions {
   plan?: PlanStep[];
+  /**
+   * One plan per sub-goal. A new user message advances the epoch. Exhausting a non-final
+   * plan stops without `report`, so the next prompt can continue the same agent.
+   */
+  plans?: PlanStep[][];
   script?: MockTurn[];
   /** Reported per turn, so cost accounting can be exercised without a provider. */
   usagePerTurn?: { tokens?: number; costUsd?: number };
@@ -63,6 +68,7 @@ interface MockState {
   turn: number;
   stepIndex: number;
   repeats: number;
+  epoch: number;
 }
 
 function assistantMessage(
@@ -144,11 +150,16 @@ function resolveRef(observation: WireObservation | undefined, target: string): s
  * Turn a plan into turns. Each turn issues one tool call, which keeps the transcript
  * shaped like a real agent's and lets each step react to the previous result.
  */
+function userEpoch(context: Context): number {
+  return Math.max(0, context.messages.filter((message) => message.role === "user").length - 1);
+}
+
 function nextPlanTurn(
   plan: PlanStep[],
   state: MockState,
   context: Context,
   view: ViewStrategy,
+  moreWork: boolean,
 ): MockTurn {
   const observation = latestObservation(context, view);
 
@@ -202,6 +213,9 @@ function nextPlanTurn(
     return { calls: [{ name: step.tool, arguments: args }] };
   }
 
+  if (moreWork) {
+    return { text: "sub-goal complete" };
+  }
   return {
     calls: [{ name: TOOL_DONE, arguments: { status: "success", summary: "mock plan complete" } }],
   };
@@ -212,7 +226,7 @@ function nextPlanTurn(
  * `done`, which is the contract the loop consumes.
  */
 export function createMockModel(options: MockModelOptions): ModelPort {
-  const state: MockState = { turn: 0, stepIndex: 0, repeats: 0 };
+  const state: MockState = { turn: 0, stepIndex: 0, repeats: 0, epoch: 0 };
 
   return (model, context, streamOptions) => {
     const stream = createAssistantMessageEventStream();
@@ -230,6 +244,15 @@ export function createMockModel(options: MockModelOptions): ModelPort {
     const turnIndex = state.turn++;
     options.onContext?.(context, turnIndex);
 
+    const epoch = userEpoch(context);
+    if (epoch !== state.epoch) {
+      state.epoch = epoch;
+      state.stepIndex = 0;
+      state.repeats = 0;
+    }
+    const plans = options.plans ?? (options.plan ? [options.plan] : []);
+    const plan = plans[epoch] ?? [];
+
     const turn: MockTurn = options.script
       ? (options.script[turnIndex] ?? {
           calls: [
@@ -239,7 +262,7 @@ export function createMockModel(options: MockModelOptions): ModelPort {
             },
           ],
         })
-      : nextPlanTurn(options.plan ?? [], state, context, options.view ?? DEFAULT_VIEW);
+      : nextPlanTurn(plan, state, context, options.view ?? DEFAULT_VIEW, epoch < plans.length - 1);
 
     options.onTurn?.({
       turn: turnIndex,

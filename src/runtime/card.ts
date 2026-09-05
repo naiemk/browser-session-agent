@@ -17,6 +17,7 @@ import {
   TOOL_PEEK,
   TOOL_PROBE,
   TOOL_REMEMBER,
+  TOOL_SAVE,
   TOOL_STRANGER,
   TOOL_SURVEY,
 } from "./names.ts";
@@ -86,6 +87,7 @@ You are given a browser, not a description of the situation. Establish it rather
 - Who are you acting as? Usually discoverable from an account menu, a profile link, or a settings page. It decides what "my", "mine", and "our" refer to in the task, and where those things live.
 - What does your session grant? ${TOOL_STRANGER} loads a URL with no session. Comparing that with what you see tells you whether content is reachable by anyone or only through this session.
 - ${TOOL_REMEMBER} what you work out, in your own words, so a later task does not redo it.
+- ${TOOL_SAVE} a document you must keep. Do not hunt paste sites, pads, or spreadsheets to persist work.
 Reason from what you observed. A difference between the two views is evidence, not proof: A/B tests, geography, and consent walls change an anonymous page too. If the task turns out to be something you should not do, say so with ${TOOL_DONE} and explain what you observed that led there.
 
 CHOOSING WHAT TO DO, AND HOW

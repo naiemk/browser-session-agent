@@ -505,6 +505,18 @@ The two filters are Browser Use's, transcribed with their names and their consta
 commit cfe10a2. Their paint-order union is not: we can hit-test, they cannot. Off-viewport
 is not occluded. Same asymmetry as D50 — do not act on a negative you cannot confirm.
 
+## D55. Other agents spawn a harness, they do not drive the browser
+
+The product is not a toolbox of `click` / `type` / `observe` for a host to loop over.
+Other agents (Hermes, OpenClaw, coding ACP clients) already treat a coding runtime as a
+harness: they spawn it, steer it, and take a verdict. The browser should be the same
+shape. `browser-agent acp` speaks Agent Client Protocol on stdio: goal, start URL, policy,
+and criteria in; status, claim, checks, and an evidence id out. Committing actions under
+`ask` are `session/request_permission`. Captcha and 2FA park. The host never sees a ref.
+
+A later named `port` mode may expose primitives over MCP. That is not the default, and it
+is not this product. D1 still forbids wrapping the runtime as an MCP click server.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.
