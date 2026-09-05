@@ -61,7 +61,7 @@ export function createFakePi(answers: string[] = []): FakePi {
     const results: unknown[] = [];
     let current = payload;
     for (const handler of handlers.get(event) ?? []) {
-      const result = await handler(current);
+        const result = await handler(current, ctx);
       results.push(result);
       const messages = (result as { messages?: unknown } | undefined)?.messages;
       if (Array.isArray(messages) && current && typeof current === "object") {

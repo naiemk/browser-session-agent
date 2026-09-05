@@ -10,6 +10,14 @@ import type { ExtensionAPI, ExtensionContext, RegisteredTool } from "../../pi-ap
 import { textResult } from "../../pi-api.ts";
 import { discoverPackagedAgents } from "./discover.ts";
 import { runWorker, type WorkerResult } from "./spawn.ts";
+import {
+  AUTO_PLAN_TIMEOUT_MS,
+  PLAN_DIGEST_HEADER,
+  prependPlanDigest,
+  shouldAutoPlan,
+} from "./auto-plan.ts";
+
+export { AUTO_PLAN_TIMEOUT_MS, PLAN_DIGEST_HEADER, prependPlanDigest, shouldAutoPlan };
 
 export const SUBAGENT_TOOL_NAME = "subagent";
 export const PLAN_COMMAND = "plan";
@@ -32,6 +40,7 @@ export interface SubagentRuntime {
     task: string;
     scratchDir: string;
     signal?: AbortSignal;
+    timeoutMs?: number;
   }): Promise<WorkerResult>;
 }
 
@@ -72,6 +81,74 @@ async function savePlanIfNeeded(scratchDir: string, text: string): Promise<strin
     await writeFile(file, text.endsWith("\n") ? text : `${text}\n`, "utf8");
   }
   return file;
+}
+
+export interface AutoPlanRequest {
+  text: string;
+  goalId: string;
+  root?: string;
+  runtime?: SubagentRuntime;
+  attempted: Set<string>;
+  timeoutMs?: number;
+  notify?: (message: string, level?: "info" | "warning" | "error") => void;
+}
+
+export interface AutoPlanResult {
+  planned: boolean;
+  digest?: string;
+  planFile?: string;
+}
+
+/**
+ * First chat message only. Skip if the heuristic says no or plan.md already exists.
+ * Planner failure does not block the operate turn.
+ */
+export async function maybeAutoPlan(options: AutoPlanRequest): Promise<AutoPlanResult> {
+  if (options.attempted.has(options.goalId)) return { planned: false };
+  options.attempted.add(options.goalId);
+  if (!shouldAutoPlan(options.text)) return { planned: false };
+
+  const scratchDir = await ensureScratch(options.goalId, options.root);
+  const planFile = path.join(scratchDir, PLAN_FILE);
+  try {
+    const existing = await readFile(planFile, "utf8");
+    if (existing.trim()) return { planned: false, planFile };
+  } catch {
+    /* no plan yet */
+  }
+
+  options.notify?.("Planning…", "info");
+  const runtime = options.runtime ?? defaultRuntime();
+  let result: WorkerResult;
+  try {
+    result = await runtime.run({
+      agentName: "planner",
+      task: options.text,
+      scratchDir,
+      timeoutMs: options.timeoutMs ?? AUTO_PLAN_TIMEOUT_MS,
+    });
+  } catch (err) {
+    options.notify?.(err instanceof Error ? err.message : String(err), "warning");
+    return { planned: false, planFile };
+  }
+
+  await savePlanIfNeeded(scratchDir, result.text);
+  let body = "";
+  try {
+    body = await readFile(planFile, "utf8");
+  } catch {
+    body = "";
+  }
+  if (!body.trim() || result.aborted || result.exitCode !== 0) {
+    options.notify?.(
+      result.stderr.trim() || "Planner did not write a plan. Continuing without one.",
+      "warning",
+    );
+    return { planned: false, planFile };
+  }
+  const digest = digestText(result.text.trim() || body);
+  options.notify?.(`Plan written to ${planFile}`, "info");
+  return { planned: true, digest, planFile };
 }
 
 function formatWorkerReply(result: WorkerResult, scratchDir: string): string {
@@ -170,5 +247,28 @@ export function bindPlanCommand(pi: ExtensionAPI, options: SubagentHostOptions):
 export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): string {
   pi.registerTool(subagentTool(options));
   bindPlanCommand(pi, options);
+  const attempted = new Set<string>();
+  const runtime = options.runtime ?? defaultRuntime();
+  pi.on("before_agent_start", async (...args: unknown[]) => {
+    const event = args[0] as { prompt?: string } | undefined;
+    const ctx = args[1] as ExtensionContext | undefined;
+    const prompt = typeof event?.prompt === "string" ? event.prompt : "";
+    const result = await maybeAutoPlan({
+      text: prompt,
+      goalId: options.goalId,
+      root: options.root,
+      runtime,
+      attempted,
+      notify: (message, level) => ctx?.ui.notify(message, level),
+    });
+    if (!result.digest) return undefined;
+    return {
+      message: {
+        customType: "plan-digest",
+        content: `${PLAN_DIGEST_HEADER}\n\n${result.digest}`,
+        display: true,
+      },
+    };
+  });
   return SUBAGENT_TOOL_NAME;
 }
