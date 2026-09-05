@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crowded</title>
+  </head>
+  <body>
+    <!--
+      A page whose furniture outnumbers its content, which is what every real site looks
+      like. The nav and footer are identical on every page here; the list is the only
+      reason anyone opened it. With a flat cap in document order the model saw the
+      furniture and a handful of rows, and was told the rest was "40 more".
+    -->
+    <header>
+      <a href="/">Home</a>
+      <a href="/reels">Reels</a>
+      <a href="/messages">Messages</a>
+      <a href="/search">Search</a>
+      <a href="/notifications">Notifications</a>
+      <a href="/create">Create</a>
+      <a href="/profile">Profile</a>
+      <a href="/settings">Settings</a>
+    </header>
+    <nav>
+      <a href="/n1">Section one</a>
+      <a href="/n2">Section two</a>
+      <a href="/n3">Section three</a>
+      <a href="/n4">Section four</a>
+      <a href="/n5">Section five</a>
+      <a href="/n6">Section six</a>
+      <a href="/n7">Section seven</a>
+      <a href="/n8">Section eight</a>
+      <a href="/n9">Section nine</a>
+      <a href="/n10">Section ten</a>
+    </nav>
+
+    <main>
+      <h1>Members</h1>
+      <ul id="members"></ul>
+    </main>
+
+    <footer>
+      <a href="/about">About</a>
+      <a href="/blog">Blog</a>
+      <a href="/jobs">Jobs</a>
+      <a href="/help">Help</a>
+      <a href="/api">API</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/locations">Locations</a>
+      <a href="/popular">Popular</a>
+      <a href="/lite">Lite</a>
+      <a href="/verified">Verified</a>
+      <a href="/contact">Contact</a>
+      <!-- An image link with no text of its own, the way a photo grid is built. -->
+      <a href="/badge"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Verified badge" width="16" height="16" /></a>
+    </footer>
+
+    <script>
+      const members = document.getElementById("members");
+      for (let index = 1; index <= 40; index += 1) {
+        const row = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = "/p/member" + index;
+        link.textContent = "member" + index;
+        row.appendChild(link);
+        const display = document.createElement("span");
+        display.textContent = " Member Number " + index;
+        row.appendChild(display);
+        members.appendChild(row);
+      }
+    </script>
+  </body>
+</html>

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { controlKey, diffControls, duplicateKeyCount } from "../../src/core/diff.ts";
+import {
+  chooseControls,
+  controlKey,
+  diffControls,
+  duplicateKeyCount,
+} from "../../src/core/diff.ts";
 import type { Control } from "../../src/core/types.ts";
 
 /**
@@ -84,5 +89,43 @@ describe("the page delta on repeated controls", () => {
       control({ ref: "e2", role: "button", name: "Submit" }),
     ];
     assert.deepEqual(diffControls(before, after), ['value changed on "Email"']);
+  });
+});
+
+describe("choosing which controls get the slots", () => {
+  const nav = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      control({ ref: `n${index}`, role: "link", name: `Nav ${index}`, chrome: true }),
+    );
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      control({ ref: `r${index}`, role: "link", name: `Row ${index}` }),
+    );
+
+  it("gives up the furniture before the content", () => {
+    const kept = chooseControls([...nav(20), ...rows(20)], 20);
+    assert.equal(kept.filter((c) => !c.chrome).length, 20, "every row survives");
+    assert.equal(kept.filter((c) => c.chrome).length, 0);
+  });
+
+  it("never drops an editor or a required field, however crowded the page", () => {
+    const email = control({ ref: "e1", role: "textbox", name: "Email" });
+    const consent = control({ ref: "e2", role: "checkbox", name: "Consent", required: true });
+    const kept = chooseControls([...nav(30), email, consent, ...rows(30)], 10);
+
+    assert.ok(kept.includes(email), "losing an editor silently makes a form unfillable");
+    assert.ok(kept.includes(consent));
+  });
+
+  it("leaves document order alone, so a list still reads as a list", () => {
+    const all = [...nav(5), ...rows(5), ...nav(5)];
+    const kept = chooseControls(all, 8);
+    const order = kept.map((c) => all.indexOf(c));
+    assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  });
+
+  it("changes nothing when everything fits", () => {
+    const all = [...nav(3), ...rows(3)];
+    assert.deepEqual(chooseControls(all, 40), all);
   });
 });

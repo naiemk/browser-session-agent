@@ -104,6 +104,35 @@ const COLLECT = `(() => {
     return host ? clean(host.innerText) : "";
   };
 
+  /*
+   * Site furniture, from the document's own landmarks.
+   *
+   * Every page carries a header, a nav and a footer that are the same on every page of
+   * the site, and on a crowded page they crowd out the thing the agent came for: a
+   * follower dialog arrived as eleven navigation links, fifteen footer links and
+   * fourteen rows of the list. Which controls those are is a structural question HTML
+   * already answers, so nothing here needs to know what site it is on.
+   *
+   * Marked, never dropped: a nav link is often exactly the route the agent wants.
+   */
+  const LANDMARK = "nav, footer, header, [role='navigation'], [role='contentinfo'], [role='banner']";
+  const inLandmark = (el) => Boolean(el.closest && el.closest(LANDMARK));
+
+  // The name of a control that has no text of its own: an image link, a bare icon.
+  // Without this a photo grid arrives as a dozen controls all called "a".
+  const borrowedName = (el) => {
+    const image = el.querySelector ? el.querySelector("img[alt], [aria-label]") : null;
+    const fromImage = image
+      ? clean(image.getAttribute("alt") || image.getAttribute("aria-label"))
+      : "";
+    if (fromImage) return fromImage;
+    const title = clean(el.getAttribute("title"));
+    if (title) return title;
+    const href = el.tagName.toLowerCase() === "a" ? el.getAttribute("href") || "" : "";
+    const tail = href.split("?")[0].split("#")[0].split("/").filter(Boolean).pop() || "";
+    return tail && tail !== "" ? tail : "";
+  };
+
   const nodes = [...document.querySelectorAll(selector)].filter(
     (el) => visible(el) || editorLike(el),
   );
@@ -131,6 +160,7 @@ const COLLECT = `(() => {
       el.getAttribute("name") ||
       el.getAttribute("placeholder") ||
       clean(el.textContent).slice(0, 80) ||
+      borrowedName(el).slice(0, 80) ||
       inputType ||
       tag;
 
@@ -156,6 +186,7 @@ const COLLECT = `(() => {
       role,
       name,
       tag,
+      chrome: inLandmark(el) || undefined,
       value,
       disabled: el.disabled || undefined,
       checked: el.checked || undefined,

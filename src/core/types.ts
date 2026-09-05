@@ -27,6 +27,14 @@ export interface Control {
    * "v_varvar": the two never appeared together anywhere the agent could see.
    */
   row?: string;
+  /**
+   * Site furniture: this control lives in a header, nav or footer landmark.
+   *
+   * Recorded so a crowded page can be trimmed to the part the agent came for. It is
+   * never a reason to drop a control - a nav link is often the route wanted - only a
+   * reason to give up its slot last.
+   */
+  chrome?: boolean;
 }
 
 /** One compact, ephemeral view of a page. Never persisted into model context long-term. */

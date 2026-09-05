@@ -108,15 +108,39 @@ export function diffControls(
 }
 
 /**
- * Keep a crowded page inside a usable budget. Editors and required fields survive
- * truncation first, because losing them silently is what makes a form unfillable.
+ * Which controls get the slots, when there are not enough to go round.
+ *
+ * Taking the first N in document order is what put eleven navigation links and fifteen
+ * footer links in front of the model and left fourteen slots for the list it had opened.
+ * The budget goes to what the page is about: editors and required fields first, because
+ * losing one silently is what makes a form unfillable, then page content, then the site
+ * furniture that is identical on every page of the site.
+ *
+ * Selection only. Document order survives, because a list read out of order is a list
+ * read wrong, and refs stay exactly where the page put them.
  */
+export function chooseControls(controls: readonly Control[], limit: number): Control[] {
+  if (controls.length <= limit) return [...controls];
+
+  const rank = (control: Control): number => {
+    if (isEditorLike(control) || control.required) return 0;
+    return control.chrome ? 2 : 1;
+  };
+
+  const kept = new Set(
+    controls
+      // Stable within a band, so a nav link keeps its place among other nav links.
+      .map((control, index) => ({ control, index }))
+      .sort((a, b) => rank(a.control) - rank(b.control) || a.index - b.index)
+      .slice(0, limit)
+      .map((entry) => entry.control),
+  );
+
+  return controls.filter((control) => kept.has(control));
+}
+
+/** Keep a crowded page inside a usable budget, giving up the furniture first. */
 export function compactControls(controls: Control[]): { controls: Control[]; truncated: boolean } {
   if (controls.length <= MAX_CONTROLS) return { controls, truncated: false };
-  const priority = controls.filter((c) => isEditorLike(c) || c.required);
-  const rest = controls.filter((c) => !priority.includes(c));
-  const kept = [...priority, ...rest].slice(0, MAX_CONTROLS);
-  // Preserve original document order so refs read predictably.
-  const keptRefs = new Set(kept.map((c) => c.ref));
-  return { controls: controls.filter((c) => keptRefs.has(c.ref)), truncated: true };
+  return { controls: chooseControls(controls, MAX_CONTROLS), truncated: true };
 }

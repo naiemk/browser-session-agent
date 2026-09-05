@@ -7,6 +7,7 @@
  * empty values rather than sending nulls, and caps the control list.
  */
 
+import { chooseControls } from "../core/diff.ts";
 import type { ActionResult, Observation, Verification } from "../core/types.ts";
 
 export const MAX_WIRE_CONTROLS = 40;
@@ -47,7 +48,7 @@ function omitEmpty<T>(values: T[] | undefined): T[] | undefined {
 }
 
 export function toWireObservation(observation: Observation): WireObservation {
-  const controls = observation.controls.slice(0, MAX_WIRE_CONTROLS).map((control) => {
+  const controls = chooseControls(observation.controls, MAX_WIRE_CONTROLS).map((control) => {
     const wire: WireControl = {
       ref: control.ref,
       role: control.role,

@@ -49,6 +49,7 @@ const ROUTES: Record<string, string> = {
   "/guests": "guests.html",
   "/split-rows": "split-rows.html",
   "/rows": "rows.html",
+  "/crowded": "crowded.html",
 };
 
 /**
