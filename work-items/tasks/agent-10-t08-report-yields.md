@@ -3,7 +3,7 @@ id: AGENT-10-T08
 title: Report yields; side tabs do not leak
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T08 — Report yields; side tabs do not leak

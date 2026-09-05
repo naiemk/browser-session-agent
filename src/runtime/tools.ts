@@ -183,6 +183,13 @@ export function buildTools(context: ToolContext): AgentTool[] {
   let sideTab: string | undefined;
   const tab = () => sideTab ?? context.tabId;
 
+  const closeSideTab = async (): Promise<void> => {
+    if (!sideTab) return;
+    const closing = sideTab;
+    sideTab = undefined;
+    await context.browser.closeTab(closing).catch(() => undefined);
+  };
+
   const countStep = () => {
     steps += 1;
     context.onStep?.();
@@ -618,6 +625,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           ? (String(raw.status) as ReportPayload["status"])
           : "failed";
         const report: ReportPayload = { status, summary: String(raw.summary ?? "") };
+        await closeSideTab();
         context.onReport?.(report);
         // Terminate: the report ends the task, so no follow-up model turn is needed.
         return { ...reply(report, report), terminate: true };
