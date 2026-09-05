@@ -3,6 +3,7 @@ import { bindBrowserCommands } from "./host/bind-extension.ts";
 import { fileEvidence, goalDir } from "./host/evidence.ts";
 import { compactPiContext } from "./host/pi-compaction.ts";
 import { meterPiSession, turnClock } from "./host/pi-metering.ts";
+import { shapePiToolResults } from "./host/pi-shape.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
@@ -71,13 +72,17 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   }
 
   /*
-   * Before the metering, on purpose.
+   * Compaction, then shape, then metering.
    *
-   * Pi passes each context handler what the previous one returned, so registering the
-   * compaction first is what makes the recorded bytes the bytes that were sent rather
-   * than the bytes we decided not to send.
+   * Compaction is optional and about *what* text is in a result. Shape is mandatory and
+   * about *the array Pi's adapters will call .filter on*. Mixing those jobs is how the
+   * first GLM repair failed: wrapping lived inside the optimiser, so anything the
+   * optimiser did not drop still reached the provider as a string.
+   *
+   * Metering last, so the recorded bytes are the bytes that were sent.
    */
   compactPiContext(pi);
+  shapePiToolResults(pi);
   meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId }, clock);
 
   /*

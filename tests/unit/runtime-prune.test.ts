@@ -268,4 +268,14 @@ describe("tool result content Pi can serialise", () => {
     assert.deepEqual(pruned[0]!.content, [{ type: "text", text: PLACEHOLDER }]);
     assert.equal(pruned[1]!.content, "snapshot 2");
   });
+
+  it("still wraps kept results when the suite skips pruning", () => {
+    const messages: PrunableMessage[] = [
+      { role: "user", content: "again" },
+      { role: "toolResult", toolName: "report", content: "blocked" },
+    ];
+    const shaped = normalizeToolResultContent(messages);
+    glmRead(shaped[1]!.content);
+    assert.deepEqual(shaped[1]!.content, [{ type: "text", text: "blocked" }]);
+  });
 });

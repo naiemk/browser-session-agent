@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { compactPiContext } from "../../src/host/pi-compaction.ts";
+import { shapePiToolResults } from "../../src/host/pi-shape.ts";
 import {
   compactFinishedWork,
   epochStart,
@@ -28,7 +29,7 @@ function look(tool: string, url: string): PrunableMessage {
 }
 
 /**
- * The exact call GLM makes, from @earendil-works/pi-ai openai-completions:
+ * The exact call GLM / OpenAI-compat makes, from @earendil-works/pi-ai openai-completions:
  *   toolMsg.content.filter(isTextContentBlock)
  */
 function glmRead(content: unknown): void {
@@ -37,10 +38,29 @@ function glmRead(content: unknown): void {
   parts.filter((part) => (part as { type?: string }).type === "text");
 }
 
+/**
+ * Anthropic's adapter, from @earendil-works/pi-ai anthropic-messages convertContentBlocks:
+ *   content.some((c) => c.type === "image")
+ *
+ * Opus would throw `content.some is not a function` on the same string GLM died on.
+ */
+function anthropicRead(content: unknown): void {
+  const parts = content as { some: (fn: (part: unknown) => boolean) => boolean };
+  assert.equal(typeof parts.some, "function", JSON.stringify(content));
+  parts.some((part) => (part as { type?: string }).type === "image");
+}
+
 function glmCanReadTranscript(messages: readonly PrunableMessage[]): void {
   for (const message of messages) {
     if (message.role !== "toolResult") continue;
     glmRead(message.content);
+  }
+}
+
+function anthropicCanReadTranscript(messages: readonly PrunableMessage[]): void {
+  for (const message of messages) {
+    if (message.role !== "toolResult") continue;
+    anthropicRead(message.content);
   }
 }
 
@@ -252,5 +272,51 @@ describe("compaction in the session Pi drives", () => {
     compactPiContext(pi);
     const messages = [{ role: "user", content: "hi" }, look("observe", "https://example.com")];
     assert.deepEqual(await pi.emit("context", { type: "context", messages }), [undefined]);
+  });
+});
+
+describe("shaping tool results for a provider", () => {
+  it("wraps string-shaped results even when compaction is off", async () => {
+    // The first repair lived inside compaction. Turning the optimiser off, or any
+    // path that never compacted, sent strings again. Shape is the invariant.
+    const pi = createFakePi();
+    compactPiContext(pi, { enabled: false });
+    shapePiToolResults(pi);
+    const results = (await pi.emit("context", {
+      type: "context",
+      messages: planBetterTranscript(),
+    })) as Array<{ messages: PrunableMessage[] } | undefined>;
+
+    assert.equal(results.length, 1, "compaction off must not register a handler");
+    assert.ok(results[0]?.messages);
+    glmCanReadTranscript(results[0].messages);
+    anthropicCanReadTranscript(results[0].messages);
+  });
+
+  it("repairs a string an earlier handler left in a tool result", async () => {
+    // Compaction, a test double, session restore: anyone can put a string here.
+    // The last handler has to make that unrepresentable, or the next cheap model
+    // on OpenAI-compat — and Opus on Anthropic — will crash the same way.
+    const pi = createFakePi();
+    pi.on("context", (event: unknown) => {
+      const messages = (event as { messages: PrunableMessage[] }).messages.map((message) =>
+        message.role === "toolResult" ? { ...message, content: "I am a bug" } : message,
+      );
+      return { messages };
+    });
+    shapePiToolResults(pi);
+
+    const [, shaped] = (await pi.emit("context", {
+      type: "context",
+      messages: transcript(),
+    })) as [unknown, { messages: PrunableMessage[] } | undefined];
+
+    assert.ok(shaped?.messages);
+    glmCanReadTranscript(shaped.messages);
+    anthropicCanReadTranscript(shaped.messages);
+    for (const message of shaped.messages) {
+      if (message.role !== "toolResult") continue;
+      assert.deepEqual(message.content, [{ type: "text", text: "I am a bug" }]);
+    }
   });
 });

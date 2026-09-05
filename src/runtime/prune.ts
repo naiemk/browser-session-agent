@@ -79,11 +79,14 @@ function isPiContentPart(part: unknown): boolean {
 }
 
 /**
- * Tool result content as Pi's OpenAI-compat path requires it: an array of parts.
+ * Tool result content as Pi's provider adapters require it: an array of parts.
  *
- * GLM (and every other OpenAI-compat model) does `toolMsg.content.filter(...)`. A string
- * is not a cheaper tool result. It is not a tool result at all. Pi only normalises null
- * to `[]`; a string is left as a string, and that is the crash on the first follow-up.
+ * This is not a GLM quirk. OpenAI-compat and Gemini do `content.filter(...)`. Anthropic
+ * does `content.some(...)`. A string throws on all of them. Pi only normalises null to
+ * `[]`; a string is left as a string.
+ *
+ * The model never writes this field. Tools, compaction, session restore, and tests do.
+ * Wrapping here is how a cheap model and Opus are protected by the same invariant.
  *
  * Already-valid parts arrays are returned as the same reference, so a turn that had
  * nothing to upgrade leaves the prefix exactly as the provider cached it.
@@ -98,11 +101,12 @@ export function asPiToolContent(content: unknown): unknown[] {
 }
 
 /**
- * Every tool result, in the shape Pi can serialise.
+ * Every tool result, in the shape a provider can serialise.
  *
- * Compaction used to wrap only the snapshots it dropped, and only when they were already
- * parts. `note_fork`, `ask_user`, `report`, and the newest observe were left as strings,
- * and those are the results still in the request when the operator sends a follow-up.
+ * Compaction wrapping only the snapshots it dropped is how the first repair failed:
+ * `note_fork`, `ask_user`, `report`, and the newest observe were left as strings, and
+ * those are the results still in the request on a follow-up. Call this last, on every
+ * path that talks to a provider, including when pruning is off.
  */
 export function normalizeToolResultContent<T extends PrunableMessage>(messages: T[]): T[] {
   let changed = false;

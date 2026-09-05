@@ -19,6 +19,7 @@ import type { TaskCardInput } from "./card.ts";
 import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort, type UsageSplit } from "./model.ts";
 import {
   measureContext,
+  normalizeToolResultContent,
   pruneMessages,
   type PrunableMessage,
   type PruneOptions,
@@ -152,12 +153,15 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
       currentTurn += 1;
       const pruned =
         options.prune === false ? messages : pruneMessages(messages as never[], options.prune);
+      // Shape is not optional with pruning. A suite task on an OpenAI-compat model
+      // crashes the same way the chat did if a tool result is still a string.
+      const shaped = normalizeToolResultContent(pruned as unknown as PrunableMessage[]);
       const measured = measureContext(
         messages as unknown as PrunableMessage[],
-        pruned as unknown as PrunableMessage[],
+        shaped,
       );
-      metrics.record({ kind: "context", turn: currentTurn, ...measured, messages: pruned.length });
-      return pruned;
+      metrics.record({ kind: "context", turn: currentTurn, ...measured, messages: shaped.length });
+      return shaped as unknown as typeof messages;
     },
   });
 
