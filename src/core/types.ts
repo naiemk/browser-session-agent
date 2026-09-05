@@ -44,6 +44,12 @@ export interface Observation {
   /** Delta against the previous observation of this tab. */
   changes: string[];
   truncated?: boolean;
+  /**
+   * How many controls the page had before any cap, so the model is told the real
+   * remainder. Reporting the shortfall against an already-capped list said "40 more" on
+   * a follower dialog with hundreds of rows.
+   */
+  totalControls?: number;
   capturedAt: string;
 }
 

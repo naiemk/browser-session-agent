@@ -11,6 +11,7 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek } from "../core/peek.ts";
+import { describeCheck } from "../core/predicates.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
@@ -437,7 +438,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           return reply({
             page: view.observation(result.observation),
             matched: result.matched,
-            ...(result.identity ? { identity: result.identity.detail } : {}),
+            ...(result.identity ? { identity: describeCheck(result.identity) } : {}),
             ...(result.matched
               ? {}
               : { note: "This is not what you asked for. Do not read anything into it." }),

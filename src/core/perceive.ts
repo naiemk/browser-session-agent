@@ -210,6 +210,7 @@ export async function perceive(page: Page, context: PerceiveContext): Promise<Ob
     failedRequests: (context.failedRequests ?? []).slice(-8),
     changes: diffControls(context.previous?.controls, collected.controls),
     truncated: truncated || undefined,
+    totalControls: collected.controls.length,
     capturedAt: new Date().toISOString(),
   };
 }

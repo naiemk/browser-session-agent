@@ -7,6 +7,7 @@ import { act } from "../../src/core/act.ts";
 import { LocalBrowser } from "../../src/core/browser.ts";
 import { Ledger } from "../../src/core/ledger.ts";
 import { peek } from "../../src/core/peek.ts";
+import { describeCheck } from "../../src/core/predicates.ts";
 import { CoreError } from "../../src/core/types.ts";
 import { FixtureServer } from "../helpers/fixture-server.ts";
 
@@ -92,7 +93,9 @@ describe("peeking a page", () => {
     });
 
     assert.equal(wrong.matched, false, "a URL can resolve to a real page that is not the one meant");
-    assert.match(wrong.identity?.detail ?? "", /Dana Ivanova/);
+    // What was wanted and what was seen, which is how the model is told about it too.
+    assert.match(describeCheck(wrong.identity!), /Dana Ivanova/);
+    assert.match(describeCheck(wrong.identity!), /no match/);
 
     const right = await peek(browser, {
       url: `${origin}/p/dana`,

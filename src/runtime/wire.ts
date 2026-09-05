@@ -74,7 +74,11 @@ export function toWireObservation(observation: Observation): WireObservation {
     observation.failedRequests.slice(-3).map((entry) => clip(entry)),
   );
   const changes = omitEmpty(observation.changes.slice(0, 6).map((entry) => clip(entry)));
-  const dropped = observation.controls.length - controls.length;
+  // Against the page, not against an already-capped copy of it: the core trims to its own
+  // limit before this runs, so counting from `observation.controls` reported "40 more" on
+  // a list of hundreds and the model believed one more look would cover it.
+  const total = observation.totalControls ?? observation.controls.length;
+  const dropped = total - controls.length;
 
   if (dialogs) wire.dialogs = dialogs;
   if (errors) wire.errors = errors;
@@ -82,7 +86,7 @@ export function toWireObservation(observation: Observation): WireObservation {
   if (failedRequests) wire.failedRequests = failedRequests;
   if (changes) wire.changes = changes;
   if (dropped > 0) {
-    wire.note = `${dropped} more controls not shown; probe with a selector to narrow down`;
+    wire.note = `${controls.length} of ${total} controls shown; probe with a selector to narrow down`;
   }
   return wire;
 }
