@@ -15,23 +15,39 @@ import { summarizeToolResult } from "../runtime/summary.ts";
 import { extractText } from "../runtime/wire.ts";
 import type { Component, RegisteredTool, ToolRenderResultOptions } from "../pi-api.ts";
 
-/** Wrap to width so an expanded payload stays inside the frame instead of over it. */
-function wrap(text: string, width: number): string[] {
-  const usable = Math.max(20, width - 2);
+const MAX_EXPANDED_LINES = 200;
+
+/**
+ * Pi's TUI throws if any rendered line is wider than the terminal:
+ * `Rendered line N exceeds terminal width (111 > 45)`.
+ *
+ * The summary is clipped to 110 characters for the chat, which is not a width. A
+ * 45-column pane is a real one. `render()` is given that pane; every line we return
+ * has to fit it. We do not import pi-tui for this: drawing one line must not put a
+ * TUI library in the package graph.
+ */
+export function fitLine(text: string, width: number): string {
+  if (width <= 0) return "";
+  if (text.length <= width) return text;
+  if (width === 1) return "…";
+  return `${text.slice(0, width - 1)}…`;
+}
+
+/** Wrap so every line is at most `width`, including the last fragment. */
+export function wrapToWidth(text: string, width: number): string[] {
+  if (width <= 0) return [""];
   const lines: string[] = [];
   for (const paragraph of text.split("\n")) {
-    if (paragraph.length <= usable) {
-      lines.push(paragraph);
+    if (paragraph.length === 0) {
+      lines.push("");
       continue;
     }
-    for (let at = 0; at < paragraph.length; at += usable) {
-      lines.push(paragraph.slice(at, at + usable));
+    for (let at = 0; at < paragraph.length; at += width) {
+      lines.push(paragraph.slice(at, at + width));
     }
   }
   return lines;
 }
-
-const MAX_EXPANDED_LINES = 200;
 
 /**
  * One line, or the whole payload when the operator asks for it.
@@ -48,19 +64,21 @@ export function renderToolResult(
     const text = extractText(result.content) ?? "";
     return {
       render: (width: number) => {
-        const lines = wrap(text, width);
-        return lines.length > MAX_EXPANDED_LINES
-          ? [
-              ...lines.slice(0, MAX_EXPANDED_LINES),
-              `… ${lines.length - MAX_EXPANDED_LINES} more lines, in payloads.jsonl`,
-            ]
-          : lines;
+        const lines = wrapToWidth(text, width);
+        const shown =
+          lines.length > MAX_EXPANDED_LINES
+            ? [
+                ...lines.slice(0, MAX_EXPANDED_LINES),
+                `… ${lines.length - MAX_EXPANDED_LINES} more lines, in payloads.jsonl`,
+              ]
+            : lines;
+        return shown.map((line) => fitLine(line, width));
       },
     };
   }
 
   const summary = summarizeToolResult(toolName, result.details);
-  return { render: () => [summary] };
+  return { render: (width) => [fitLine(summary, width)] };
 }
 
 /** Give a composed tool a terminal-friendly result view, changing nothing else. */
