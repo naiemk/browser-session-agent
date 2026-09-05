@@ -9,7 +9,7 @@
 import { visibleText } from "./perceive.ts";
 import { evaluatePredicate, verify } from "./predicates.ts";
 import type { BrowserPort } from "./browser.ts";
-import type { Ledger } from "./ledger.ts";
+import type { LedgerSink } from "./ledger.ts";
 import { classifyAction, type Classification } from "./reversibility.ts";
 import {
   CoreError,
@@ -31,7 +31,7 @@ export interface ActOptions {
   screenshotDir?: string;
   timeoutMs?: number;
   /** When set, every action is traced: intent, before, action, after, outcome. */
-  ledger?: Ledger;
+  ledger?: LedgerSink;
   entityId?: string;
 }
 

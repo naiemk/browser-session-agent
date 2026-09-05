@@ -12,7 +12,12 @@
 
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import type { MetricRecord, MetricsSink } from "../runtime/metrics.ts";
+import type {
+  MetricRecord,
+  MetricsSink,
+  PayloadRecord,
+  PayloadSink,
+} from "../runtime/metrics.ts";
 
 export class MemoryRecorder implements MetricsSink {
   readonly records: MetricRecord[] = [];
@@ -64,6 +69,49 @@ export class FileRecorder implements MetricsSink {
     this.writing = this.writing.then(() => appendFile(this.file, lines, "utf8"));
     await this.writing;
   }
+}
+
+/**
+ * The full model-facing text of every tool result.
+ *
+ * Written eagerly rather than buffered, because the reason this file exists is to be
+ * there when something went wrong - and the runs worth reading are exactly the ones that
+ * ended badly. Each line is one result, so a long snapshot never makes the file
+ * unparseable for the lines around it.
+ */
+export class FilePayloadLog implements PayloadSink {
+  private writing: Promise<void> = Promise.resolve();
+
+  private constructor(private readonly file: string) {}
+
+  static async open(file: string): Promise<FilePayloadLog> {
+    await mkdir(path.dirname(file), { recursive: true });
+    return new FilePayloadLog(file);
+  }
+
+  write(record: PayloadRecord): void {
+    const line = `${JSON.stringify(record)}\n`;
+    // Serialized, so two results finishing together cannot interleave half a line.
+    this.writing = this.writing.then(() => appendFile(this.file, line, "utf8")).catch(() => {});
+  }
+
+  async flush(): Promise<void> {
+    await this.writing;
+  }
+}
+
+export async function readPayloads(file: string): Promise<PayloadRecord[]> {
+  const raw = await readFile(file, "utf8").catch(() => "");
+  const records: PayloadRecord[] = [];
+  for (const line of raw.split("\n")) {
+    if (line.trim().length === 0) continue;
+    try {
+      records.push(JSON.parse(line) as PayloadRecord);
+    } catch {
+      // A truncated tail is expected when a run was killed.
+    }
+  }
+  return records;
 }
 
 export async function readMetrics(file: string): Promise<MetricRecord[]> {

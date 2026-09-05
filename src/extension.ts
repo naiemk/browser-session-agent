@@ -1,7 +1,11 @@
 import type { ExtensionAPI, RegisteredTool } from "./pi-api.ts";
 import { bindBrowserCommands } from "./host/bind-extension.ts";
+import { fileEvidence, goalDir } from "./host/evidence.ts";
+import { meterPiSession } from "./host/pi-metering.ts";
+import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
-import { composeAgent } from "./runtime/agent.ts";
+import { shortId } from "./core/ids.ts";
+import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { BrowserSession } from "./session.ts";
 
 /**
@@ -20,6 +24,17 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
 
   bindBrowserCommands(pi, session);
 
+  /*
+   * One goal per session, named now and written to on first use.
+   *
+   * A conversation is the unit of work here: the operator's objective spans whatever
+   * runs they start inside it. Naming it at load rather than when a run starts is what
+   * lets the tools be registered once, which is Pi's requirement, without the evidence
+   * being optional - and it is the reason nothing was recorded before.
+   */
+  const goalId = shortId("goal");
+  const evidence = fileEvidence({ goalId, goal: "browser chat session" });
+
   const composed = composeAgent({
     card: {
       objective:
@@ -33,14 +48,19 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       // a side effect of starting a run.
       browser: WorkerBrowserPort.lazy(session.worker),
       askUser: (question) => session.askUser(question),
+      evidence,
     },
   });
 
   const names: string[] = [];
   for (const tool of composed.tools) {
-    pi.registerTool(tool as unknown as RegisteredTool);
+    // The view is added here, at the Pi boundary: the tools themselves do not know that
+    // anything is drawing them.
+    pi.registerTool(withToolView(tool as unknown as RegisteredTool));
     names.push((tool as unknown as { name: string }).name);
   }
+
+  meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId });
 
   /*
    * Browser tools only, for the whole session.
@@ -59,4 +79,11 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   // Replace the coding identity rather than appending to it. Appending is why the chat
   // used to answer "what can you do?" like a coding assistant.
   pi.on("before_agent_start", () => ({ systemPrompt: composed.systemPrompt }));
+
+  pi.registerCommand("browser-evidence", {
+    description: "Where this session's evidence, metrics and payloads are written",
+    handler: (_args, ctx) => {
+      ctx.ui.notify(`This session: ${goalDir(undefined, goalId)}`);
+    },
+  });
 }

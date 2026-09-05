@@ -14,9 +14,8 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ParkedOutcome } from "../core/types.ts";
-import { composeAgent } from "./agent.ts";
+import { composeAgent, fixedOverhead } from "./agent.ts";
 import type { TaskCardInput } from "./card.ts";
-import { NO_METRICS, type MetricsSink } from "./metrics.ts";
 import { UsageMeter, withTurnCap, ZERO_USAGE, type ModelPort, type UsageSplit } from "./model.ts";
 import { PLACEHOLDER, pruneMessages, type PrunableMessage, type PruneOptions } from "./prune.ts";
 import type { ReportPayload, ToolContext } from "./tools.ts";
@@ -41,8 +40,6 @@ export interface RuntimeOptions {
   model?: Model<never>;
   maxTurns?: number;
   prune?: PruneOptions | false;
-  /** Where cost and duplicate-work metering goes. Defaults to nowhere. */
-  metrics?: MetricsSink;
 }
 
 /**
@@ -119,7 +116,9 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
   let report: ReportPayload | undefined;
   let parked: ParkedOutcome | undefined;
 
-  const metrics = options.metrics ?? NO_METRICS;
+  // One source: metering is part of the run's evidence, not a separate option that can
+  // disagree with it.
+  const metrics = options.tools.evidence.metrics;
   // Incremented when the context is built, which is the start of a turn, so tool results
   // and provider usage from the same turn share an index and the rollup can join them.
   let currentTurn = 0;
@@ -131,7 +130,6 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     maxTurns,
     tools: {
       ...options.tools,
-      metrics,
       turn: () => currentTurn,
       onReport: (value) => {
         report = value;
@@ -163,18 +161,7 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     kind: "run",
     at: new Date().toISOString(),
     model: `${(model as { provider?: string }).provider ?? "?"}/${(model as { id?: string }).id ?? "?"}`,
-    cardBytes: card.length,
-    toolSchemaBytes: JSON.stringify(
-      tools.map((tool) => {
-        const entry = tool as unknown as { name: string; description: string; parameters: unknown };
-        return {
-          name: entry.name,
-          description: entry.description,
-          parameters: entry.parameters,
-        };
-      }),
-    ).length,
-    toolCount: tools.length,
+    ...fixedOverhead(composed),
     maxTurns,
   });
 

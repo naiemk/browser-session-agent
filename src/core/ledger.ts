@@ -68,6 +68,19 @@ export interface LedgerEvent {
 
 export type LedgerInput = Omit<LedgerEvent, "id" | "ts" | "goalId">;
 
+/**
+ * Somewhere to record evidence, as opposed to the file that holds it.
+ *
+ * The core takes this rather than the class because a host may not know which goal it is
+ * writing to until later: a chat session opens before the operator says what they want.
+ * An interface lets that host supply something that resolves the goal on first write,
+ * without the core knowing or caring.
+ */
+export interface LedgerSink {
+  readonly artifactsDir: string;
+  append(input: LedgerInput): Promise<LedgerEvent>;
+}
+
 function capPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!payload) return undefined;
   const redacted = redactDeep(payload);
@@ -80,7 +93,7 @@ function capPayload(payload: Record<string, unknown> | undefined): Record<string
   };
 }
 
-export class Ledger {
+export class Ledger implements LedgerSink {
   private constructor(
     readonly goalId: string,
     private readonly paths: GoalPaths,

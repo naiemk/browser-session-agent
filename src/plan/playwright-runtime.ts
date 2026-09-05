@@ -76,7 +76,9 @@ export class PlaywrightPlanRuntime implements PlanRuntime {
       if (step.op === "click_first") {
         return { ok: false, detail: "click_first is handled by the interpreter" };
       }
-      return { ok: false, detail: `unsupported ${step.op}` };
+      // Every op above is handled, so this is unreachable by the types. Kept as a real
+      // branch anyway: a step arriving from a stored plan is data, not a compile-time fact.
+      return { ok: false, detail: `unsupported ${(step as { op: string }).op}` };
     } catch (err) {
       const message = err instanceof AgentError ? err.message : String(err);
       return { ok: false, detail: message };

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
-import { parseArgs, parseCriterion } from "../../src/cli/main.ts";
+import { Ledger } from "../../src/core/ledger.ts";
+import { goalPaths } from "../../src/core/paths.ts";
+import { main, parseArgs, parseCriterion } from "../../src/cli/main.ts";
 import { SMOKE_TASK_IDS, selectTasks } from "../../src/suite/tags.ts";
 import { SUITE_TASKS } from "../../src/suite/tasks.ts";
 
@@ -31,6 +36,56 @@ describe("CLI argument parsing", () => {
 
   it("defaults to help with no arguments", () => {
     assert.equal(parseArgs([]).command, "help");
+  });
+});
+
+describe("finding a run to ask about", () => {
+  it("lists goals newest first, with what they sent", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bsa-goals-"));
+    try {
+      // Two runs, the second later, so ordering is observable rather than incidental.
+      const older = await Ledger.open(root, "g_older");
+      await older.append({ type: "goal_started", intent: "the first thing" });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const newer = await Ledger.open(root, "g_newer");
+      await newer.append({ type: "goal_started", intent: "the second thing" });
+      await writeFile(goalPaths(root, "g_newer").payloadsFile, `${"x".repeat(2048)}\n`, "utf8");
+
+      const lines: string[] = [];
+      const write = process.stdout.write.bind(process.stdout);
+      process.stdout.write = ((chunk: string) => {
+        lines.push(String(chunk));
+        return true;
+      }) as typeof process.stdout.write;
+      try {
+        assert.equal(await main(["goals", "--root", root]), 0);
+      } finally {
+        process.stdout.write = write;
+      }
+
+      const listed = lines.join("").trim().split("\n");
+      assert.match(listed[0] ?? "", /g_newer/, "newest first, because that is the one you ran");
+      assert.match(listed[0] ?? "", /the second thing/);
+      assert.match(listed[0] ?? "", /2 KB sent/);
+      assert.match(listed[1] ?? "", /g_older/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("says where it looked when there is nothing there", async () => {
+    const said: string[] = [];
+    const write = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string) => {
+      said.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      assert.equal(await main(["goals", "--root", "/tmp/definitely-not-here"]), 1);
+    } finally {
+      process.stderr.write = write;
+    }
+    assert.match(said.join(""), /no runs under \/tmp\/definitely-not-here\/goals/);
   });
 });
 

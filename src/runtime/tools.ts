@@ -10,10 +10,8 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
-import type { Ledger } from "../core/ledger.ts";
 import { peek } from "../core/peek.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
-import type { GoalStore } from "../core/state.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
@@ -32,7 +30,8 @@ import {
   TOOL_STRANGER,
   TOOL_SURVEY,
 } from "./names.ts";
-import { hashOf, observationStats, type MetricsSink } from "./metrics.ts";
+import { hashOf, observationStats } from "./metrics.ts";
+import type { Evidence } from "./evidence.ts";
 import { findWireObservation, wireText } from "./wire.ts";
 import { flatView, type ViewStrategy } from "./view/index.ts";
 
@@ -44,12 +43,15 @@ export interface ReportPayload {
 export interface ToolContext {
   browser: BrowserPort;
   tabId?: string;
-  ledger?: Ledger;
-  entityId?: string;
-  goalRoot?: string;
-  goalId?: string;
+  /**
+   * Required, and one thing rather than six optional ones.
+   *
+   * Every recording dependency used to be individually optional, so forgetting them all
+   * looked exactly like choosing to record nothing. Recording nothing is still possible
+   * via `nullEvidence()`; it just has to be said out loud.
+   */
+  evidence: Evidence;
   policy?: ApprovalMode;
-  screenshotDir?: string;
   approve?: (request: ApprovalRequest) => Promise<boolean>;
   askUser?: (question: string) => Promise<string | undefined>;
   onReport?: (report: ReportPayload) => void;
@@ -64,15 +66,11 @@ export interface ToolContext {
    * reads them, and it currently cannot tell it is losing until it is cut off.
    */
   stepLimit?: number;
-  /** Where established facts are kept, so they survive the task that found them. */
-  goalStore?: GoalStore;
   /**
    * Cap on session-free views. Each one is a real anonymous request to the site, so it is
    * budgeted like any other read-only exploration rather than being free.
    */
   strangerViewBudget?: number;
-  /** Where per-result size and duplicate-work metering goes. Defaults to nowhere. */
-  metrics?: MetricsSink;
   /** The current turn, so a result can be joined to the turn that paid for it. */
   turn?: () => number;
   /** How the page is described to the model. Defaults to the flat control list. */
@@ -101,15 +99,16 @@ function reply(value: unknown, details: unknown = value): Result {
 }
 
 /**
- * Measure every tool result at the one place they all pass through.
+ * Measure and keep every tool result, at the one place they all pass through.
  *
  * Wrapping `execute` rather than `reply` keeps the tool name available and means a tool
  * added later is measured without touching it. The text measured here is exactly the
- * string the model receives, so the bytes are the real bytes rather than an estimate.
+ * string the model receives, so the bytes are the real bytes rather than an estimate -
+ * and it is the same string written to the payload log, which is what makes it safe for
+ * a host to show one line instead.
  */
 function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
-  const metrics = context.metrics;
-  if (!metrics) return tool;
+  const { metrics, payloads } = context.evidence;
 
   return {
     ...tool,
@@ -117,13 +116,16 @@ function measured(tool: RuntimeTool, context: ToolContext): RuntimeTool {
       const result = await tool.execute(toolCallId, params);
       const turn = context.turn?.() ?? 0;
       const text = result.content.map((part) => part.text).join("");
+      const hash = hashOf(text);
+
+      payloads.write({ at: new Date().toISOString(), turn, tool: tool.name, bytes: text.length, hash, text });
 
       metrics.record({
         kind: "tool_result",
         turn,
         tool: tool.name,
         bytes: text.length,
-        hash: hashOf(text),
+        hash,
       });
 
       // Snapshots dominate the bill, so they are counted in their own right wherever
@@ -209,9 +211,9 @@ export function buildTools(context: ToolContext): AgentTool[] {
         try {
           const result = await context.browser.probe(query, tab());
           // The probe answers; recording is ours, so evidence has one owner.
-          await context.ledger?.append({
+          await context.evidence.ledger.append({
             type: "probe",
-            entityId: context.entityId,
+            entityId: context.evidence.entityId,
             intent: `probe ${(query as { kind?: string })?.kind ?? "?"}`,
             payload: { query, truncated: result.truncated },
           });
@@ -233,7 +235,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           const verification = await stepCheck(
             context.browser,
             (params as { predicate: unknown }).predicate,
-            { ledger: context.ledger, entityId: context.entityId, tabId: tab() },
+            { ledger: context.evidence.ledger, entityId: context.evidence.entityId, tabId: tab() },
           );
           return reply(view.verification(verification));
         } catch (err) {
@@ -269,14 +271,11 @@ export function buildTools(context: ToolContext): AgentTool[] {
             {
               policy: context.policy,
               approve: context.approve,
-              ledger: context.ledger,
-              entityId: context.entityId,
-              screenshotDir: context.screenshotDir,
+              ledger: context.evidence.ledger,
+              entityId: context.evidence.entityId,
+              screenshotDir: context.evidence.screenshotDir,
               precondition: request.expect as Predicate | undefined,
-              checkpoint:
-                context.goalRoot && context.goalId
-                  ? { root: context.goalRoot, goalId: context.goalId }
-                  : undefined,
+              checkpoint: context.evidence.goal,
             },
           );
 
@@ -315,9 +314,9 @@ export function buildTools(context: ToolContext): AgentTool[] {
       execute: async (_id: string, params: unknown) => {
         const question = String((params as { question: unknown }).question);
         const answer = await context.askUser?.(question);
-        await context.ledger?.append({
+        await context.evidence.ledger.append({
           type: "note",
-          entityId: context.entityId,
+          entityId: context.evidence.entityId,
           intent: `asked: ${question}`,
           outcome: { ok: answer !== undefined, detail: answer ?? "unanswered" },
         });
@@ -348,8 +347,8 @@ export function buildTools(context: ToolContext): AgentTool[] {
           const result = await viewWithoutSession(context.browser, {
             url: (params as { url?: string }).url,
             tabId: tab(),
-            ledger: context.ledger,
-            entityId: context.entityId,
+            ledger: context.evidence.ledger,
+            entityId: context.evidence.entityId,
           });
           return reply({
             asStranger: view.observation(result.signedOut),
@@ -377,13 +376,13 @@ export function buildTools(context: ToolContext): AgentTool[] {
         if (!key || !value) return reply({ error: "remember needs a key and a value" });
 
         // The ledger event is the provenance: the fact points at what established it.
-        const event = await context.ledger?.append({
+        const event = await context.evidence.ledger.append({
           type: "note",
-          entityId: context.entityId,
+          entityId: context.evidence.entityId,
           intent: `established: ${key}`,
           outcome: { ok: true, detail: value },
         });
-        await context.goalStore?.mergeGoalFacts({
+        await context.evidence.facts.mergeGoalFacts({
           [key]: { value, evidence: event?.id, at: new Date().toISOString() },
         });
         return reply({ remembered: key, evidence: event?.id ?? null });
@@ -399,9 +398,9 @@ export function buildTools(context: ToolContext): AgentTool[] {
       execute: async () => {
         try {
           const survey = await context.browser.survey(tab());
-          await context.ledger?.append({
+          await context.evidence.ledger.append({
             type: "probe",
-            entityId: context.entityId,
+            entityId: context.evidence.entityId,
             intent: `survey what ${survey.url} offers`,
             payload: { counts: surveyCounts(survey) },
           });
@@ -431,8 +430,8 @@ export function buildTools(context: ToolContext): AgentTool[] {
             url: String(raw.url ?? ""),
             tabId: tab(),
             ...(raw.expect ? { expect: raw.expect as Predicate } : {}),
-            ledger: context.ledger,
-            entityId: context.entityId,
+            ledger: context.evidence.ledger,
+            entityId: context.evidence.entityId,
           });
           const spent = budget();
           return reply({
@@ -469,9 +468,9 @@ export function buildTools(context: ToolContext): AgentTool[] {
           const primary = await context.browser.observe(context.tabId);
           sideTab = await context.browser.openTab(String((params as { url?: unknown }).url ?? ""));
           const observation = await context.browser.observe(sideTab);
-          await context.ledger?.append({
+          await context.evidence.ledger.append({
             type: "note",
-            entityId: context.entityId,
+            entityId: context.evidence.entityId,
             intent: `open side tab at ${observation.url}`,
             outcome: { ok: true, detail: `still on ${primary.url}` },
           });
@@ -539,14 +538,14 @@ export function buildTools(context: ToolContext): AgentTool[] {
           : "chose";
         const why = String(raw.why ?? "").trim();
 
-        const event = await context.ledger?.append({
+        const event = await context.evidence.ledger.append({
           type: "fork",
-          entityId: context.entityId,
+          entityId: context.evidence.entityId,
           intent: `"${term}" could mean ${candidates.join(" or ")}`,
           outcome: { ok: true, detail: `${resolution}: ${why}` },
           payload: { term, candidates, resolution, why },
         });
-        await context.goalStore?.mergeGoalFacts({
+        await context.evidence.facts.mergeGoalFacts({
           [`fork:${term}`]: { candidates, resolution, why, evidence: event?.id },
         });
         return reply({ recorded: term, candidates: candidates.length, resolution });

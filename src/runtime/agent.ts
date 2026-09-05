@@ -29,6 +29,33 @@ export interface ComposeAgentOptions {
   maxTurns?: number;
 }
 
+/**
+ * What the model is charged for before it reads a single page.
+ *
+ * The card and the tool schemas are resent on every turn, so their size is multiplied by
+ * the length of the task. Returned here rather than measured by each caller so that the
+ * number in a report is the number the provider actually saw.
+ */
+export function fixedOverhead(composition: AgentComposition): {
+  cardBytes: number;
+  toolSchemaBytes: number;
+  toolCount: number;
+} {
+  const schemas = composition.tools.map((tool) => {
+    const described = tool as unknown as { name: string; description: string; parameters: unknown };
+    return JSON.stringify({
+      name: described.name,
+      description: described.description,
+      parameters: described.parameters,
+    });
+  });
+  return {
+    cardBytes: composition.systemPrompt.length,
+    toolSchemaBytes: schemas.join("").length,
+    toolCount: schemas.length,
+  };
+}
+
 export function composeAgent(options: ComposeAgentOptions): AgentComposition {
   const card: TaskCardInput = {
     ...options.card,

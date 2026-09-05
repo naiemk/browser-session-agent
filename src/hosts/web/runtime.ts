@@ -1,7 +1,11 @@
 import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { bindBrowserCommands } from "../../host/bind-extension.ts";
+import { fileEvidence } from "../../host/evidence.ts";
+import { shortId } from "../../core/ids.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
+import { summarizeToolResult } from "../../runtime/summary.ts";
+import { payloadInContent } from "../../runtime/wire.ts";
 import { RpcBrowserPort } from "../shared/port-rpc.ts";
 import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../host/memory-host.ts";
 import { RpcSessionHandle } from "../../host/session-handle.ts";
@@ -67,6 +71,13 @@ export class OperatorRuntime {
     return this.startPromise !== null && !this.piReady && this.piReason === null;
   }
   sessionId = `sess_${Date.now().toString(36)}`;
+  /**
+   * The goal this chat's evidence is filed under.
+   *
+   * Separate from `sessionId`, which is reassigned when the operator starts a new
+   * session: evidence already written must not be orphaned by a later rename.
+   */
+  readonly evidenceGoalId = shortId("goal");
   model = "auto";
   thinking = "medium";
   private models: Array<{ id: string; label: string }> = [
@@ -396,6 +407,7 @@ export class OperatorRuntime {
           null,
           2,
         ),
+        level: "info",
       });
       return;
     }
@@ -433,6 +445,9 @@ export class OperatorRuntime {
       tools: {
         browser: new RpcBrowserPort({ call: (method, args) => this.hub.call(method, args) }),
         askUser: async (question) => this.host.input(question),
+        // A chat session is the goal here, same as in the local CLI: the operator's
+        // objective spans whatever runs they start inside the conversation.
+        evidence: fileEvidence({ goalId: this.evidenceGoalId, goal: "hosted chat session" }),
       },
     });
     this.browserPrompt = composed.systemPrompt;
@@ -578,9 +593,21 @@ function normalizeAgentEvent(event: unknown): Record<string, unknown> {
     assistantMessageEvent?: { type?: string; delta?: string };
     message?: unknown;
     toolName?: string;
+    result?: { details?: unknown };
+    content?: unknown;
   };
   if (value.type === "message_update" && value.assistantMessageEvent?.type === "text_delta") {
     return { type: "text_delta", text: value.assistantMessageEvent.delta ?? "" };
+  }
+  /*
+   * Say what the step did, not just which tool ran.
+   *
+   * The same one-liner the CLI prints, from the same function, because a step should not
+   * read differently depending on which surface the operator happens to be watching.
+   */
+  if (value.type === "tool_execution_end" && value.toolName) {
+    const details = value.result?.details ?? payloadInContent(value.content);
+    return { ...value, summary: summarizeToolResult(value.toolName, details) };
   }
   if (value.type) return { ...value };
   return { type: "agentEvent", event };

@@ -361,6 +361,42 @@ side is a port in `src/runtime`, so no production code imports `src/optimize` �
 particular the view strategy seam lives in the runtime, because a hot path filed under
 "optimize" invites being treated as optional.
 
+## D48. The screen is not the log
+
+A tool result was one string, sent to the model and printed to the terminal. That is two
+readers with opposite needs: the model wants every control on the page, and a person
+wants to know what just happened. The model won, so a forty-control snapshot scrolled the
+interesting part off screen and the operator could not follow their own run.
+
+So there are three destinations, and each has one job. The terminal gets one line per
+step, from `summarizeToolResult`, which is shared data rather than per-host formatting so
+that the CLI and the chat cannot describe the same step differently. The model gets the
+payload, unchanged. And `payloads.jsonl` gets that payload verbatim, which is the only
+reason shrinking the screen is safe: nothing is lost, it moves. The hash on each payload
+line is the hash on its metrics record, so a line, its cost, and its full text join
+without an id threaded through everything.
+
+Drawing lives at the host boundary rather than in the tools, because a tool that knows
+what a terminal is cannot be reused by a host that has none.
+
+## D49. Evidence is required, and one thing
+
+Every recording dependency was an optional field reached with `?.` — ledger, goal store,
+metrics, screenshot dir, goal root, goal id. The suite passed all six. The product passed
+none. So the agent the operator actually ran recorded nothing at all, and `remember`
+reported success while storing the fact nowhere. Nothing failed, because there was
+nothing to fail: forgetting all six was indistinguishable from choosing to record
+nothing.
+
+Six optional fields are a request to remember six things. One required field is a
+request to remember one. Recording nothing is still legitimate — tests need it — but it
+is spelled `nullEvidence()`, which shows up in a diff, and that is the whole difference
+between a decision and an oversight.
+
+The ledger became an interface to make this possible: a chat registers its tools before
+the operator has said what they want, so the host supplies a sink that resolves its goal
+on first write rather than at startup.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

@@ -4,6 +4,7 @@ import type { BrowserPort } from "../../src/core/browser.ts";
 import type { Observation, PageFacts } from "../../src/core/types.ts";
 import { createMockModel, latestObservation } from "../../src/runtime/mock-model.ts";
 import { TOOL_ACT, TOOL_CHECK, TOOL_DONE, TOOL_OBSERVE } from "../../src/runtime/names.ts";
+import { memoryEvidence } from "../../src/runtime/evidence.ts";
 import { runTask } from "../../src/runtime/runtime.ts";
 
 function observation(overrides: Partial<Observation> = {}): Observation {
@@ -69,7 +70,7 @@ describe("mock model drives Pi's real loop", () => {
 
     const outcome = await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1", policy: "auto" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence(), policy: "auto" },
       stream: createMockModel({
         plan: [
           { tool: TOOL_OBSERVE },
@@ -92,7 +93,7 @@ describe("mock model drives Pi's real loop", () => {
 
     await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1", policy: "auto" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence(), policy: "auto" },
       stream: createMockModel({
         // No explicit observe: the plan needs a snapshot first and must fetch one.
         plan: [{ tool: TOOL_ACT, target: "Full name", args: { kind: "type", text: "Ada" } }],
@@ -108,7 +109,7 @@ describe("mock model drives Pi's real loop", () => {
     const { browser } = recordingBrowser();
     const outcome = await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence() },
       stream: createMockModel({
         plan: [
           { tool: TOOL_OBSERVE },
@@ -124,7 +125,7 @@ describe("mock model drives Pi's real loop", () => {
     const { browser } = recordingBrowser();
     const outcome = await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence() },
       stream: createMockModel({
         script: [
           {
@@ -143,7 +144,7 @@ describe("mock model drives Pi's real loop", () => {
     const { browser } = recordingBrowser();
     const outcome = await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence() },
       stream: createMockModel({ script: [{ error: "402 out of credits" }] }),
     });
 
@@ -155,7 +156,7 @@ describe("mock model drives Pi's real loop", () => {
     const { browser } = recordingBrowser();
     const outcome = await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence() },
       maxTurns: 3,
       // A model that never finishes: observe forever.
       stream: createMockModel({
@@ -174,7 +175,7 @@ describe("mock model drives Pi's real loop", () => {
     const { browser } = recordingBrowser();
     const outcome = await runTask({
       card: CARD,
-      tools: { browser, tabId: "tab_1" },
+      tools: { browser, tabId: "tab_1", evidence: memoryEvidence() },
       stream: createMockModel({
         plan: [{ tool: TOOL_OBSERVE }],
         usagePerTurn: { tokens: 100, costUsd: 0.001 },

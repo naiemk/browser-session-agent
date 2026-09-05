@@ -1,4 +1,5 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/core/**/*.ts", "src/runtime/**/*.ts", "src/suite/**/*.ts", "src/cli/**/*.ts"]
+  "//": "All of src, not four directories of it. The narrow list is how a type error in src/hosts and src/host reached main more than once: the code the operator actually runs was the code nothing checked.",
+  "include": ["src/**/*.ts"]
 }

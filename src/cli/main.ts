@@ -20,6 +20,8 @@ import { parsePredicate } from "../core/predicates.ts";
 import { GoalStore } from "../core/state.ts";
 import { TaskStore } from "../core/task.ts";
 import type { Predicate } from "../core/types.ts";
+import { evidenceForGoal } from "../host/evidence.ts";
+import { FilePayloadLog, FileRecorder } from "../optimize/recorder.ts";
 import { createLiveModel } from "../runtime/model.ts";
 import { runTaskWithDeclineRetry } from "../runtime/runtime.ts";
 
@@ -91,6 +93,7 @@ const HELP = `browser-agent — drive a browser toward a verified goal
 Usage:
   browser-agent run "<goal>" --url <url> [options]
   browser-agent suite [--target mock|reference|live] [options]
+  browser-agent goals [--limit <n>] [--root <dir>]
   browser-agent replay <goalId> [--root <dir>]
   browser-agent metrics <goalId> [--root <dir>] [--json]
   browser-agent compare <baseline.json> <current.json>
@@ -148,6 +151,8 @@ async function commandRun(args: ParsedArgs): Promise<number> {
   const live = await createLiveModel({ model: flagString(args.flags, "model") });
   const browser = await LocalBrowser.launch({ headless: !args.flags.headed });
   const ledger = await Ledger.open(root, goalId);
+  const metrics = await FileRecorder.open(goalPaths(root, goalId).metricsFile);
+  const payloads = await FilePayloadLog.open(goalPaths(root, goalId).payloadsFile);
   const store = await TaskStore.open(root, goalId);
   const goalStore = await GoalStore.open(root, goalId, goal);
 
@@ -167,12 +172,15 @@ async function commandRun(args: ParsedArgs): Promise<number> {
       tools: {
         browser,
         tabId: tab,
-        ledger,
-        goalRoot: root,
-        goalId,
-        goalStore,
+        evidence: evidenceForGoal({
+          root,
+          goalId,
+          ledger,
+          store: goalStore,
+          metrics,
+          payloads,
+        }),
         policy,
-        screenshotDir: ledger.artifactsDir,
         askUser: async (question) => {
           process.stderr.write(`\nThe agent needs an answer: ${question}\n`);
           return undefined;
@@ -396,7 +404,7 @@ async function commandMetrics(args: ParsedArgs): Promise<number> {
   const records = await readMetrics(goalPaths(root, goalId).metricsFile);
   if (records.length === 0) {
     process.stderr.write(
-      `no metrics for ${goalId} under ${root}. Runs record them only when a metrics sink is set.\n`,
+      `no metrics for ${goalId} under ${root}. Run \`browser-agent goals\` to list what is there.\n`,
     );
     return 1;
   }
@@ -432,11 +440,60 @@ async function commandCompare(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+/**
+ * What runs are on this machine.
+ *
+ * Needed because a goal id is generated, not chosen: without this the operator has to
+ * list a directory by hand before they can ask anything about their own last run.
+ */
+async function commandGoals(args: ParsedArgs): Promise<number> {
+  const { readdir, stat } = await import("node:fs/promises");
+  const root = flagString(args.flags, "root") ?? coreRoot();
+  const dir = path.join(root, "goals");
+
+  const ids = await readdir(dir).catch(() => [] as string[]);
+  if (ids.length === 0) {
+    process.stderr.write(`no runs under ${dir}\n`);
+    return 1;
+  }
+
+  const rows = await Promise.all(
+    ids.map(async (goalId) => {
+      const paths = goalPaths(root, goalId);
+      const events = await Ledger.readFrom(root, goalId).catch(() => []);
+      const at = await stat(paths.dir).then(
+        (info) => info.mtime,
+        () => new Date(0),
+      );
+      const payloadBytes = await stat(paths.payloadsFile).then(
+        (info) => info.size,
+        () => 0,
+      );
+      const goal = events.find((event) => event.type === "goal_started")?.intent;
+      return { goalId, at, events: events.length, payloadBytes, goal };
+    }),
+  );
+
+  rows.sort((left, right) => right.at.getTime() - left.at.getTime());
+  const limit = Number(flagString(args.flags, "limit") ?? 20);
+  for (const row of rows.slice(0, limit)) {
+    const kb = Math.round(row.payloadBytes / 1024);
+    process.stdout.write(
+      `${row.goalId}  ${row.at.toISOString()}  ${String(row.events).padStart(4)} events  ` +
+        `${String(kb).padStart(6)} KB sent${row.goal ? `  ${row.goal}` : ""}\n`,
+    );
+  }
+  process.stdout.write(`\n${dir}\n`);
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   switch (args.command) {
     case "run":
       return commandRun(args);
+    case "goals":
+      return commandGoals(args);
     case "suite":
       return commandSuite(args);
     case "replay":

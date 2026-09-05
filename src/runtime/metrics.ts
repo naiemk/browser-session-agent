@@ -103,6 +103,37 @@ export const NO_METRICS: MetricsSink = {
   async flush() {},
 };
 
+/**
+ * One tool result, exactly as the model received it.
+ *
+ * This exists so the screen can stop being the log. A snapshot printed in full is
+ * unreadable on a terminal and unsearchable afterwards, but it is the only record of
+ * what the model was actually reasoning from, so it cannot simply be dropped. Keeping
+ * the bytes here means the terminal can show one line and lose nothing.
+ *
+ * `hash` is the same hash as the matching `ToolResultRecord`, which is what lets a line
+ * on screen, its cost, and its full text be joined without a shared id being threaded
+ * through everything.
+ */
+export interface PayloadRecord {
+  at: string;
+  turn: number;
+  tool: string;
+  bytes: number;
+  hash: string;
+  text: string;
+}
+
+export interface PayloadSink {
+  write(record: PayloadRecord): void;
+  flush(): Promise<void>;
+}
+
+export const NO_PAYLOADS: PayloadSink = {
+  write() {},
+  async flush() {},
+};
+
 /** Short and stable. Collisions do not matter: this compares payloads, not secrets. */
 export function hashOf(text: string): string {
   return createHash("sha1").update(text).digest("hex").slice(0, 12);

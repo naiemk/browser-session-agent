@@ -132,6 +132,22 @@ Runs meter themselves: `browser-agent metrics <goalId>` says where a run's conte
 what it bought twice, and whether the prompt cache was being invalidated. Cost is reported
 and attributed, never gated — see [docs/optimization.md](docs/optimization.md).
 
+### Reading a run
+
+Every run — a suite task, a `browser-agent run`, a chat in either CLI — files itself under
+`~/.browser-agent-core/goals/<goalId>/`:
+
+| File | What it is | Keep? |
+| --- | --- | --- |
+| `events.jsonl` | Evidence: intent, before, action, after, outcome. Redacted and capped, meant to be readable later. | Yes |
+| `metrics.jsonl` | What it cost: tokens, cache split, context bytes per turn. | Yes |
+| `payloads.jsonl` | Every byte the model was sent, verbatim. Large. | Only to debug |
+| `artifacts/` | Screenshots and checkpoints. | Yes |
+
+The terminal shows one line per step (`observe instagram.com/vika — 38 controls, 2 dialogs`)
+because the full payload is in `payloads.jsonl`. In the local CLI, `/browser-evidence`
+prints the current session's directory.
+
 Design notes: [docs/runtime.md](docs/runtime.md) ·
 [docs/optimization.md](docs/optimization.md) ·
 [docs/autonomous-agent.md](docs/autonomous-agent.md) ·
