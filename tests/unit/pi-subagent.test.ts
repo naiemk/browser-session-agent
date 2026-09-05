@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,9 +13,14 @@ import {
   digestText,
   DIGEST_MAX_CHARS,
   ensureScratch,
+  maybeAutoPlan,
   PLAN_COMMAND,
+  PLAN_DIGEST_HEADER,
+  prependPlanDigest,
+  shouldAutoPlan,
   SUBAGENT_TOOL_NAME,
 } from "../../src/host/pi-subagent/bind.ts";
+import { AUTO_PLAN_TIMEOUT_MS } from "../../src/host/pi-subagent/auto-plan.ts";
 import { discoverPackagedAgents, findAgent } from "../../src/host/pi-subagent/discover.ts";
 import {
   buildChildInvocation,
@@ -297,5 +302,153 @@ describe("subagent bind", () => {
     });
     await runCommand(pi, PLAN_COMMAND, "  ");
     assert.match(pi.notifications.at(-1) ?? "", /Usage: \/plan/);
+  });
+});
+
+describe("auto-plan heuristic", () => {
+  const yes = [
+    "apply to these 5 jobs using my CV",
+    "find software roles and tailor a resume for each",
+    "campaign: apply to YC companies",
+  ];
+  const no = [
+    "submit this application",
+    "click Apply on this page",
+    "log in to LinkedIn",
+    "what's on this tab",
+    "/plan already forced",
+    "https://example.test/apply",
+    "ok",
+  ];
+
+  for (const text of yes) {
+    it(`plans: ${text}`, () => {
+      assert.equal(shouldAutoPlan(text), true, text);
+    });
+  }
+  for (const text of no) {
+    it(`skips: ${text}`, () => {
+      assert.equal(shouldAutoPlan(text), false, text);
+    });
+  }
+});
+
+describe("maybeAutoPlan", () => {
+  function stubPlan(text = "## Goal\nFive jobs.\n\n## Digest\nUse the CV.") {
+    let calls = 0;
+    return {
+      calls: () => calls,
+      runtime: {
+        async run(input: { agentName: string; timeoutMs?: number }) {
+          calls += 1;
+          assert.equal(input.agentName, "planner");
+          assert.equal(input.timeoutMs, AUTO_PLAN_TIMEOUT_MS);
+          return {
+            agent: "planner",
+            text,
+            exitCode: 0,
+            stderr: "",
+            aborted: false,
+          };
+        },
+      },
+    };
+  }
+
+  it("spawns once, prepends a digest, and skips a follow-up", async () => {
+    const root = await tempRoot();
+    const stub = stubPlan();
+    const attempted = new Set<string>();
+    const text = "apply to these 5 jobs using my CV";
+    const first = await maybeAutoPlan({
+      text,
+      goalId: "goal_auto",
+      root,
+      attempted,
+      runtime: stub.runtime,
+    });
+    assert.equal(first.planned, true);
+    assert.ok(first.digest);
+    const sent = prependPlanDigest(text, first.digest!);
+    assert.ok(sent.includes(PLAN_DIGEST_HEADER));
+    assert.match(sent, /Five jobs/);
+    assert.match(sent, /---\napply to these 5 jobs using my CV/);
+
+    const second = await maybeAutoPlan({
+      text: "now apply to more jobs with my resume",
+      goalId: "goal_auto",
+      root,
+      attempted,
+      runtime: {
+        async run() {
+          throw new Error("should not spawn again");
+        },
+      },
+    });
+    assert.equal(second.planned, false);
+    assert.equal(stub.calls(), 1);
+  });
+
+  it("skips when plan.md already exists", async () => {
+    const root = await tempRoot();
+    const scratch = await ensureScratch("goal_exists", root);
+    await writeFile(path.join(scratch, "plan.md"), "## Goal\nAlready planned.\n", "utf8");
+    const result = await maybeAutoPlan({
+      text: "apply to these 5 jobs using my CV",
+      goalId: "goal_exists",
+      root,
+      attempted: new Set(),
+      runtime: {
+        async run() {
+          throw new Error("should not spawn");
+        },
+      },
+    });
+    assert.equal(result.planned, false);
+  });
+
+  it("continues the turn when the planner fails", async () => {
+    const root = await tempRoot();
+    const notes: string[] = [];
+    const result = await maybeAutoPlan({
+      text: "apply to these 5 jobs using my CV",
+      goalId: "goal_fail",
+      root,
+      attempted: new Set(),
+      notify: (message) => notes.push(message),
+      runtime: {
+        async run() {
+          return {
+            agent: "planner",
+            text: "",
+            exitCode: 1,
+            stderr: "boom",
+            aborted: false,
+          };
+        },
+      },
+    });
+    assert.equal(result.planned, false);
+    assert.ok(notes.some((note) => /boom|Continuing without/.test(note)));
+  });
+
+  it("injects a plan-digest message from before_agent_start", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    bindSubagent(pi, {
+      goalId: "goal_hook",
+      root,
+      runtime: stubPlan().runtime,
+    });
+    const results = await pi.emit("before_agent_start", {
+      prompt: "apply to these 5 jobs using my CV",
+    });
+    const injected = results.find(
+      (entry) => entry && typeof entry === "object" && "message" in (entry as object),
+    ) as { message?: { customType?: string; content?: string; display?: boolean } } | undefined;
+    assert.equal(injected?.message?.customType, "plan-digest");
+    assert.equal(injected?.message?.display, true);
+    assert.match(injected?.message?.content ?? "", /Five jobs/);
   });
 });

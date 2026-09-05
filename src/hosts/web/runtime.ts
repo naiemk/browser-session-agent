@@ -3,7 +3,7 @@ import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
-import { bindSubagent, CHAT_WORKER_HINT, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, maybeAutoPlan, prependPlanDigest, SUBAGENT_TOOL_NAME, type SubagentRuntime } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -29,6 +29,8 @@ export interface OperatorRuntimeOptions {
   startDelayMs?: number;
   /** Fail the wait for start() after this many ms. Boot may still finish later. */
   startTimeoutMs?: number;
+  /** Test-only: planner/worker spawn. Production uses the isolated Pi subprocess. */
+  subagentRuntime?: SubagentRuntime;
 }
 
 let piStartLock: Promise<void> = Promise.resolve();
@@ -81,6 +83,7 @@ export class OperatorRuntime {
    * session: evidence already written must not be orphaned by a later rename.
    */
   readonly evidenceGoalId = shortId("goal");
+  private readonly autoPlanAttempted = new Set<string>();
   /*
    * One bundle and one clock for the session, not one per composition.
    *
@@ -119,7 +122,7 @@ export class OperatorRuntime {
     // Product commands, plus the worker tool. Browser tools still come from composeAgent
     // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
-    bindSubagent(this.api, { goalId: this.evidenceGoalId });
+    bindSubagent(this.api, { goalId: this.evidenceGoalId, runtime: this.options.subagentRuntime });
     this.api.on("before_agent_start", () =>
       this.browserPrompt ? { systemPrompt: this.browserPrompt } : undefined,
     );
@@ -396,7 +399,15 @@ export class OperatorRuntime {
     }
     try {
       this.capPiModel();
-      await this.pi.prompt(trimmed);
+      const auto = await maybeAutoPlan({
+        text: trimmed,
+        goalId: this.evidenceGoalId,
+        runtime: this.options.subagentRuntime,
+        attempted: this.autoPlanAttempted,
+        notify: (message, level) => this.send({ type: "notify", message, level: level ?? "info" }),
+      });
+      const toSend = auto.digest ? prependPlanDigest(trimmed, auto.digest) : trimmed;
+      await this.pi.prompt(toSend);
     } catch (err) {
       this.send({
         type: "error",

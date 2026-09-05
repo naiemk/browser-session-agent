@@ -254,9 +254,10 @@ describe("Pi package and extension contract", () => {
     const pi = createFakePi();
     browserSessionAgent(pi);
 
-    const [result] = (await pi.emit("before_agent_start", {
+    const results = (await pi.emit("before_agent_start", {
       systemPrompt: "You are a coding agent.",
-    })) as Array<{ systemPrompt?: string }>;
+    })) as Array<{ systemPrompt?: string } | undefined>;
+    const result = results.find((entry) => entry?.systemPrompt);
 
     assert.ok(result?.systemPrompt, "the hook must supply a prompt");
     assert.doesNotMatch(

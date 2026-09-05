@@ -49,7 +49,7 @@ Public `curl` is fine. Sessionful download is parent/harness `save_to_scratch(ur
 
 ### Token gates
 
-- Route **plan** with a zero-token heuristic later, or `/plan` now. Skip plan for “submit this tab.”
+- Route **plan** with a zero-token heuristic on the first message, or `/plan`. Skip plan for “submit this tab.”
 - Planner session: empty of observe dumps; cap peeks/turns; `plan.md` ≤ ~800 words; parent gets a ≤500 token digest.
 - **Review** only before a committing apply/send, after free checks (files exist). Skip if unchanged and already passed.
 - Do not replan every job.
@@ -67,7 +67,7 @@ Parent registers a `subagent` tool (single agent only) and `/plan`. Coding built
 
 ## Later, not this slice
 
-One Docker per campaign; sqlite; collect servers; hosted Playwright / MS Playwright sku; auto-plan heuristic; `save_via_browser`; parallel/chain; restoring parent `bash`.
+One Docker per campaign; sqlite; collect servers; hosted Playwright / MS Playwright sku; `save_via_browser`; parallel/chain; restoring parent `bash`. A tiny classifier if the heuristic is too noisy.
 
 Chromium stays on the desk (D11). A campaign jail is not Chrome on the VPS.
 
@@ -97,3 +97,7 @@ Execution resources (disk, coding tools, later sqlite and a jail) without making
 ### 2026-09-05 — Phase 1 scope
 
 Idea plus additive code: scratch dir, four packaged agents, `subagent` + `/plan`, no parallel/chain, no suite change.
+
+### 2026-09-06 — auto-plan heuristic
+
+Zero-token first-message gate is live: campaign-shaped chat may spawn the planner and inject a digest into that turn. `/plan` still forces. Unsure skips. A tiny classifier is still deferred.
