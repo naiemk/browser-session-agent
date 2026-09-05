@@ -55,6 +55,7 @@ const ROUTES: Record<string, string> = {
   "/nav-shell": "nav-shell.html",
   "/nested-cards": "nested-cards.html",
   "/notes": "notes.html",
+  "/stutter": "stutter.html",
 };
 
 /**
