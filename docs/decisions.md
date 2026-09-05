@@ -397,6 +397,33 @@ The ledger became an interface to make this possible: a chat registers its tools
 the operator has said what they want, so the host supplies a sink that resolves its goal
 on first write rather than at startup.
 
+## D50. A pass is believed at once, a failure has to survive a wait
+
+Every verdict about a page came from one read, taken the instant the action returned.
+That asks whether something worked before it has had the chance to: a dialog animates
+open, a framework renders on the next frame, a row arrives with the response. On the
+Instagram run, every reported failure in the trace was of this kind — four of them
+dialogs judged mid-animation, one a value read with the wrong predicate.
+
+A false failure is expensive in a way a slow success is not. It goes in the ledger, the
+evaluator counts repeats of it as a broken strategy, and the agent abandons a route that
+worked and spends turns on a worse one. So the two directions get different treatment,
+which is not a hedge but the actual asymmetry of the situation: nothing that has already
+happened un-happens, so a pass is final on sight, while "not yet" and "not going to" are
+indistinguishable from a single sample and only time tells them apart.
+
+The happy path therefore still costs exactly one read. Only a verdict that is about to
+cost a turn pays for a second look, and what it pays is latency, not tokens — which on a
+run that was already 75% idle is the cheaper of the two ways to be wrong. The verdict
+carries how long it waited, so a failure that survived the window reads differently from
+one taken instantly, both to a person and to whatever we build on it next.
+
+Two things follow from reading more than once. The page delta has to be measured from
+before the action rather than from whatever the port last saw, or a second read reports
+what changed between two polls; that was only accidentally right before. And a read that
+throws is "not yet" rather than a failure, because mid-navigation the execution context
+is genuinely gone for a moment and that is a fact about when we asked.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.
