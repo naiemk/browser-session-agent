@@ -36,6 +36,7 @@ export interface WireObservation {
   consoleErrors?: string[];
   failedRequests?: string[];
   changes?: string[];
+  identity?: { heading?: string; stats?: Array<{ label: string; value: string }> };
   note?: string;
 }
 
@@ -88,6 +89,17 @@ export function toWireObservation(observation: Observation): WireObservation {
   if (changes) wire.changes = changes;
   if (dropped > 0) {
     wire.note = `${controls.length} of ${total} controls shown; probe with a selector to narrow down`;
+  }
+  const heading = observation.identity?.heading?.trim();
+  const stats = observation.identity?.stats
+    ?.filter((stat) => stat.label && stat.value)
+    .slice(0, 6)
+    .map((stat) => ({ label: clip(stat.label, 40), value: clip(stat.value, 40) }));
+  if (heading || (stats && stats.length > 0)) {
+    wire.identity = {
+      ...(heading ? { heading: clip(heading, 80) } : {}),
+      ...(stats && stats.length > 0 ? { stats } : {}),
+    };
   }
   return wire;
 }

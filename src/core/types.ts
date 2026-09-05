@@ -65,6 +65,13 @@ export interface Observation {
    * snapshot loaded from an older ledger has no record of the strategy that produced it.
    */
   perception?: PerceptionTrace;
+  /**
+   * Visible heading and a few labeled numbers, when the page has them.
+   *
+   * Caps stay small: this is so the model does not have to probe for a follower count
+   * that is already on screen, not a second extract-the-page tool.
+   */
+  identity?: { heading?: string; stats?: Array<{ label: string; value: string }> };
   capturedAt: string;
 }
 

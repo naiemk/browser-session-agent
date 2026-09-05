@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { LocalBrowser } from "../../src/core/browser.ts";
 import { act } from "../../src/core/act.ts";
+import { toWireObservation } from "../../src/runtime/wire.ts";
 import { FixtureServer } from "../helpers/fixture-server.ts";
 
 const server = new FixtureServer();
@@ -125,5 +126,19 @@ describe("AGENT-00-T01 perception", () => {
     const abc = observation.controls.find((control) => control.name === "abc");
     assert.ok(abc?.ref, "still addressed by ref");
     assert.equal(abc?.tag, "a");
+  });
+
+  it("puts heading and labeled stats on the snapshot", async () => {
+    const tab = await browser.openTab(`${origin}/profile-stats`);
+    const observation = await browser.observe(tab);
+    assert.equal(observation.identity?.heading, "Ada Lovelace");
+    const stats = observation.identity?.stats ?? [];
+    assert.ok(
+      stats.some((stat) => /followers/i.test(stat.label) && stat.value.includes("12,345")),
+      JSON.stringify(stats),
+    );
+    const wire = toWireObservation(observation);
+    assert.equal(wire.identity?.heading, "Ada Lovelace");
+    assert.ok(wire.identity?.stats?.some((stat) => stat.value.includes("12,345")));
   });
 });

@@ -25,6 +25,8 @@ interface Collected {
   controls: Control[];
   dialogs: string[];
   errors: string[];
+  heading?: string;
+  stats?: Array<{ label: string; value: string }>;
 }
 
 const COLLECT = `(() => {
@@ -237,7 +239,30 @@ const COLLECT = `(() => {
     .map((el) => clean(el.textContent).slice(0, 160))
     .filter(Boolean);
 
-  return { url: location.href, title: document.title, controls, dialogs, errors };
+  const headingEl = [...document.querySelectorAll("h1")].find(visible);
+  const heading = headingEl ? clean(headingEl.innerText).slice(0, 80) : "";
+  const stats = [];
+  const pushStat = (label, value) => {
+    const l = clean(label).slice(0, 40);
+    const v = clean(value).slice(0, 40);
+    if (!l || !v) return;
+    if (stats.some((s) => s.label === l && s.value === v)) return;
+    if (stats.length < 6) stats.push({ label: l, value: v });
+  };
+  for (const dt of document.querySelectorAll("dt")) {
+    if (!visible(dt)) continue;
+    const dd = dt.nextElementSibling;
+    if (dd && dd.tagName === "DD") pushStat(dt.innerText, dd.innerText);
+  }
+  const host = headingEl && headingEl.parentElement ? headingEl.parentElement : document.body;
+  const blob = clean((host && host.innerText) || "").slice(0, 800);
+  const re = /(\\d[\\d,]*)\\s+([A-Za-z][A-Za-z\\s]{0,24})/g;
+  let m;
+  while (stats.length < 6 && (m = re.exec(blob))) {
+    pushStat(m[2], m[1]);
+  }
+
+  return { url: location.href, title: document.title, controls, dialogs, errors, heading: heading || undefined, stats };
 })()`;
 
 export interface PerceiveContext {
@@ -272,6 +297,7 @@ export async function perceive(
   }));
   const present = filter ? await filter(named, page) : named;
   const { controls, truncated } = compactControls(present);
+  const identity = pageIdentity(collected);
   return {
     id: shortId("obs"),
     tabId: context.tabId,
@@ -288,6 +314,7 @@ export async function perceive(
     // the model is told has to count it. Filtering decides what is offered, not what was
     // there.
     totalControls: collected.controls.length,
+    ...(identity ? { identity } : {}),
     capturedAt: new Date().toISOString(),
   };
 }
@@ -302,4 +329,14 @@ export function refSelector(ref: string): string {
 
 function dedupe(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function pageIdentity(collected: Collected): Observation["identity"] | undefined {
+  const heading = collected.heading?.trim();
+  const stats = (collected.stats ?? []).filter((stat) => stat.label && stat.value).slice(0, 6);
+  if (!heading && stats.length === 0) return undefined;
+  return {
+    ...(heading ? { heading } : {}),
+    ...(stats.length ? { stats } : {}),
+  };
 }

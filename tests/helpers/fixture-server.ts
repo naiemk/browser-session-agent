@@ -57,6 +57,7 @@ const ROUTES: Record<string, string> = {
   "/notes": "notes.html",
   "/stutter": "stutter.html",
   "/grid": "grid.html",
+  "/profile-stats": "profile-stats.html",
 };
 
 /**
