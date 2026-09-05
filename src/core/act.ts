@@ -105,11 +105,15 @@ export async function act(
     }
   }
 
-  const { facts, verification } = await settleVerification(
-    browser,
-    (settled) => postcondition(request, before, settled, control),
-    { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
-  );
+  const refused = request.kind === "navigate"
+    ? await refuseDataDocument(browser, request, before, timeout)
+    : undefined;
+  const { facts, verification } = refused
+    ?? await settleVerification(
+      browser,
+      (settled) => postcondition(request, before, settled, control),
+      { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
+    );
 
   const result: ActionResult = {
     ok: verification.status === "passed",
@@ -269,6 +273,30 @@ function defaultPostcondition(
 
 function single(passed: boolean, name: string, detail: string): Verification {
   return { status: passed ? "passed" : "failed", checks: [{ passed, detail, predicate: name }] };
+}
+
+/**
+ * A JSON (or XML, or bytes) response is a successful fetch and a failed place to be.
+ * Restore the page we came from so the tab is still a page.
+ */
+async function refuseDataDocument(
+  browser: BrowserPort,
+  request: ActionRequest,
+  before: Observation,
+  timeout: number,
+): Promise<{ facts: PageFacts; verification: Verification } | undefined> {
+  const landed = await browser.facts(request.tabId);
+  if (landed.document?.kind !== "data") return undefined;
+  const doc = landed.document;
+  const detail =
+    `not a page (${doc.contentType}, ${doc.bytes} bytes). Restored the previous page.`;
+  try {
+    await browser.navigate(request.tabId, before.url, timeout);
+  } catch {
+    // The refusal still holds if restore fails; the recovery note says why.
+  }
+  const facts = await browser.facts(request.tabId).catch(() => landed);
+  return { facts, verification: single(false, "htmlDocument", detail) };
 }
 
 async function buildFailure(

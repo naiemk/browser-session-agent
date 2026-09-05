@@ -142,6 +142,26 @@ export class FixtureServer {
           await templatePost(req, res, "tmpl-b.html");
           return;
         }
+        if (url.pathname === "/api/search") {
+          const body = JSON.stringify({
+            users: Array.from({ length: 40 }, (_, index) => ({
+              id: index,
+              name: `User ${index}`,
+              bio: "x".repeat(80),
+            })),
+          });
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(body);
+          return;
+        }
+        if (url.pathname === "/api/page") {
+          send(
+            res,
+            200,
+            "<!doctype html><html><head><title>API page</title></head><body><h1>HTML under /api/</h1><a href=\"/\">Home</a></body></html>",
+          );
+          return;
+        }
         if (url.pathname === "/go-jobs") {
           send(res, 302, "", { location: "/jobs" });
           return;

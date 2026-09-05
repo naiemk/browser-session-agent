@@ -3,7 +3,7 @@ id: AGENT-10-T02
 title: Canonical URL intent
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T02 — Canonical URL intent

@@ -3,7 +3,7 @@ id: AGENT-10-T03
 title: Navigate a document, not a payload
 story: AGENT-10
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-10-T03 — Navigate a document, not a payload
