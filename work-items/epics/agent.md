@@ -32,6 +32,7 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 - AGENT-06: Built to yield, not to finish
 - AGENT-07: Let measurement pick what comes next
 - AGENT-08: Gated next layers (blocked by design)
+- AGENT-10: Honest loop after a live run
 
 ## Tasks
 
@@ -53,6 +54,16 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 | [AGENT-07-T01](../tasks/agent-07-t01-session-strategy-experiment.md) | AGENT-07 | partial — bounded session built and running; the A/B comparison needs credits |
 | [AGENT-07-T02](../tasks/agent-07-t02-memory-instrumentation.md) | AGENT-07 | todo |
 | [AGENT-09-T01](../tasks/agent-09-t01-cutover-and-delete.md) | AGENT-09 | blocked — see the task for the two open conditions |
+| [AGENT-10-T01](../tasks/agent-10-t01-peek-expect.md) | AGENT-10 | todo |
+| [AGENT-10-T02](../tasks/agent-10-t02-url-intent.md) | AGENT-10 | todo |
+| [AGENT-10-T03](../tasks/agent-10-t03-document-navigate.md) | AGENT-10 | todo |
+| [AGENT-10-T04](../tasks/agent-10-t04-probe-data-document.md) | AGENT-10 | todo |
+| [AGENT-10-T05](../tasks/agent-10-t05-stuttered-names.md) | AGENT-10 | todo |
+| [AGENT-10-T06](../tasks/agent-10-t06-nameless-links.md) | AGENT-10 | todo |
+| [AGENT-10-T07](../tasks/agent-10-t07-page-identity.md) | AGENT-10 | todo |
+| [AGENT-10-T08](../tasks/agent-10-t08-report-yields.md) | AGENT-10 | todo |
+| [AGENT-10-T09](../tasks/agent-10-t09-schema-trim.md) | AGENT-10 | todo |
+| [AGENT-10-T10](../tasks/agent-10-t10-site-skill.md) | AGENT-10 | todo |
 
 Also built beyond the original table, because the todo list called for them: the
 independent evaluator (`src/core/evaluator.ts`), the living task graph
