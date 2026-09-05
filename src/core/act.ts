@@ -7,7 +7,7 @@
  */
 
 import { visibleText } from "./perceive.ts";
-import { describeCheck, evaluatePredicate, verify } from "./predicates.ts";
+import { describeCheck, describePredicate, evaluatePredicate, optionalPredicate, verify } from "./predicates.ts";
 import { describeVerification, settleVerification, DEFAULT_SETTLE_MS } from "./settle.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { LedgerSink } from "./ledger.ts";
@@ -52,7 +52,14 @@ export async function act(
   const classify = options.classify ?? classifyAction;
   const timeout = options.timeoutMs ?? 10_000;
 
-  const before = await browser.observe(request.tabId);
+  // Wait and scroll judge "did the page change", so the before-facts have to include
+  // the body text an already-true `text_visible` would match. Observe is enough for
+  // every other kind.
+  const beforeFacts =
+    request.kind === "wait" || request.kind === "scroll"
+      ? await browser.facts(request.tabId)
+      : undefined;
+  const before = beforeFacts?.observation ?? (await browser.observe(request.tabId));
   const control = request.ref
     ? before.controls.find((candidate) => candidate.ref === request.ref)
     : undefined;
@@ -108,10 +115,10 @@ export async function act(
   const refused = request.kind === "navigate"
     ? await refuseDataDocument(browser, request, before, timeout)
     : undefined;
-  const { facts, verification } = refused
+  const { facts, verification } =     refused
     ?? await settleVerification(
       browser,
-      (settled) => postcondition(request, before, settled, control),
+      (settled) => postcondition(request, before, settled, control, beforeFacts),
       { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
     );
 
@@ -176,10 +183,17 @@ function postcondition(
   before: Observation,
   facts: PageFacts,
   control: Control | undefined,
+  beforeFacts?: PageFacts,
 ): Verification {
-  if (request.kind === "type" || request.kind === "select") {
-    const readBack = defaultPostcondition(request, before, facts, control);
-    const extra = fillValueExpect(request.expect);
+  const expect = optionalPredicate(request.expect);
+  const judged: ActionRequest = expect ? { ...request, expect } : { ...request, expect: undefined };
+
+  if (judged.kind === "wait" || judged.kind === "scroll") {
+    return waitScrollPostcondition(judged, before, facts, beforeFacts);
+  }
+  if (judged.kind === "type" || judged.kind === "select") {
+    const readBack = defaultPostcondition(judged, before, facts, control);
+    const extra = fillValueExpect(expect);
     if (!extra) return readBack;
     const anded = verify([extra], facts);
     return {
@@ -187,8 +201,58 @@ function postcondition(
       checks: [...readBack.checks, ...anded.checks],
     };
   }
-  if (request.expect) return verify([request.expect], facts);
-  return defaultPostcondition(request, before, facts, control);
+  if (expect) return verify([expect], facts);
+  return defaultPostcondition(judged, before, facts, control);
+}
+
+/**
+ * Wait and scroll mean "the page moved", not "a string that was already on screen is
+ * still there".
+ *
+ * An `expect` that was false before and true after is still success — that is waiting
+ * until something appears. The same expect already true before the action is not
+ * "loaded more".
+ */
+function waitScrollPostcondition(
+  request: ActionRequest,
+  before: Observation,
+  facts: PageFacts,
+  beforeFacts: PageFacts | undefined,
+): Verification {
+  const changed = snapshotChanged(before, facts.observation);
+  const delta = single(
+    changed,
+    "pageDelta",
+    changed
+      ? facts.observation.changes.join("; ") || facts.observation.dialogs.join("; ") || "snapshot changed"
+      : `noop ${request.kind}: the page did not change`,
+  );
+  const expect = request.expect;
+  if (!expect) return delta;
+
+  const afterCheck = evaluatePredicate(expect, facts);
+  if (!afterCheck.passed) return verify([expect], facts);
+
+  const already = beforeFacts ? evaluatePredicate(expect, beforeFacts).passed : false;
+  if (!already) return verify([expect], facts);
+
+  return single(
+    changed,
+    "pageDelta",
+    changed
+      ? facts.observation.changes.join("; ") || "snapshot changed"
+      : `${describePredicate(expect)} already held before the ${request.kind}; page did not change`,
+  );
+}
+
+function snapshotChanged(before: Observation, after: Observation): boolean {
+  return (
+    after.changes.length > 0 ||
+    before.url !== after.url ||
+    before.title !== after.title ||
+    before.dialogs.join("\n") !== after.dialogs.join("\n") ||
+    before.errors.join("\n") !== after.errors.join("\n")
+  );
 }
 
 function fillValueExpect(expect: Predicate | undefined): Predicate | undefined {
@@ -229,12 +293,7 @@ function defaultPostcondition(
   const after = facts.observation;
   switch (request.kind) {
     case "click": {
-      const changed =
-        after.changes.length > 0 ||
-        before.url !== after.url ||
-        before.title !== after.title ||
-        before.dialogs.join("\n") !== after.dialogs.join("\n") ||
-        before.errors.join("\n") !== after.errors.join("\n");
+      const changed = snapshotChanged(before, after);
       return single(
         changed,
         "pageDelta",
@@ -352,7 +411,7 @@ export async function check(
     browser,
     (facts) => {
       const result = evaluatePredicate(predicate, facts);
-      return { status: result.passed ? "passed" : "failed", checks: [result] };
+      return { status: result?.passed ? "passed" : "failed", checks: [result] };
     },
     // No `since`: predicates read the page, never what changed on it, so a check stays
     // at one read on the happy path.

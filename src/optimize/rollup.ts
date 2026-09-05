@@ -56,6 +56,11 @@ export interface DuplicateWork {
 export interface Rollup {
   goalId?: string;
   model?: string;
+  /**
+   * Thinking used this run. One level is `high`; a mid-session switch is
+   * `high then low`. Absent when nobody recorded it.
+   */
+  thinkingLevel?: string;
   turns: number;
   tokens: TokenSummary;
   contextBytes: { mean: number; peak: number; final: number };
@@ -135,6 +140,7 @@ export function rollup(input: RollupInput): Rollup {
   return {
     goalId: input.goalId,
     model: run?.model,
+    thinkingLevel: thinkingPhrase(turnRecords, run),
     turns: turnCount,
     tokens: {
       input: totals.input,
@@ -216,6 +222,24 @@ function duplicateWork(
     repeatNavigations,
     repeatProbes,
   };
+}
+
+/**
+ * How thinking is named in a one-line rollup.
+ *
+ * Per-turn, not once: a `@high` then `@low` switch is the comparison the operator
+ * was trying to make. Turns that omitted the field are skipped so an unknown
+ * does not become `"medium"`.
+ */
+function thinkingPhrase(turns: readonly TurnRecord[], run: RunRecord | undefined): string | undefined {
+  const sequence: string[] = [];
+  for (const turn of turns) {
+    const level = turn.thinkingLevel;
+    if (!level) continue;
+    if (sequence[sequence.length - 1] !== level) sequence.push(level);
+  }
+  if (sequence.length > 0) return sequence.join(" then ");
+  return run?.thinkingLevel;
 }
 
 function cacheHealth(contexts: readonly ContextRecord[]): Rollup["cache"] {
@@ -309,8 +333,10 @@ export function summarize(rollups: readonly Rollup[]): OptimizeSummary {
 export function formatRollup(value: Rollup): string {
   const lines: string[] = [];
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+  const model = value.model ?? "unknown model";
+  const named = value.thinkingLevel ? `${model} • ${value.thinkingLevel}` : model;
 
-  lines.push(`${value.goalId ?? "run"} — ${value.model ?? "unknown model"}, ${value.turns} turns`);
+  lines.push(`${value.goalId ?? "run"} — ${named}, ${value.turns} turns`);
   lines.push("");
   lines.push(
     `tokens: ${value.tokens.total} total (${value.tokens.input} fresh input, ` +

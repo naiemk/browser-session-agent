@@ -87,8 +87,9 @@ export async function guardedAct(
   let precondition: Verification | undefined;
   if (options.precondition) {
     const check = evaluatePredicate(options.precondition, facts);
-    precondition = { status: check.passed ? "passed" : "failed", checks: [check] };
-    if (!check.passed) {
+    const passed = Boolean(check?.passed);
+    precondition = { status: passed ? "passed" : "failed", checks: [check] };
+    if (!passed) {
       await options.ledger?.append({
         type: "approval",
         entityId: options.entityId,

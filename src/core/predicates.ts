@@ -99,9 +99,9 @@ function findByName(facts: PageFacts, name: string) {
 export function describePredicate(pred: Predicate): string {
   switch (pred.kind) {
     case "url_includes":
-      return `url includes "${pred.text}"`;
+      return `url includes "${typeof pred.text === "string" ? pred.text : ""}"`;
     case "title_includes":
-      return `title includes "${pred.text}"`;
+      return `title includes "${typeof pred.text === "string" ? pred.text : ""}"`;
     case "text_visible":
       return `text visible "${pred.text}"`;
     case "text_absent":
@@ -126,11 +126,24 @@ export function describePredicate(pred: Predicate): string {
       return `any of (${pred.of.map(describePredicate).join(", ")})`;
     case "not":
       return `not (${describePredicate(pred.of)})`;
+    default: {
+      const kind = (pred as { kind?: unknown }).kind;
+      return `unknown predicate "${String(kind ?? "")}"`;
+    }
   }
 }
 
 /** Evaluate one predicate. Returns the outcome plus human-readable actuals. */
 export function evaluatePredicate(pred: Predicate, facts: PageFacts): CheckResult {
+  const kind = (pred as { kind?: unknown })?.kind;
+  if (typeof kind !== "string" || !PREDICATE_KINDS.has(kind)) {
+    return {
+      passed: false,
+      detail: `unknown predicate kind ${JSON.stringify(kind ?? null)}`,
+      predicate: typeof kind === "string" && kind ? kind : "unknown",
+    };
+  }
+
   const description = describePredicate(pred);
   const result = (passed: boolean, detail: string): CheckResult => ({
     passed,
@@ -140,15 +153,27 @@ export function evaluatePredicate(pred: Predicate, facts: PageFacts): CheckResul
 
   switch (pred.kind) {
     case "url_includes":
-      return result(facts.url.includes(pred.text), `url=${facts.url}`);
+      return result(
+        typeof pred.text === "string" && facts.url.includes(pred.text),
+        `url=${facts.url}`,
+      );
     case "title_includes":
-      return result(includesInsensitive(facts.title, pred.text), `title=${facts.title}`);
+      return result(
+        typeof pred.text === "string" && includesInsensitive(facts.title, pred.text),
+        `title=${facts.title}`,
+      );
     case "text_visible": {
+      if (typeof pred.text !== "string") {
+        return result(false, "missing text");
+      }
       const text = readableText(facts);
       const seen = includesInsensitive(text, pred.text);
       return result(seen, describeTextMatch(text, pred.text, seen));
     }
     case "text_absent": {
+      if (typeof pred.text !== "string") {
+        return result(false, "missing text");
+      }
       const text = readableText(facts);
       const seen = includesInsensitive(text, pred.text);
       return result(!seen, describeTextMatch(text, pred.text, seen));
@@ -200,6 +225,8 @@ export function evaluatePredicate(pred: Predicate, facts: PageFacts): CheckResul
       const inner = evaluatePredicate(pred.of, facts);
       return result(!inner.passed, inner.detail);
     }
+    default:
+      return result(false, `unknown predicate kind ${JSON.stringify(kind)}`);
   }
 }
 
@@ -214,7 +241,7 @@ function summarizeControls(facts: PageFacts): string {
 export function verify(predicates: Predicate[], facts: PageFacts): Verification {
   const checks = predicates.map((pred) => evaluatePredicate(pred, facts));
   return {
-    status: checks.every((check) => check.passed) ? "passed" : "failed",
+    status: checks.every((check) => check && check.passed) ? "passed" : "failed",
     checks,
   };
 }

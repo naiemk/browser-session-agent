@@ -198,4 +198,66 @@ describe("AGENT-00-T01 action harness", () => {
     assert.match(result.reversibilityReason, /submits a form|sending or publishing/);
     assert.equal(result.ok, true, JSON.stringify(result.verification));
   });
+
+  it("drops a navigate expect with no text rather than checking url includes undefined", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(
+      browser,
+      {
+        kind: "navigate",
+        tabId: tab,
+        url: `${origin}/dialog`,
+        expect: { kind: "url_includes" } as never,
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
+    assert.equal(result.observation.url, `${origin}/dialog`);
+    assert.doesNotMatch(result.failure?.recovery ?? "", /undefined/);
+  });
+
+  it("does not throw when expect is an unknown kind or an empty object", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const unknown = await act(
+      browser,
+      {
+        kind: "navigate",
+        tabId: tab,
+        url: `${origin}/dialog`,
+        expect: { kind: "changed" } as never,
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(unknown.ok, true, JSON.stringify(unknown.verification));
+
+    const empty = await act(
+      browser,
+      {
+        kind: "wait",
+        tabId: tab,
+        wait: { kind: "timeout", timeoutMs: 20 },
+        expect: {} as never,
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(typeof empty.ok, "boolean");
+    assert.equal(empty.ok, false, "a wait that changes nothing is not success");
+  });
+
+  it("does not treat an already-true wait expect as loaded more", async () => {
+    const tab = await browser.openTab(`${origin}/profile-stats`);
+    const result = await act(
+      browser,
+      {
+        kind: "wait",
+        tabId: tab,
+        wait: { kind: "timeout", timeoutMs: 20 },
+        expect: { kind: "text_visible", text: "followers" },
+        intent: "Load more following rows",
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(result.ok, false, JSON.stringify(result.verification));
+    assert.match(result.failure?.recovery ?? "", /already held before the wait|did not change/);
+  });
 });

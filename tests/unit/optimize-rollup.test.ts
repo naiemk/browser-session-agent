@@ -158,6 +158,18 @@ describe("the rollup", () => {
     assert.match(text, /duplicate work/);
     assert.match(text, /prompt cache/);
   });
+
+  it("prints thinking on the headline, and a switch as a sequence", () => {
+    const base = records();
+    const withThinking = base.map((record) => {
+      if (record.kind === "turn" && record.turn === 1) return { ...record, thinkingLevel: "high" };
+      if (record.kind === "turn" && record.turn === 2) return { ...record, thinkingLevel: "low" };
+      if (record.kind === "run") return { ...record, thinkingLevel: "high" };
+      return record;
+    });
+    const text = formatRollup(rollup({ records: withThinking, goalId: "g" }));
+    assert.match(text, /openrouter\/test • high then low, 2 turns/);
+  });
 });
 
 describe("summarising many runs", () => {

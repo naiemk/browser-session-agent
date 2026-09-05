@@ -120,7 +120,12 @@ export function diffControls(
  * read wrong, and refs stay exactly where the page put them.
  */
 export function chooseControls(controls: readonly Control[], limit: number): Control[] {
-  if (controls.length <= limit) return [...controls];
+  // An open dialog owns the slots. Ranking content above chrome, then taking document
+  // order, is how a photo grid earlier in the DOM spent the budget while the list
+  // inside the overlay was detected and then almost absent from the wire.
+  const inDialog = controls.filter((control) => control.dialog);
+  const pool = inDialog.length > 0 ? inDialog : controls;
+  if (pool.length <= limit) return [...pool];
 
   const rank = (control: Control): number => {
     if (isEditorLike(control) || control.required) return 0;
@@ -128,7 +133,7 @@ export function chooseControls(controls: readonly Control[], limit: number): Con
   };
 
   const kept = new Set(
-    controls
+    pool
       // Stable within a band, so a nav link keeps its place among other nav links.
       .map((control, index) => ({ control, index }))
       .sort((a, b) => rank(a.control) - rank(b.control) || a.index - b.index)
@@ -141,6 +146,7 @@ export function chooseControls(controls: readonly Control[], limit: number): Con
 
 /** Keep a crowded page inside a usable budget, giving up the furniture first. */
 export function compactControls(controls: Control[]): { controls: Control[]; truncated: boolean } {
-  if (controls.length <= MAX_CONTROLS) return { controls, truncated: false };
-  return { controls: chooseControls(controls, MAX_CONTROLS), truncated: true };
+  const chosen = chooseControls(controls, MAX_CONTROLS);
+  if (chosen.length === controls.length) return { controls, truncated: false };
+  return { controls: chosen, truncated: true };
 }

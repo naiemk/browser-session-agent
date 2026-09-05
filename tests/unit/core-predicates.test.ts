@@ -126,4 +126,17 @@ describe("a check explains itself without contradicting itself", () => {
     });
     assert.equal(optionalPredicate(undefined), undefined);
   });
+
+  it("never returns a hole for an unknown or empty expect", () => {
+    const page = facts();
+    const empty = evaluatePredicate({} as Predicate, page);
+    assert.equal(empty.passed, false);
+    assert.ok(empty.detail);
+    assert.equal(verify([{} as Predicate], page).status, "failed");
+
+    const changed = evaluatePredicate({ kind: "changed" } as unknown as Predicate, page);
+    assert.equal(changed.passed, false);
+    assert.match(changed.detail, /unknown predicate kind/);
+    assert.equal(verify([{ kind: "changed" } as unknown as Predicate], page).status, "failed");
+  });
 });

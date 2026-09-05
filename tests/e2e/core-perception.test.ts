@@ -140,5 +140,12 @@ describe("AGENT-00-T01 perception", () => {
     const wire = toWireObservation(observation);
     assert.equal(wire.identity?.heading, "Ada Lovelace");
     assert.ok(wire.identity?.stats?.some((stat) => stat.value.includes("12,345")));
+    const labels = (observation.identity?.stats ?? []).map((stat) => stat.label.toLowerCase());
+    assert.ok(labels.includes("posts"), JSON.stringify(observation.identity?.stats));
+    assert.ok(labels.includes("following"), JSON.stringify(observation.identity?.stats));
+    for (const stat of observation.identity?.stats ?? []) {
+      assert.match(stat.label, /^(followers|following|posts)$/i, JSON.stringify(stat));
+      assert.doesNotMatch(stat.label, /naiem|meta|messa/i);
+    }
   });
 });

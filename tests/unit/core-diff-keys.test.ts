@@ -128,4 +128,26 @@ describe("choosing which controls get the slots", () => {
     const all = [...nav(3), ...rows(3)];
     assert.deepEqual(chooseControls(all, 40), all);
   });
+
+  it("gives an open dialog the slots, even when a grid sits earlier in the DOM", () => {
+    const photos = Array.from({ length: 50 }, (_, index) =>
+      control({ ref: `p${index}`, role: "link", name: `Photo by Naiem in Snowbird ${index}` }),
+    );
+    const dialog = [
+      control({ ref: "close", role: "button", name: "Close", dialog: true }),
+      control({ ref: "search", role: "textbox", name: "Search", dialog: true }),
+      ...Array.from({ length: 40 }, (_, index) =>
+        control({ ref: `d${index}`, role: "link", name: `person${index + 1}`, dialog: true }),
+      ),
+    ];
+    const kept = chooseControls([...photos, ...dialog], 40);
+    assert.equal(kept.length, 40);
+    assert.equal(
+      kept.filter((entry) => /Photo by/.test(entry.name)).length,
+      0,
+      "the grid must not spend the budget",
+    );
+    assert.ok(kept.some((entry) => entry.name === "Close"));
+    assert.ok(kept.some((entry) => entry.name === "person1"));
+  });
 });

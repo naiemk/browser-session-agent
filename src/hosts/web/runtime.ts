@@ -1,7 +1,7 @@
 import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
-import { turnClock } from "../../host/pi-metering.ts";
+import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
 import { bindSubagent, CHAT_WORKER_HINT, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
@@ -475,6 +475,8 @@ export class OperatorRuntime {
     if (!usage) return;
     const num = (raw: unknown) => (typeof raw === "number" && Number.isFinite(raw) ? raw : 0);
     const cost = usage.cost as Record<string, unknown> | undefined;
+    const thinkingLevel =
+      thinkingOf(value.message) ?? this.pi?.thinkingLevel ?? this.thinking;
     this.evidence.metrics.record({
       kind: "turn",
       turn: this.clock.current(),
@@ -483,6 +485,7 @@ export class OperatorRuntime {
       cacheReadTokens: num(usage.cacheRead),
       cacheWriteTokens: num(usage.cacheWrite),
       costUsd: num(cost?.total),
+      ...(thinkingLevel ? { thinkingLevel } : {}),
     });
   }
 

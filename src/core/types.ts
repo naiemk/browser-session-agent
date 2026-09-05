@@ -35,6 +35,14 @@ export interface Control {
    * reason to give up its slot last.
    */
   chrome?: boolean;
+  /**
+   * This control lives inside an open dialog.
+   *
+   * When a dialog is open it owns the control budget: the slots go to what is in the
+   * overlay, not to the page sitting under it. Hit-testing cannot always see a centred
+   * card, so containment in the dialog node is the signal, not occlusion alone.
+   */
+  dialog?: boolean;
 }
 
 /** One compact, ephemeral view of a page. Never persisted into model context long-term. */

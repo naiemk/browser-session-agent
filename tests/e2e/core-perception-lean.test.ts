@@ -30,13 +30,15 @@ describe("lean perception on pages past the control cap", () => {
       const refNames = new Set(before.controls.map((control) => control.name));
       const leanNames = new Set(after.controls.map((control) => control.name));
 
-      assert.ok(refNames.has("Home"), "the reference still lists the buried nav");
-      assert.ok(refNames.has("Post 1"), "and the buried posts");
+      assert.ok((before.totalControls ?? 0) > (before.controls.length), "the buried page is still counted");
+      assert.ok(!refNames.has("Home"), "an open dialog owns the offered slots");
+      assert.ok(!refNames.has("Post 1"));
+      assert.ok(refNames.has("follower1"));
       assert.ok(!leanNames.has("Home"), "lean does not offer a click the backdrop would eat");
       assert.ok(!leanNames.has("Post 1"));
       assert.ok(leanNames.has("follower1"), "the dialog's list is what remains");
       assert.ok((after.perception?.dropped.occlusion ?? 0) > 0);
-      // The page is still that large; we just stopped offering the buried half.
+      assert.equal(before.perception?.dropped.occlusion ?? 0, 0);
       assert.ok((after.totalControls ?? 0) > (after.controls.length));
     } finally {
       await reference.close();
@@ -44,21 +46,20 @@ describe("lean perception on pages past the control cap", () => {
     }
   });
 
-  it("puts follower37 on the wire, which the reference cannot", async () => {
+  it("puts follower37 on the wire once the dialog owns the slots", async () => {
     const reference = await LocalBrowser.launch({ headless: true, perceiver: referencePerceiver });
     const lean = await LocalBrowser.launch({ headless: true, perceiver: leanPerceiver });
     try {
       const refWire = toWireObservation(await reference.observe(await reference.openTab(`${origin}/modal-list`)));
       const leanWire = toWireObservation(await lean.observe(await lean.openTab(`${origin}/modal-list`)));
 
-      assert.equal(refWire.controls.length, MAX_WIRE_CONTROLS);
       assert.ok(
-        !refWire.controls.some((control) => control.name === "follower37"),
-        "posts and chrome spend the wire budget before the list gets that far",
+        refWire.controls.some((control) => control.name === "follower37"),
+        "dialog containment, not only occlusion, spends the budget on the list",
       );
       assert.ok(
         leanWire.controls.some((control) => control.name === "follower37"),
-        "once the buried page is dropped, the list fits",
+        "lean still keeps the list after dropping the buried page",
       );
     } finally {
       await reference.close();
@@ -92,6 +93,42 @@ describe("lean perception on pages past the control cap", () => {
       assert.ok(observation.controls.some((control) => control.name === "Save report"));
     } finally {
       await browser.close();
+    }
+  });
+
+  it("puts the centred overlay's rows on the wire, not the grid around it", async () => {
+    const reference = await LocalBrowser.launch({ headless: true, perceiver: referencePerceiver });
+    const lean = await LocalBrowser.launch({ headless: true, perceiver: leanPerceiver });
+    try {
+      const refWire = toWireObservation(
+        await reference.observe(await reference.openTab(`${origin}/overlay-card`)),
+      );
+      const leanWire = toWireObservation(
+        await lean.observe(await lean.openTab(`${origin}/overlay-card`)),
+      );
+
+      assert.ok(refWire.controls.length <= MAX_WIRE_CONTROLS);
+      assert.ok(
+        refWire.controls.length === MAX_WIRE_CONTROLS,
+        `reference should fill the wire from the overlay, got ${refWire.controls.map((c) => c.name).join(", ")}`,
+      );
+      for (const [name, wire] of [
+        ["reference", refWire],
+        ["lean", leanWire],
+      ] as const) {
+        assert.ok(
+          !wire.controls.some((control) => /Photo by/.test(control.name)),
+          `${name} spent slots on the grid: ${wire.controls.map((c) => c.name).join(", ")}`,
+        );
+        assert.ok(
+          wire.controls.some((control) => control.name === "person1"),
+          `${name} must show the overlay list`,
+        );
+        assert.ok(wire.dialogs && wire.dialogs.length > 0, `${name} still names the dialog`);
+      }
+    } finally {
+      await reference.close();
+      await lean.close();
     }
   });
 });
