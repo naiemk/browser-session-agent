@@ -28,7 +28,8 @@ export function compactPiContext(pi: ExtensionAPI, options: CompactionOptions = 
     const compacted = compactFinishedWork(messages as PrunableMessage[], options);
     // Returning the same array when nothing changed keeps the intent legible: a turn
     // inside a piece of work is a turn that leaves the prefix exactly as the provider
-    // cached it.
+    // cached it. compactFinishedWork also upgrades string-shaped tool results to parts;
+    // that is a real change and must be returned, or GLM still sees a string.
     return compacted === messages ? undefined : { messages: compacted };
   });
 }
