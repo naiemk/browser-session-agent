@@ -5,9 +5,11 @@
  * know that a page snapshot from two sub-goals ago describes a page nobody is on. Only we
  * know which tool results perish, so only we can say when they have.
  *
- * Registered before the metering, and returning messages rather than mutating them, so
- * the numbers recorded for a turn are the numbers for the context that was actually sent.
- * Pi hands each handler what the previous one returned.
+ * This is an optimiser, not a serialiser. Tool-result *shape* belongs in `shapePiToolResults`,
+ * which stays registered when this is turned off. Putting the GLM crash-fix here is how
+ * the first repair missed every result compaction does not drop.
+ *
+ * Registered before shape and metering. Pi hands each handler what the previous one returned.
  */
 
 import type { ExtensionAPI } from "../pi-api.ts";

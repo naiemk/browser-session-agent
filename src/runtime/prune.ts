@@ -62,24 +62,71 @@ export function isPerishable(
 export const PLACEHOLDER = "[stale snapshot dropped; observe again if you need it]";
 
 /**
- * Whether this content is a dropped snapshot, in either shape a tool result can have.
+ * Whether this content is a dropped snapshot.
  *
- * The suite stores a bare string. Pi stores `[{ type: "text", text }]`. Comparing against
- * the string alone is how compaction looked like it worked while the next GLM turn
- * crashed on `toolMsg.content.filter`.
+ * The suite still stores a bare string. Everything that goes to a provider is parts.
+ * Comparing against the string alone is how compaction looked like it worked while the
+ * next GLM turn crashed on `toolMsg.content.filter`.
  */
 export function isPlaceholder(content: unknown, placeholder = PLACEHOLDER): boolean {
   return extractText(content) === placeholder;
 }
 
+function isPiContentPart(part: unknown): boolean {
+  if (!part || typeof part !== "object" || Array.isArray(part)) return false;
+  const type = (part as { type?: unknown }).type;
+  return type === "text" || type === "image";
+}
+
 /**
- * The same placeholder, in the shape the original result used.
+ * Tool result content as Pi's provider adapters require it: an array of parts.
  *
- * Pi's OpenAI-compat path (GLM included) does `toolMsg.content.filter(...)`. A string
- * here is not a cheaper tool result. It is not a tool result at all.
+ * This is not a GLM quirk. OpenAI-compat and Gemini do `content.filter(...)`. Anthropic
+ * does `content.some(...)`. A string throws on all of them. Pi only normalises null to
+ * `[]`; a string is left as a string.
+ *
+ * The model never writes this field. Tools, compaction, session restore, and tests do.
+ * Wrapping here is how a cheap model and Opus are protected by the same invariant.
+ *
+ * Already-valid parts arrays are returned as the same reference, so a turn that had
+ * nothing to upgrade leaves the prefix exactly as the provider cached it.
  */
-export function placeholderContent(original: unknown, placeholder = PLACEHOLDER): unknown {
-  if (typeof original === "string") return placeholder;
+export function asPiToolContent(content: unknown): unknown[] {
+  if (Array.isArray(content) && content.every(isPiContentPart)) return content;
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (content == null) return [];
+  const text = extractText(content);
+  if (text !== undefined) return [{ type: "text", text }];
+  return [{ type: "text", text: JSON.stringify(content) }];
+}
+
+/**
+ * Every tool result, in the shape a provider can serialise.
+ *
+ * Compaction wrapping only the snapshots it dropped is how the first repair failed:
+ * `note_fork`, `ask_user`, `report`, and the newest observe were left as strings, and
+ * those are the results still in the request on a follow-up. Call this last, on every
+ * path that talks to a provider, including when pruning is off.
+ */
+export function normalizeToolResultContent<T extends PrunableMessage>(messages: T[]): T[] {
+  let changed = false;
+  const out = messages.map((message) => {
+    if (message.role !== "toolResult") return message;
+    const content = asPiToolContent(message.content);
+    if (content === message.content) return message;
+    changed = true;
+    return { ...message, content };
+  });
+  return changed ? out : messages;
+}
+
+/**
+ * A dropped snapshot, as parts. Always parts.
+ *
+ * Matching the original shape looked polite and was the remaining hole: a string
+ * snapshot became a string placeholder, and GLM crashed on the next turn.
+ */
+export function placeholderContent(_original?: unknown, placeholder = PLACEHOLDER): unknown[] {
   return [{ type: "text", text: placeholder }];
 }
 
@@ -164,14 +211,21 @@ export function compactFinishedWork<T extends PrunableMessage>(
   options: PruneOptions = {},
 ): T[] {
   const boundary = epochStart(messages);
-  if (boundary === 0) return messages;
-
-  const history = pruneMessages(messages.slice(0, boundary), {
-    ...options,
-    keepLatest: options.keepLatest ?? 1,
-    group: options.group ?? "any",
-  });
-  return [...history, ...messages.slice(boundary)];
+  const compacted =
+    boundary === 0
+      ? messages
+      : [
+          ...pruneMessages(messages.slice(0, boundary), {
+            ...options,
+            keepLatest: options.keepLatest ?? 1,
+            group: options.group ?? "any",
+          }),
+          ...messages.slice(boundary),
+        ];
+  // After dropping snapshots, and also when there is nothing to drop: every tool
+  // result still has to be parts. The follow-up that used to crash ("Plan better")
+  // was a turn whose kept results — forks, questions, reports — were still strings.
+  return normalizeToolResultContent(compacted);
 }
 
 export function pruneMessages<T extends PrunableMessage>(

@@ -8,7 +8,10 @@ import {
   TOOL_PROBE,
 } from "../../src/runtime/names.ts";
 import {
+  asPiToolContent,
   isPerishable,
+  isPlaceholder,
+  normalizeToolResultContent,
   PLACEHOLDER,
   pruneMessages,
   type PrunableMessage,
@@ -37,8 +40,8 @@ describe("context pruning", () => {
   it("keeps the newest snapshot and supersedes older ones", () => {
     const pruned = pruneMessages(TRANSCRIPT);
     const snapshots = pruned.filter((message) => message.toolName === TOOL_OBSERVE);
-    assert.equal(snapshots[0]?.content, PLACEHOLDER);
-    assert.equal(snapshots[1]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(snapshots[0]?.content), true);
+    assert.equal(isPlaceholder(snapshots[1]?.content), true);
     assert.equal(snapshots[2]?.content, "snapshot 3");
   });
 
@@ -68,7 +71,7 @@ describe("context pruning", () => {
       toolResult(TOOL_OBSERVE, "snapshot 3"),
     ]);
     assert.equal(pruned[0]?.content, "snapshot 1");
-    assert.equal(pruned[1]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(pruned[1]?.content), true);
     assert.equal(pruned[2]?.content, "snapshot 3");
   });
 
@@ -78,7 +81,7 @@ describe("context pruning", () => {
       toolResult(TOOL_PROBE, "probe 2"),
       toolResult(TOOL_OBSERVE, "snapshot 1"),
     ]);
-    assert.equal(pruned[0]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(pruned[0]?.content), true);
     assert.equal(pruned[1]?.content, "probe 2");
     assert.equal(pruned[2]?.content, "snapshot 1");
   });
@@ -86,7 +89,7 @@ describe("context pruning", () => {
   it("honours a larger keepLatest", () => {
     const pruned = pruneMessages(TRANSCRIPT, { keepLatest: 2 });
     const snapshots = pruned.filter((message) => message.toolName === TOOL_OBSERVE);
-    assert.equal(snapshots[0]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(snapshots[0]?.content), true);
     assert.equal(snapshots[1]?.content, "snapshot 2");
     assert.equal(snapshots[2]?.content, "snapshot 3");
   });
@@ -119,8 +122,8 @@ describe("pruning by payload shape", () => {
       toolResult(TOOL_ACT, actResult("/roster?page=3")),
     ]);
 
-    assert.equal(pruned[0]?.content, PLACEHOLDER);
-    assert.equal(pruned[1]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(pruned[0]?.content), true);
+    assert.equal(isPlaceholder(pruned[1]?.content), true);
     assert.match(String(pruned[2]?.content), /page=3/, "the newest action result stays whole");
   });
 
@@ -129,7 +132,7 @@ describe("pruning by payload shape", () => {
       toolResult(TOOL_ACT, actResult("/a")),
       toolResult(TOOL_ACT, actResult("/b")),
     ]);
-    assert.notEqual(pruned[1]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(pruned[1]?.content), false);
   });
 
   it("supersedes peeked pages too", () => {
@@ -137,7 +140,7 @@ describe("pruning by payload shape", () => {
       toolResult(TOOL_PEEK, peekResult("/p/ada")),
       toolResult(TOOL_PEEK, peekResult("/p/bob")),
     ]);
-    assert.equal(pruned[0]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(pruned[0]?.content), true);
     assert.match(String(pruned[1]?.content), /bob/);
   });
 
@@ -146,8 +149,8 @@ describe("pruning by payload shape", () => {
       toolResult(TOOL_ACT, actResult("/a")),
       toolResult(TOOL_PEEK, peekResult("/p/ada")),
     ]);
-    assert.notEqual(pruned[0]?.content, PLACEHOLDER);
-    assert.notEqual(pruned[1]?.content, PLACEHOLDER);
+    assert.equal(isPlaceholder(pruned[0]?.content), false);
+    assert.equal(isPlaceholder(pruned[1]?.content), false);
   });
 
   it("leaves results that carry no snapshot alone, however long they are", () => {
@@ -157,7 +160,7 @@ describe("pruning by payload shape", () => {
       toolResult(TOOL_CHECK, verdict),
       toolResult(TOOL_CHECK, verdict),
     ]);
-    assert.equal(pruned.filter((message) => message.content === PLACEHOLDER).length, 0);
+    assert.equal(pruned.filter((message) => isPlaceholder(message.content)).length, 0);
   });
 
   it("never prunes a user or assistant message that happens to quote a snapshot", () => {
@@ -167,7 +170,7 @@ describe("pruning by payload shape", () => {
       toolResult(TOOL_ACT, actResult("/c")),
     ];
     const pruned = pruneMessages(messages);
-    assert.equal(pruned.filter((message) => message.content === PLACEHOLDER).length, 0);
+    assert.equal(pruned.filter((message) => isPlaceholder(message.content)).length, 0);
   });
 
   it("recognises a snapshot in text parts, which is how providers carry content", () => {
@@ -207,6 +210,72 @@ describe("pruning by payload shape", () => {
       [toolResult(TOOL_ACT, actResult("/a")), toolResult(TOOL_ACT, actResult("/b"))],
       { byShape: false },
     );
-    assert.equal(pruned.filter((message) => message.content === PLACEHOLDER).length, 0);
+    assert.equal(pruned.filter((message) => isPlaceholder(message.content)).length, 0);
+  });
+});
+
+/**
+ * The exact call GLM makes, from @earendil-works/pi-ai openai-completions:
+ *   toolMsg.content.filter(isTextContentBlock)
+ */
+function glmRead(content: unknown): void {
+  const parts = content as { filter: (fn: (part: unknown) => boolean) => unknown[] };
+  assert.equal(typeof parts.filter, "function", JSON.stringify(content));
+  parts.filter((part) => (part as { type?: string }).type === "text");
+}
+
+describe("tool result content Pi can serialise", () => {
+  it("wraps a string, because that is what GLM .filter is not a function was", () => {
+    const wrapped = asPiToolContent("ok, nothing changed");
+    glmRead(wrapped);
+    assert.deepEqual(wrapped, [{ type: "text", text: "ok, nothing changed" }]);
+  });
+
+  it("leaves a parts array as the same array, so a cached prefix is not rewritten", () => {
+    const parts = [{ type: "text", text: "snapshot" }];
+    assert.equal(asPiToolContent(parts), parts);
+  });
+
+  it("turns null into an empty parts array rather than leaving it for Pi to guess", () => {
+    glmRead(asPiToolContent(null));
+    assert.deepEqual(asPiToolContent(undefined), []);
+  });
+
+  it("upgrades every tool result in a transcript, not only the ones compaction drops", () => {
+    const messages: PrunableMessage[] = [
+      { role: "user", content: "find a friend from minsk" },
+      { role: "toolResult", toolName: "note_fork", content: "friend from Minsk had 2 meanings" },
+      { role: "toolResult", toolName: "ask_user", content: "nobody answered" },
+      { role: "toolResult", toolName: "observe", content: [{ type: "text", text: "page" }] },
+    ];
+    const observe = messages[3]!.content;
+    const normalised = normalizeToolResultContent(messages);
+
+    glmRead(normalised[1]!.content);
+    glmRead(normalised[2]!.content);
+    assert.equal(normalised[3]!.content, observe, "already-parts results must keep their identity");
+    assert.notEqual(normalised, messages);
+  });
+
+  it("drops a string-shaped snapshot as parts, not as a string", () => {
+    // The remaining hole after wrapping only Pi-shaped content: a string snapshot
+    // became a string placeholder, and the next GLM turn crashed.
+    const pruned = pruneMessages([
+      toolResult(TOOL_OBSERVE, "snapshot 1"),
+      toolResult(TOOL_OBSERVE, "snapshot 2"),
+    ]);
+    glmRead(pruned[0]!.content);
+    assert.deepEqual(pruned[0]!.content, [{ type: "text", text: PLACEHOLDER }]);
+    assert.equal(pruned[1]!.content, "snapshot 2");
+  });
+
+  it("still wraps kept results when the suite skips pruning", () => {
+    const messages: PrunableMessage[] = [
+      { role: "user", content: "again" },
+      { role: "toolResult", toolName: "report", content: "blocked" },
+    ];
+    const shaped = normalizeToolResultContent(messages);
+    glmRead(shaped[1]!.content);
+    assert.deepEqual(shaped[1]!.content, [{ type: "text", text: "blocked" }]);
   });
 });
