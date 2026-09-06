@@ -184,43 +184,40 @@ export function epochStart(messages: readonly PrunableMessage[]): number {
 }
 
 /**
- * Drop the snapshots from finished work, and only when a piece of work finishes.
+ * Drop superseded snapshots from finished work, and from the current piece of work.
  *
- * Pruning every turn looks like the obvious saving and is the opposite of one. Providers
- * bill a cached prefix at a fraction of the input price, and rewriting a message near the
- * front invalidates everything after it, so a context trimmed on every turn is a context
- * paid for at full price on every turn. On the measured run that arithmetic came out at
- * roughly two and a half times the cost of leaving it alone: cache reads were 74% of the
- * bill precisely because the prefix was stable.
+ * Pruning every turn from the *front* of the prompt looks like the obvious saving and is
+ * the opposite of one. Providers bill a cached prefix at a fraction of the input price,
+ * and rewriting a message near the front invalidates everything after it.
  *
- * Compacting at a sub-goal boundary pays that penalty once and then leaves the prefix
- * alone. It is also where the drop is safe to make: the snapshots being dropped are of
- * pages the last request was about, not this one.
- *
- * Stable by construction, which is what keeps the cache warm: the answer depends only on
- * where the last user message is, so every turn inside an epoch produces the same prefix,
- * and turns are appended to it rather than rewriting it.
+ * Compacting at a sub-goal boundary still pays that penalty once for pages the last
+ * request was about. The current epoch used to be left entirely alone, which is how a
+ * fifty-turn stretch with one operator message kept every act snapshot live. The current
+ * epoch is now pruned the same way — keep the newest snapshot, placeholder the rest —
+ * so the rewrite is the superseded snapshot, not index 0. After that drop the
+ * placeholder prefix is stable and later turns append.
  *
  * What survives is deliberate. Snapshots go; the assistant's own account of what it
  * worked out stays, as does every non-snapshot tool result - which is where `remember`
  * records what was established, so nothing has to be re-derived. One snapshot is kept, so
- * a new sub-goal starts with somewhere to act rather than with nothing addressable.
+ * the next action still has somewhere addressable.
  */
 export function compactFinishedWork<T extends PrunableMessage>(
   messages: T[],
   options: PruneOptions = {},
 ): T[] {
   const boundary = epochStart(messages);
+  const pruneOpts: PruneOptions = {
+    ...options,
+    keepLatest: options.keepLatest ?? 1,
+    group: options.group ?? "any",
+  };
   const compacted =
     boundary === 0
-      ? messages
+      ? pruneMessages(messages, pruneOpts)
       : [
-          ...pruneMessages(messages.slice(0, boundary), {
-            ...options,
-            keepLatest: options.keepLatest ?? 1,
-            group: options.group ?? "any",
-          }),
-          ...messages.slice(boundary),
+          ...pruneMessages(messages.slice(0, boundary), pruneOpts),
+          ...pruneMessages(messages.slice(boundary), pruneOpts),
         ];
   // After dropping snapshots, and also when there is nothing to drop: every tool
   // result still has to be parts. The follow-up that used to crash ("Plan better")
@@ -238,6 +235,7 @@ export function pruneMessages<T extends PrunableMessage>(
 
   const seen = new Map<string, number>();
   const out = messages.slice();
+  let changed = false;
 
   // Backwards, so "most recent" is decided before anything is rewritten.
   for (let index = out.length - 1; index >= 0; index--) {
@@ -245,6 +243,10 @@ export function pruneMessages<T extends PrunableMessage>(
     if (message.role !== "toolResult") continue;
     // An error result is the reason a step failed: never prune it.
     if (message.isError) continue;
+    // Already dropped. Replacing it again with a new parts array is a rewrite of the
+    // prefix even when the text is identical, and by-name perishability would otherwise
+    // keep touching every old act/observe forever.
+    if (isPlaceholder(message.content, placeholder)) continue;
     if (!isPerishable(message, perishable, options.byShape ?? true)) continue;
 
     // Grouped by tool so each keeps its own newest result. That matters for more than
@@ -260,7 +262,8 @@ export function pruneMessages<T extends PrunableMessage>(
       content: placeholderContent(message.content, placeholder),
       pruned: true,
     };
+    changed = true;
   }
 
-  return out;
+  return changed ? out : messages;
 }

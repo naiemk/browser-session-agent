@@ -26,8 +26,16 @@ describe("report yields", () => {
   it("calls onReport, terminates, and closes an open side tab", async () => {
     const closed: string[] = [];
     let reports = 0;
+    const page = (tabId?: string): Observation => ({
+      ...observation("https://example.test/list", tabId ?? "primary"),
+      controls: [{ ref: "e1", role: "link", name: "Home", tag: "a" }],
+    });
     const browser = {
-      observe: async (tabId?: string) => observation("https://example.test/list", tabId ?? "primary"),
+      observe: async (tabId?: string) => page(tabId),
+      facts: async (tabId?: string) => {
+        const obs = page(tabId);
+        return { url: obs.url, title: obs.title, text: "Home", observation: obs };
+      },
       openTab: async () => "side-1",
       closeTab: async (tabId: string) => {
         closed.push(tabId);

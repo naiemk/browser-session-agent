@@ -209,6 +209,12 @@ export class FixtureServer {
           send(res, 200, await page("late.html", { delay: String(delay) }));
           return;
         }
+        if (url.pathname === "/late-paint") {
+          const requested = Number(url.searchParams.get("delay"));
+          const delay = Number.isFinite(requested) && requested > 0 ? requested : 350;
+          send(res, 200, await page("late-paint.html", { delay: String(delay) }));
+          return;
+        }
         if (url.pathname === "/find") {
           const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
           const results = q

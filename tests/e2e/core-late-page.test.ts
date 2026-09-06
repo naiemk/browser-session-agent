@@ -140,4 +140,30 @@ describe("a page that answers late", () => {
     assert.equal(impatient.status, "failed");
     assert.equal(settled.status, "passed", JSON.stringify(settled.checks));
   });
+
+  it("waits for a page that paints after the URL has already landed", async () => {
+    const delay = 400;
+    const url = `${origin}/late-paint?delay=${delay}`;
+
+    const impatientTab = await browser.openTab(`${origin}/apply`);
+    const impatient = await act(
+      browser,
+      { kind: "navigate", tabId: impatientTab, url },
+      { settleMs: 0 },
+    );
+    assert.equal(
+      impatient.observation.controls.some((control) => control.name === "Continue"),
+      false,
+      "without a settle window the Continue button has not been painted",
+    );
+
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(browser, { kind: "navigate", tabId: tab, url });
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
+    assert.ok(
+      result.observation.controls.some((control) => control.name === "Continue"),
+      `expected Continue after settle, got ${JSON.stringify(result.observation.controls)}`,
+    );
+    assert.ok((result.verification.waitedMs ?? 0) > 0, "the paint is not the first look");
+  });
 });

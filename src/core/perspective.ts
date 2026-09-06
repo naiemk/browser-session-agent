@@ -17,7 +17,9 @@
  */
 
 import type { BrowserPort } from "./browser.ts";
+import { describeDataDocument } from "./document.ts";
 import type { LedgerSink } from "./ledger.ts";
+import { readOpenedTab } from "./peek.ts";
 import type { Observation } from "./types.ts";
 
 export interface PerspectiveDelta {
@@ -39,6 +41,7 @@ export interface PerspectiveDelta {
 export interface PerspectiveResult {
   signedOut: Observation;
   delta: PerspectiveDelta;
+  dataDocument?: { kind: "data"; contentType: string; bytes: number };
 }
 
 const MAX_LISTED = 12;
@@ -95,7 +98,31 @@ export async function viewWithoutSession(
 
   const strangerTab = await browser.openIsolatedTab(url);
   try {
-    const signedOut = await browser.observe(strangerTab);
+    const facts = await readOpenedTab(browser, strangerTab);
+    const signedOut = facts.observation;
+    const document = facts.document;
+    if (document?.kind === "data") {
+      const empty: Observation = { ...signedOut, controls: [], changes: [] };
+      const delta = compareObservations(signedIn, empty);
+      await options.ledger?.append({
+        type: "probe",
+        entityId: options.entityId,
+        intent: options.intent ?? `view ${url} without a session`,
+        before: {
+          url: signedIn.url,
+          title: signedIn.title,
+          controls: signedIn.controls.length,
+        },
+        after: { url: empty.url, title: empty.title, changes: [] },
+        payload: { requested: url, delta, document: describeDataDocument(document) },
+      });
+      return {
+        signedOut: empty,
+        delta,
+        dataDocument: { kind: "data", contentType: document.contentType, bytes: document.bytes },
+      };
+    }
+
     const delta = compareObservations(signedIn, signedOut);
 
     await options.ledger?.append({

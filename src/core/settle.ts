@@ -13,6 +13,9 @@
  * already happened un-happens; a failure is provisional until the page has been given a
  * bounded moment to disagree. So the happy path still costs one read, and only a verdict
  * that is about to cost a turn pays for a second look.
+ *
+ * Navigate and peek opt out of trusting the first yes: a URL can match before the SPA
+ * has painted. Those callers pass `until: "stable"`.
  */
 
 import { diffControls } from "./diff.ts";
@@ -38,6 +41,8 @@ const BACKOFF_MS = [100, 200, 400, 800];
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+export type SettleUntil = "pass" | "stable";
+
 export interface SettleOptions {
   tabId?: string;
   /**
@@ -52,6 +57,20 @@ export interface SettleOptions {
    */
   since?: Observation;
   budgetMs?: number;
+  /**
+   * When a pass is believed.
+   *
+   * `"pass"` (default): the first yes is final. Clicks, fills, and checks use this —
+   * a value that already read back, or a dialog that is already open, should not pay
+   * for another look.
+   *
+   * `"stable"`: a yes is provisional until two consecutive successful reads agree on
+   * URL and a non-empty control list, or the budget ends. Navigation and peek use this,
+   * because a URL can match before the SPA has painted anything addressable. Two empty
+   * reads in a row are the hollow-page lie, not a finished paint; a page that stays
+   * empty still passes when the budget ends.
+   */
+  until?: SettleUntil;
 }
 
 export interface Settled {
@@ -67,16 +86,22 @@ export interface Settled {
  * be served, which is a fact about when we asked. If every attempt throws there is
  * nothing to judge and the error is the honest answer.
  */
+function paintSignature(facts: PageFacts): string {
+  return `${facts.observation.url}\0${facts.observation.controls.length}`;
+}
+
 export async function settleVerification(
   browser: BrowserPort,
   judge: (facts: PageFacts) => Verification,
   options: SettleOptions = {},
 ): Promise<Settled> {
   const budgetMs = options.budgetMs ?? DEFAULT_SETTLE_MS;
+  const until = options.until ?? "pass";
   let waitedMs = 0;
   let samples = 0;
   let latest: Settled | undefined;
   let lastError: unknown;
+  let previousSignature: string | undefined;
 
   for (let attempt = 0; ; attempt++) {
     try {
@@ -84,7 +109,14 @@ export async function settleVerification(
       const verification = judge(facts);
       samples += 1;
       latest = { facts, verification };
-      if (verification.status === "passed") break;
+      if (verification.status === "passed") {
+        if (until !== "stable") break;
+        const signature = paintSignature(facts);
+        const agreed = signature === previousSignature;
+        previousSignature = signature;
+        // Two empty snapshots agreeing is a URL that landed, not a page that painted.
+        if (agreed && facts.observation.controls.length > 0) break;
+      }
     } catch (err) {
       lastError = err;
     }

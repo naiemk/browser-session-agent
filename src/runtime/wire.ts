@@ -148,13 +148,18 @@ export function toWireActionResult(result: ActionResult): WireActionResult {
   const why = omitEmpty(
     failed.map((check) => `${check.predicate}: ${check.detail}`),
   );
-  const consoleErrors = omitEmpty(result.failure?.consoleErrors?.slice(-3));
-  const failedRequests = omitEmpty(result.failure?.failedRequests?.slice(-3));
-
   if (why) wire.why = why;
   if (result.failure?.recovery) wire.recovery = result.failure.recovery;
-  if (consoleErrors) wire.consoleErrors = consoleErrors;
-  if (failedRequests) wire.failedRequests = failedRequests;
+  // Observation already carries clipped console/network lines. Repeating them unclipped
+  // at the top level is how a failed click billed three CDN URLs twice.
+  if (!observation.consoleErrors?.length) {
+    const consoleErrors = omitEmpty(result.failure?.consoleErrors?.slice(-3).map((entry) => clip(entry)));
+    if (consoleErrors) wire.consoleErrors = consoleErrors;
+  }
+  if (!observation.failedRequests?.length) {
+    const failedRequests = omitEmpty(result.failure?.failedRequests?.slice(-3).map((entry) => clip(entry)));
+    if (failedRequests) wire.failedRequests = failedRequests;
+  }
   return wire;
 }
 

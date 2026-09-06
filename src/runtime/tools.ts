@@ -12,8 +12,9 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
-import { peek } from "../core/peek.ts";
-import { allowedPredicateKinds, describeCheck, optionalPredicate, validatePredicate } from "../core/predicates.ts";
+import { peek, readOpenedTab } from "../core/peek.ts";
+import { describeCheck, optionalPredicate, validatePredicate } from "../core/predicates.ts";
+import { describeDataDocument } from "../core/document.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
@@ -302,8 +303,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
             const errors = validatePredicate(raw.expect, "expect");
             if (errors.length > 0) {
               return reply({
-                error: `${errors.join("; ")}. Allowed kinds: ${allowedPredicateKinds()}`,
-                note: "There is no download predicate. Sessionful downloads stay on this agent; public URLs go to subagent coder.",
+                error: errors.join("; "),
               });
             }
           }
@@ -410,6 +410,12 @@ export function buildTools(context: ToolContext): AgentTool[] {
             ledger: context.evidence.ledger,
             entityId: context.evidence.entityId,
           });
+          if (result.dataDocument) {
+            return reply({
+              error: describeDataDocument(result.dataDocument),
+              note: "This is a payload, not a page. Ask coder for a digest of scratch files; do not peek file://.",
+            });
+          }
           return reply({
             asStranger: view.observation(result.signedOut),
             differences: result.delta,
@@ -519,6 +525,14 @@ export function buildTools(context: ToolContext): AgentTool[] {
             entityId: context.evidence.entityId,
           });
           const spent = budget();
+          if (result.dataDocument) {
+            return reply({
+              matched: false,
+              note: `${describeDataDocument(result.dataDocument)}. Do not read anything into it.`,
+              stillOn: result.origin.url,
+              ...(spent ? { budget: spent } : {}),
+            });
+          }
           return reply({
             page: view.observation(result.observation),
             matched: result.matched,
@@ -549,11 +563,23 @@ export function buildTools(context: ToolContext): AgentTool[] {
             note: `Close it with ${TOOL_SIDE_CLOSE} first. Only one at a time.`,
           });
         }
+        let opened: string | undefined;
         try {
           countStep();
           const primary = await context.browser.observe(context.tabId);
-          sideTab = await context.browser.openTab(String((params as { url?: unknown }).url ?? ""));
-          const observation = await context.browser.observe(sideTab);
+          opened = await context.browser.openTab(String((params as { url?: unknown }).url ?? ""));
+          sideTab = opened;
+          const facts = await readOpenedTab(context.browser, sideTab);
+          if (facts.document?.kind === "data") {
+            await context.browser.closeTab(opened).catch(() => undefined);
+            sideTab = undefined;
+            return reply({
+              error: describeDataDocument(facts.document),
+              note: "This is a payload, not a page. Close is unnecessary; the tab was not kept.",
+              stillOn: primary.url,
+            });
+          }
+          const observation = facts.observation;
           await context.evidence.ledger.append({
             type: "note",
             entityId: context.evidence.entityId,
@@ -566,7 +592,8 @@ export function buildTools(context: ToolContext): AgentTool[] {
             note: `You are now working in the side tab. ${TOOL_SIDE_CLOSE} returns you.`,
           });
         } catch (err) {
-          // A failed open must not leave the active tab pointing at nothing.
+          // A failed open must not leave a leaked tab or the active tab pointing at nothing.
+          if (opened) await context.browser.closeTab(opened).catch(() => undefined);
           sideTab = undefined;
           return reply({ error: describeError(err) });
         }
