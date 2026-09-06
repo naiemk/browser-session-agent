@@ -376,7 +376,10 @@ describe("worker spawn isolation", () => {
 
   it("does not kill if the child exits while waiting to extend", async () => {
     const scratchDir = await tempRoot();
-    const proc = hangingChild();
+    let spawned: ((child: ChildProcess) => void) | undefined;
+    const ready = new Promise<ChildProcess>((resolve) => {
+      spawned = resolve;
+    });
     const resultPromise = runWorker({
       agentName: "coder",
       task: "hang",
@@ -386,12 +389,17 @@ describe("worker spawn isolation", () => {
       confirmExtend: () => new Promise(() => {
         /* never answers */
       }),
-      spawnImpl: () => proc,
+      spawnImpl: () => {
+        const proc = hangingChild();
+        spawned?.(proc);
+        return proc;
+      },
       piEntry: "/fake/cli.js",
       extraExtensions: [],
     });
+    const child = await ready;
     await new Promise((resolve) => setTimeout(resolve, 50));
-    proc.emit("close", 0);
+    child.emit("close", 0);
     const result = await resultPromise;
     assert.equal(result.aborted, false);
     assert.equal(result.exitCode, 0);

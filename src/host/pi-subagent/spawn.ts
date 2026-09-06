@@ -248,8 +248,22 @@ export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function waitMs(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export interface ExtendRequest {
@@ -355,9 +369,17 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       });
       let buffer = "";
       let settled = false;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      const clock = new AbortController();
+      const onAbort = () => {
+        killProc();
+      };
       const finish = (code: number) => {
         if (settled) return;
         settled = true;
+        if (killTimer) clearTimeout(killTimer);
+        if (!clock.signal.aborted) clock.abort();
+        options.signal?.removeEventListener("abort", onAbort);
         if (buffer.trim()) parsePiJsonLine(buffer, capture);
         resolve(code);
       };
@@ -377,25 +399,15 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       proc.on("close", (code) => finish(code ?? 0));
       proc.on("error", () => finish(1));
 
-      const killProc = () => {
+      function killProc() {
         aborted = true;
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (!proc.killed) proc.kill("SIGKILL");
+        if (killTimer) clearTimeout(killTimer);
+        killTimer = setTimeout(() => {
+          if (!settled) proc.kill("SIGKILL");
         }, 5_000);
-      };
+        proc.kill("SIGTERM");
+      }
 
-      const closed = new Promise<number>((done) => {
-        proc.on("close", (code) => done(code ?? 0));
-        proc.on("error", () => done(1));
-      });
-      const abortWait = new Promise<"abort">((done) => {
-        if (options.signal?.aborted) done("abort");
-        else options.signal?.addEventListener("abort", () => done("abort"), { once: true });
-      });
-      const onAbort = () => {
-        killProc();
-      };
       if (options.signal?.aborted) onAbort();
       else options.signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -404,49 +416,35 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
         let extensions = 0;
         const started = Date.now();
         while (!settled) {
-          const winner = await Promise.race([
-            closed.then((code) => ({ kind: "exit" as const, code })),
-            abortWait.then(() => ({ kind: "abort" as const })),
-            sleep(sliceMs).then(() => ({ kind: "timeout" as const })),
-          ]);
-          if (winner.kind === "exit") {
-            options.signal?.removeEventListener("abort", onAbort);
-            finish(winner.code);
-            return;
-          }
-          if (winner.kind === "abort") {
-            killProc();
-            finish(await closed);
-            return;
-          }
+          await waitMs(sliceMs, clock.signal);
+          if (settled) return;
           const elapsed = Date.now() - started;
           const budget = maxTotalMs - elapsed;
           const canAsk =
             Boolean(options.confirmExtend) && extensions < maxExtensions && budget > 0;
           if (!canAsk) {
             killProc();
-            finish(await closed);
             return;
           }
           options.onUpdate?.({ content: [{ type: "text", text: "(waiting to extend…)" }] });
-          const confirmWinner = await Promise.race([
-            closed.then((code) => ({ kind: "exit" as const, code })),
-            abortWait.then(() => ({ kind: "abort" as const })),
-            options.confirmExtend!({
-              elapsedMs: elapsed,
-              sliceMs,
-              extensionsUsed: extensions,
-            }).then((ok) => ({ kind: "confirm" as const, ok: Boolean(ok) })),
-            sleep(confirmWaitMs).then(() => ({ kind: "confirm" as const, ok: false })),
-          ]);
-          if (confirmWinner.kind === "exit") {
-            options.signal?.removeEventListener("abort", onAbort);
-            finish(confirmWinner.code);
-            return;
-          }
-          if (confirmWinner.kind !== "confirm" || !confirmWinner.ok) {
+          const confirmClock = new AbortController();
+          const stopConfirm = () => {
+            if (!confirmClock.signal.aborted) confirmClock.abort();
+          };
+          clock.signal.addEventListener("abort", stopConfirm, { once: true });
+          let ok = false;
+          const asked = options.confirmExtend!({
+            elapsedMs: elapsed,
+            sliceMs,
+            extensionsUsed: extensions,
+          }).then((value) => {
+            ok = Boolean(value);
+          });
+          await Promise.race([asked, waitMs(confirmWaitMs, confirmClock.signal)]);
+          stopConfirm();
+          if (settled) return;
+          if (!ok) {
             killProc();
-            finish(await closed);
             return;
           }
           extensions += 1;
