@@ -13,6 +13,7 @@
  */
 
 import type { Page } from "playwright";
+import { inspectPageDocument } from "./document.ts";
 import { redactDeep } from "./redact.ts";
 import { CoreError } from "./types.ts";
 
@@ -291,6 +292,22 @@ export async function probe(
   options: ProbeOptions = {},
 ): Promise<ProbeResult> {
   const query = parseProbeQuery(rawQuery);
+
+  if (query.kind === "text" || query.kind === "links" || query.kind === "elements") {
+    const document = await inspectPageDocument(page);
+    if (document.kind === "data") {
+      return {
+        query,
+        data: {
+          note: "This tab is not an HTML page; the body is not returned.",
+          contentType: document.contentType,
+          bytes: document.bytes,
+        },
+        truncated: false,
+        note: `${document.contentType} (${document.bytes} bytes)`,
+      };
+    }
+  }
 
   const budget = Math.min(options.maxResultChars ?? MAX_RESULT_CHARS, MAX_RESULT_CHARS);
 

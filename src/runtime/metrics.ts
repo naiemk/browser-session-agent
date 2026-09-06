@@ -20,6 +20,11 @@ export interface RunRecord {
   kind: "run";
   at: string;
   model: string;
+  /**
+   * The first thinking level observed this run. Later switches live on the turn
+   * records; this is only so a one-line rollup can print `model • high` without scanning.
+   */
+  thinkingLevel?: string;
   /** The system prompt. Billed once per turn, so its size matters more than it looks. */
   cardBytes: number;
   /** Serialized tool schemas, also resent every turn. */
@@ -37,6 +42,11 @@ export interface TurnRecord {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   costUsd: number;
+  /**
+   * What this turn actually used. Optional so a missing field stays missing: we do
+   * not invent `"medium"` for old files or for a host that never told us.
+   */
+  thinkingLevel?: string;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
-import { turnClock } from "../../host/pi-metering.ts";
+import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
+import { bindSubagent, CHAT_WORKER_HINT, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -31,6 +32,11 @@ export interface OperatorRuntimeOptions {
 }
 
 let piStartLock: Promise<void> = Promise.resolve();
+
+/** Stop the current prompt without disposing the session. A report yields; it does not hang up. */
+export function abortCurrentPrompt(pi: { abort: () => void | Promise<void> } | null | undefined): void {
+  void pi?.abort();
+}
 
 function withPiStartLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = piStartLock.then(fn, fn);
@@ -115,9 +121,10 @@ export class OperatorRuntime {
       return startRun(goal, startUrl);
     };
     this.api = createExtensionApi(this.host);
-    // Commands only. The tools come from composeAgent when the session boots, so the
-    // chat runs the same agent as the CLI and the suite rather than a parallel one.
+    // Product commands, plus the worker tool. Browser tools still come from composeAgent
+    // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
+    bindSubagent(this.api, { goalId: this.evidenceGoalId });
     this.api.on("before_agent_start", () =>
       this.browserPrompt ? { systemPrompt: this.browserPrompt } : undefined,
     );
@@ -234,7 +241,9 @@ export class OperatorRuntime {
          * thinking levels, compaction and session files, which a chat needs and a bounded
          * task does not. What the agent is, and what drives it, are different questions.
          */
-        const customTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
+        const composedTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
+        const worker = this.api.tools.get(SUBAGENT_TOOL_NAME);
+        const customTools = worker ? [...composedTools, this.toPiTool(worker)] : composedTools;
         const result = await createAgentSession({
           cwd,
           agentDir,
@@ -466,6 +475,8 @@ export class OperatorRuntime {
     if (!usage) return;
     const num = (raw: unknown) => (typeof raw === "number" && Number.isFinite(raw) ? raw : 0);
     const cost = usage.cost as Record<string, unknown> | undefined;
+    const thinkingLevel =
+      thinkingOf(value.message) ?? this.pi?.thinkingLevel ?? this.thinking;
     this.evidence.metrics.record({
       kind: "turn",
       turn: this.clock.current(),
@@ -474,6 +485,7 @@ export class OperatorRuntime {
       cacheReadTokens: num(usage.cacheRead),
       cacheWriteTokens: num(usage.cacheWrite),
       costUsd: num(cost?.total),
+      ...(thinkingLevel ? { thinkingLevel } : {}),
     });
   }
 
@@ -498,9 +510,16 @@ export class OperatorRuntime {
         evidence: this.evidence,
         turn: () => this.clock.current(),
         view: viewByName(process.env.BSA_VIEW),
+        policy: "ask",
+        approve: async (request) =>
+          this.host.confirm(
+            "Approve irreversible action",
+            `${request.request.kind} — ${request.reason}\n${request.url}`,
+          ),
+        onReport: () => abortCurrentPrompt(this.pi),
       },
     });
-    this.browserPrompt = composed.systemPrompt;
+    this.browserPrompt = `${composed.systemPrompt}\n\n${CHAT_WORKER_HINT}`;
     this.browserTools = new Map(
       composed.tools.map((tool) => [
         (tool as { name: string }).name,
@@ -606,7 +625,8 @@ export class OperatorRuntime {
           onUpdate,
           extensionContext(this.host),
         );
-        return { ...result, details: result.details ?? {} };
+        const terminate = (result as { terminate?: boolean }).terminate;
+        return { ...result, details: result.details ?? {}, ...(terminate ? { terminate: true } : {}) };
       },
     });
   }

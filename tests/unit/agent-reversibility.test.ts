@@ -33,6 +33,16 @@ const CLICKS: Array<[string, Control, Reversibility]> = [
   ["Sort by date", control({ name: "Sort by date" }), "reversible"],
   ["Open menu", control({ name: "Open menu" }), "reversible"],
   ["Toggle dark mode", control({ name: "Toggle dark mode" }), "reversible"],
+  ["Search", control({ name: "Search", submits: true }), "reversible"],
+  ["Dismiss", control({ name: "Dismiss" }), "reversible"],
+  ["Maybe later", control({ name: "Maybe later" }), "reversible"],
+  ["Not now", control({ name: "Not now" }), "reversible"],
+  ["Skip", control({ name: "Skip" }), "reversible"],
+  ["Tags", control({ name: "Tags" }), "reversible"],
+  ["profile pic", control({ name: "profile pic" }), "reversible"],
+  ["Following", control({ name: "Following" }), "reversible"],
+
+  ["Import", control({ name: "Import" }), "committing"],
 
   ["a link", control({ name: "Careers", tag: "a", href: "https://example.test/jobs" }), "navigational"],
 ];

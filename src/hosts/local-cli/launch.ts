@@ -1,6 +1,11 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  loadsModelAuto,
+  modelAutoExtensionPath,
+  rewriteArgvModelFlag,
+} from "../../host/pi-subagent/spawn.ts";
 
 const MIN_NODE_MAJOR = 22;
 const PI_PACKAGE = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
@@ -28,10 +33,29 @@ export function takeHeadless(args: string[]): { args: string[]; headless: boolea
   return { args: args.filter((arg) => arg !== "--headless"), headless };
 }
 
+function extraExtensionPaths(extra: string[]): string[] {
+  const paths: string[] = [];
+  for (let i = 0; i < extra.length; i++) {
+    if ((extra[i] === "-e" || extra[i] === "--extension") && extra[i + 1]) {
+      paths.push(extra[++i]!);
+    }
+  }
+  return paths;
+}
+
+/**
+ * Browser extension plus pi-model-auto. `@ultra` is a first-turn prefix, not a
+ * `--model` id; without the router Pi prints "Model not found" at TUI start.
+ */
 export function buildPiArgs(extension: string, extra: string[] = []): string[] {
   const args: string[] = [];
   if (!hasFlag(extra, "-e", "--extension")) {
     args.push("-e", extension);
+  }
+  const extraExts = extraExtensionPaths(extra);
+  const modelAuto = modelAutoExtensionPath();
+  if (modelAuto && !loadsModelAuto(extraExts)) {
+    args.push("-e", modelAuto);
   }
   if (!hasFlag(extra, "--no-builtin-tools", "-nbt")) {
     args.push("--no-builtin-tools");
@@ -42,7 +66,8 @@ export function buildPiArgs(extension: string, extra: string[] = []): string[] {
   if (!hasFlag(extra, "--no-context-files", "-nc")) {
     args.push("--no-context-files");
   }
-  args.push(...extra);
+  const routerExts = [...extraExts, ...(modelAuto ? [modelAuto] : [])];
+  args.push(...rewriteArgvModelFlag(extra, routerExts));
   return args;
 }
 

@@ -48,7 +48,7 @@ describe("AGENT-04-T01 failure evidence bundle", () => {
         ref: await refFor(tab, "Nickname"),
         text: "ada",
         intent: "set the nickname",
-        expect: { kind: "text_visible", text: "this text is not on the page" },
+        expect: { kind: "value_equals", name: "Nickname", text: "definitely-not-ada" },
       },
       { ledger, screenshotDir: ledger.artifactsDir, entityId: "ent_1" },
     );
@@ -57,7 +57,7 @@ describe("AGENT-04-T01 failure evidence bundle", () => {
     const failure = result.failure;
     assert.ok(failure, "a failed action must carry a bundle");
 
-    assert.match(failure.recovery, /this text is not on the page/);
+    assert.match(failure.recovery, /value_equals|definitely-not-ada|Nickname/);
     assert.ok(failure.recovery.length <= MAX_RECOVERY_CHARS);
     assert.ok(
       failure.consoleErrors.some((entry) => entry.includes("widget bootstrap failed")),

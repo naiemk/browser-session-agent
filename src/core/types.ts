@@ -35,6 +35,14 @@ export interface Control {
    * reason to give up its slot last.
    */
   chrome?: boolean;
+  /**
+   * This control lives inside an open dialog.
+   *
+   * When a dialog is open it owns the control budget: the slots go to what is in the
+   * overlay, not to the page sitting under it. Hit-testing cannot always see a centred
+   * card, so containment in the dialog node is the signal, not occlusion alone.
+   */
+  dialog?: boolean;
 }
 
 /** One compact, ephemeral view of a page. Never persisted into model context long-term. */
@@ -65,6 +73,13 @@ export interface Observation {
    * snapshot loaded from an older ledger has no record of the strategy that produced it.
    */
   perception?: PerceptionTrace;
+  /**
+   * Visible heading and a few labeled numbers, when the page has them.
+   *
+   * Caps stay small: this is so the model does not have to probe for a follower count
+   * that is already on screen, not a second extract-the-page tool.
+   */
+  identity?: { heading?: string; stats?: Array<{ label: string; value: string }> };
   capturedAt: string;
 }
 
@@ -83,6 +98,13 @@ export interface PageFacts {
   title: string;
   text: string;
   observation: Observation;
+  /**
+   * Whether this tab is an HTML page or a data payload (JSON, XML, bytes).
+   *
+   * Optional so an older snapshot or a stub port without the inspector still works.
+   * Absent is treated as a page: we only refuse when we have evidence it is not.
+   */
+  document?: { kind: "html" | "data"; contentType: string; bytes: number };
 }
 
 export type Predicate =

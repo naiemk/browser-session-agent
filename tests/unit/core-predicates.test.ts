@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { evaluatePredicate, verify } from "../../src/core/predicates.ts";
+import { evaluatePredicate, optionalPredicate, validatePredicate, verify } from "../../src/core/predicates.ts";
 import { describeVerification } from "../../src/core/settle.ts";
 import { toWireVerification } from "../../src/runtime/wire.ts";
 import type { Control, Observation, PageFacts, Predicate } from "../../src/core/types.ts";
@@ -114,5 +114,29 @@ describe("a check explains itself without contradicting itself", () => {
     const passed = line({ kind: "not", of: { kind: "text_visible", text: "varya" } }, page);
     assert.match(passed, /^pass not \(text visible "varya"\)/);
     assert.match(passed, /no match/, "and the reason describes the inner observation");
+  });
+
+  it("refuses url_includes without a string text, so it is not evaluated as \"undefined\"", () => {
+    const errors = validatePredicate({ kind: "url_includes" });
+    assert.ok(errors.some((error) => error.includes("needs a string \"text\"")));
+    assert.equal(optionalPredicate({ kind: "url_includes" }), undefined);
+    assert.deepEqual(optionalPredicate({ kind: "url_includes", text: "/jobs" }), {
+      kind: "url_includes",
+      text: "/jobs",
+    });
+    assert.equal(optionalPredicate(undefined), undefined);
+  });
+
+  it("never returns a hole for an unknown or empty expect", () => {
+    const page = facts();
+    const empty = evaluatePredicate({} as Predicate, page);
+    assert.equal(empty.passed, false);
+    assert.ok(empty.detail);
+    assert.equal(verify([{} as Predicate], page).status, "failed");
+
+    const changed = evaluatePredicate({ kind: "changed" } as unknown as Predicate, page);
+    assert.equal(changed.passed, false);
+    assert.match(changed.detail, /unknown predicate kind/);
+    assert.equal(verify([{ kind: "changed" } as unknown as Predicate], page).status, "failed");
   });
 });

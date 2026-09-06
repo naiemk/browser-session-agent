@@ -110,8 +110,8 @@ function toPlanStep(step: ReferenceStep, origin: string): PlanStep {
   return { tool: TOOL_ACT, target: step.name, args: actArgs(step, origin) };
 }
 
-export function planForTask(task: SuiteTask, origin: string): PlanStep[] {
-  return task.reference.map((step) => {
+export function planForSteps(steps: ReferenceStep[], origin: string): PlanStep[] {
+  return steps.map((step) => {
     const plan: PlanStep = toPlanStep(step, origin);
 
     if (step.until) {
@@ -123,4 +123,8 @@ export function planForTask(task: SuiteTask, origin: string): PlanStep[] {
 
     return plan;
   });
+}
+
+export function planForTask(task: SuiteTask, origin: string): PlanStep[] {
+  return planForSteps(task.reference, origin);
 }

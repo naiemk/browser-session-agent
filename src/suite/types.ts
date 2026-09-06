@@ -87,6 +87,11 @@ export interface SuiteTask {
    * broken scoreboard, not a measurement.
    */
   perceiver?: string;
+  /**
+   * Later operator messages in the same run. Each is a new sub-goal, which is where
+   * compaction fires. The mock plan for each follow-up is its `reference`.
+   */
+  followUps?: Array<{ prompt: string; reference: ReferenceStep[] }>;
 }
 
 export type TaskOutcomeKind = "passed" | "failed" | "capped" | "error";

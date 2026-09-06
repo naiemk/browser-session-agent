@@ -29,6 +29,7 @@ const pairHintEl = document.getElementById("pair-hint");
 
 const COMMANDS = [
   ["browser-start", "Start a run"],
+  ["plan", "Write scratch/plan.md"],
   ["browser-status", "Status"],
   ["browser-runs", "Runs"],
   ["browser-pause", "Pause"],
@@ -297,6 +298,13 @@ COMMANDS.forEach(([name, label]) => {
       const url = prompt("Optional start URL") || "";
       send({ type: "command", name, args: url ? `--url ${url} ${goal}` : goal });
       addMessage("user", `/${name} ${url ? `--url ${url} ` : ""}${goal}`);
+      return;
+    }
+    if (name === "plan") {
+      const goal = prompt("What should the planner write into scratch/plan.md?");
+      if (!goal) return;
+      send({ type: "command", name, args: goal });
+      addMessage("user", `/${name} ${goal}`);
       return;
     }
     if (name === "browser-approve") {

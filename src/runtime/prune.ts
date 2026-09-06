@@ -17,7 +17,7 @@
  */
 
 import { PERISHABLE_TOOLS } from "./names.ts";
-import { extractText, observationInContent } from "./wire.ts";
+import { contentCarriesSnapshot, extractText } from "./wire.ts";
 
 export interface PrunableMessage {
   role: string;
@@ -56,7 +56,7 @@ export function isPerishable(
   byShape = true,
 ): boolean {
   if (message.toolName && perishable.has(message.toolName)) return true;
-  return byShape && Boolean(observationInContent(message.content));
+  return byShape && contentCarriesSnapshot(message.content);
 }
 
 export const PLACEHOLDER = "[stale snapshot dropped; observe again if you need it]";

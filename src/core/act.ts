@@ -7,11 +7,12 @@
  */
 
 import { visibleText } from "./perceive.ts";
-import { describeCheck, evaluatePredicate, verify } from "./predicates.ts";
+import { describeCheck, describePredicate, evaluatePredicate, optionalPredicate, verify } from "./predicates.ts";
 import { describeVerification, settleVerification, DEFAULT_SETTLE_MS } from "./settle.ts";
 import type { BrowserPort } from "./browser.ts";
 import type { LedgerSink } from "./ledger.ts";
 import { classifyAction, type Classification } from "./reversibility.ts";
+import { urlMatchesIntent } from "./url-intent.ts";
 import {
   CoreError,
   type ActionRequest,
@@ -51,7 +52,14 @@ export async function act(
   const classify = options.classify ?? classifyAction;
   const timeout = options.timeoutMs ?? 10_000;
 
-  const before = await browser.observe(request.tabId);
+  // Wait and scroll judge "did the page change", so the before-facts have to include
+  // the body text an already-true `text_visible` would match. Observe is enough for
+  // every other kind.
+  const beforeFacts =
+    request.kind === "wait" || request.kind === "scroll"
+      ? await browser.facts(request.tabId)
+      : undefined;
+  const before = beforeFacts?.observation ?? (await browser.observe(request.tabId));
   const control = request.ref
     ? before.controls.find((candidate) => candidate.ref === request.ref)
     : undefined;
@@ -104,14 +112,15 @@ export async function act(
     }
   }
 
-  const { facts, verification } = await settleVerification(
-    browser,
-    (settled) =>
-      request.expect
-        ? verify([request.expect], settled)
-        : defaultPostcondition(request, before, settled, control),
-    { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
-  );
+  const refused = request.kind === "navigate"
+    ? await refuseDataDocument(browser, request, before, timeout)
+    : undefined;
+  const { facts, verification } =     refused
+    ?? await settleVerification(
+      browser,
+      (settled) => postcondition(request, before, settled, control, beforeFacts),
+      { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
+    );
 
   const result: ActionResult = {
     ok: verification.status === "passed",
@@ -162,6 +171,115 @@ export async function act(
 }
 
 /**
+ * What "it worked" means.
+ *
+ * Fill is special: the harness already knows how to check a field (read the value back).
+ * A model `text_visible` of the whole blob used to replace that check and fail a fill
+ * that stuck. Type and select always read back; only a value_* expect may AND with it.
+ * Other kinds of expect still replace the default for clicks and navigation.
+ */
+function postcondition(
+  request: ActionRequest,
+  before: Observation,
+  facts: PageFacts,
+  control: Control | undefined,
+  beforeFacts?: PageFacts,
+): Verification {
+  const expect = optionalPredicate(request.expect);
+  const judged: ActionRequest = expect ? { ...request, expect } : { ...request, expect: undefined };
+
+  if (judged.kind === "wait" || judged.kind === "scroll") {
+    return waitScrollPostcondition(judged, before, facts, beforeFacts);
+  }
+  if (judged.kind === "type" || judged.kind === "select") {
+    const readBack = defaultPostcondition(judged, before, facts, control);
+    const extra = fillValueExpect(expect);
+    if (!extra) return readBack;
+    const anded = verify([extra], facts);
+    return {
+      status: readBack.status === "passed" && anded.status === "passed" ? "passed" : "failed",
+      checks: [...readBack.checks, ...anded.checks],
+    };
+  }
+  if (expect) return verify([expect], facts);
+  return defaultPostcondition(judged, before, facts, control);
+}
+
+/**
+ * Wait and scroll mean "the page moved", not "a string that was already on screen is
+ * still there".
+ *
+ * An `expect` that was false before and true after is still success — that is waiting
+ * until something appears. The same expect already true before the action is not
+ * "loaded more".
+ */
+function waitScrollPostcondition(
+  request: ActionRequest,
+  before: Observation,
+  facts: PageFacts,
+  beforeFacts: PageFacts | undefined,
+): Verification {
+  const changed = snapshotChanged(before, facts.observation);
+  const delta = single(
+    changed,
+    "pageDelta",
+    changed
+      ? facts.observation.changes.join("; ") || facts.observation.dialogs.join("; ") || "snapshot changed"
+      : `noop ${request.kind}: the page did not change`,
+  );
+  const expect = request.expect;
+  if (!expect) return delta;
+
+  const afterCheck = evaluatePredicate(expect, facts);
+  if (!afterCheck.passed) return verify([expect], facts);
+
+  const already = beforeFacts ? evaluatePredicate(expect, beforeFacts).passed : false;
+  if (!already) return verify([expect], facts);
+
+  return single(
+    changed,
+    "pageDelta",
+    changed
+      ? facts.observation.changes.join("; ") || "snapshot changed"
+      : `${describePredicate(expect)} already held before the ${request.kind}; page did not change`,
+  );
+}
+
+function snapshotChanged(before: Observation, after: Observation): boolean {
+  return (
+    after.changes.length > 0 ||
+    before.url !== after.url ||
+    before.title !== after.title ||
+    before.dialogs.join("\n") !== after.dialogs.join("\n") ||
+    before.errors.join("\n") !== after.errors.join("\n")
+  );
+}
+
+function fillValueExpect(expect: Predicate | undefined): Predicate | undefined {
+  if (!expect) return undefined;
+  if (expect.kind === "value_equals" || expect.kind === "value_includes") return expect;
+  return undefined;
+}
+
+function collapse(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function fillAccepted(wanted: string, actual: string): boolean {
+  if (wanted === "") return true;
+  const want = collapse(wanted);
+  const got = collapse(actual);
+  if (got === want || got.toLowerCase().includes(want.toLowerCase())) return true;
+  if (want.length > 200) {
+    const ratio = got.length / Math.max(want.length, 1);
+    if (ratio >= 0.9 && ratio <= 1.1 && got.toLowerCase().startsWith(want.slice(0, 40).toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * What "it worked" means when the caller gave no explicit expectation.
  * A click that changes nothing is a failure — the single most common way a browser
  * agent fools itself.
@@ -175,12 +293,7 @@ function defaultPostcondition(
   const after = facts.observation;
   switch (request.kind) {
     case "click": {
-      const changed =
-        after.changes.length > 0 ||
-        before.url !== after.url ||
-        before.title !== after.title ||
-        before.dialogs.join("\n") !== after.dialogs.join("\n") ||
-        before.errors.join("\n") !== after.errors.join("\n");
+      const changed = snapshotChanged(before, after);
       return single(
         changed,
         "pageDelta",
@@ -197,8 +310,7 @@ function defaultPostcondition(
         return single(true, "readBack", "password redacted");
       }
       const actual = updated?.value ?? "";
-      const passed =
-        actual === wanted || actual.toLowerCase().includes(wanted.toLowerCase()) || wanted === "";
+      const passed = fillAccepted(wanted, actual);
       return single(passed, "readBack", passed ? actual : `expected "${wanted}", read "${actual}"`);
     }
     case "navigate": {
@@ -222,18 +334,28 @@ function single(passed: boolean, name: string, detail: string): Verification {
   return { status: passed ? "passed" : "failed", checks: [{ passed, detail, predicate: name }] };
 }
 
-function urlMatchesIntent(actual: string, target: string): boolean {
-  if (!target) return false;
+/**
+ * A JSON (or XML, or bytes) response is a successful fetch and a failed place to be.
+ * Restore the page we came from so the tab is still a page.
+ */
+async function refuseDataDocument(
+  browser: BrowserPort,
+  request: ActionRequest,
+  before: Observation,
+  timeout: number,
+): Promise<{ facts: PageFacts; verification: Verification } | undefined> {
+  const landed = await browser.facts(request.tabId);
+  if (landed.document?.kind !== "data") return undefined;
+  const doc = landed.document;
+  const detail =
+    `not a page (${doc.contentType}, ${doc.bytes} bytes). Restored the previous page.`;
   try {
-    const want = new URL(target);
-    const got = new URL(actual);
-    if (got.host !== want.host) return false;
-    const path = want.pathname.replace(/\/$/, "");
-    if (!path || path === "") return true;
-    return got.pathname.startsWith(path) || actual.includes(path);
+    await browser.navigate(request.tabId, before.url, timeout);
   } catch {
-    return actual.includes(target);
+    // The refusal still holds if restore fails; the recovery note says why.
   }
+  const facts = await browser.facts(request.tabId).catch(() => landed);
+  return { facts, verification: single(false, "htmlDocument", detail) };
 }
 
 async function buildFailure(
@@ -289,7 +411,7 @@ export async function check(
     browser,
     (facts) => {
       const result = evaluatePredicate(predicate, facts);
-      return { status: result.passed ? "passed" : "failed", checks: [result] };
+      return { status: result?.passed ? "passed" : "failed", checks: [result] };
     },
     // No `since`: predicates read the page, never what changed on it, so a check stays
     // at one read on the happy path.

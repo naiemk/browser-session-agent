@@ -7,6 +7,7 @@
 
 import { describePredicate } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
+import { renderSiteSkill, siteSkillFromFacts } from "./site-skill.ts";
 import {
   TOOL_ACT,
   TOOL_ASK,
@@ -17,6 +18,7 @@ import {
   TOOL_PEEK,
   TOOL_PROBE,
   TOOL_REMEMBER,
+  TOOL_SAVE,
   TOOL_STRANGER,
   TOOL_SURVEY,
 } from "./names.ts";
@@ -42,11 +44,16 @@ export function buildTaskCard(input: TaskCardInput): string {
     .map((criterion, index) => `${index + 1}. ${describePredicate(criterion)}`)
     .join("\n");
 
-  const facts = input.knownFacts && Object.keys(input.knownFacts).length > 0
-    ? `\nKnown already (do not ask again):\n${Object.entries(input.knownFacts)
+  const skill = siteSkillFromFacts(input.knownFacts);
+  const factEntries = input.knownFacts
+    ? Object.entries(input.knownFacts).filter(([key]) => key !== "siteSkill" && key !== "site_skill")
+    : [];
+  const facts = factEntries.length > 0
+    ? `\nKnown already (do not ask again):\n${factEntries
         .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
         .join("\n")}\n`
     : "";
+  const skillBlock = skill ? `\n${renderSiteSkill(skill)}\n` : "";
 
   const commit =
     input.policy === "never"
@@ -70,7 +77,7 @@ ${input.objective}
 ${input.startUrl ? `Start at ${input.startUrl}\n` : ""}
 SUCCESS (checked against the live page by code you do not control; claiming success does not make it so)
 ${criteria}
-${facts}
+${facts}${skillBlock}
 RULES
 ${input.format ? `- ${input.format}\n` : ""}- Refs stay valid while the element is on the page, so ${TOOL_OBSERVE} when you arrive somewhere new or a ref is reported gone, not between every action.
 - ${TOOL_PROBE} when you do not understand a form or widget. It cannot change anything, so prefer it over a hopeful click.
@@ -86,6 +93,7 @@ You are given a browser, not a description of the situation. Establish it rather
 - Who are you acting as? Usually discoverable from an account menu, a profile link, or a settings page. It decides what "my", "mine", and "our" refer to in the task, and where those things live.
 - What does your session grant? ${TOOL_STRANGER} loads a URL with no session. Comparing that with what you see tells you whether content is reachable by anyone or only through this session.
 - ${TOOL_REMEMBER} what you work out, in your own words, so a later task does not redo it.
+- ${TOOL_SAVE} a document you must keep. Do not hunt paste sites, pads, or spreadsheets to persist work.
 Reason from what you observed. A difference between the two views is evidence, not proof: A/B tests, geography, and consent walls change an anonymous page too. If the task turns out to be something you should not do, say so with ${TOOL_DONE} and explain what you observed that led there.
 
 CHOOSING WHAT TO DO, AND HOW

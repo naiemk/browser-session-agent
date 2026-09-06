@@ -83,7 +83,7 @@ describe("peeking a page", () => {
     assert.ok(linus.matched);
   });
 
-  it("says so when a built URL resolves to the wrong thing", async () => {
+  it("says so when a built URL resolves to the wrong entity, without calling the URL wrong", async () => {
     const tab = await browser.openTab(`${origin}/roster`);
 
     const wrong = await peek(browser, {
@@ -92,8 +92,8 @@ describe("peeking a page", () => {
       expect: { kind: "text_visible", text: "Dana Ivanova" },
     });
 
-    assert.equal(wrong.matched, false, "a URL can resolve to a real page that is not the one meant");
-    // What was wanted and what was seen, which is how the model is told about it too.
+    assert.equal(wrong.matched, true, "the URL opened; it is just not Dana");
+    assert.equal(wrong.identity?.passed, false);
     assert.match(describeCheck(wrong.identity!), /Dana Ivanova/);
     assert.match(describeCheck(wrong.identity!), /no match/);
 
@@ -103,6 +103,7 @@ describe("peeking a page", () => {
       expect: { kind: "text_visible", text: "Dana Ivanova" },
     });
     assert.equal(right.matched, true);
+    assert.equal(right.identity?.passed, true);
   });
 
   it("reports a URL that resolves to nothing, without moving us", async () => {
@@ -114,8 +115,16 @@ describe("peeking a page", () => {
       expect: { kind: "text_visible", text: "Somebody" },
     });
 
-    assert.equal(missing.matched, false);
+    assert.equal(missing.matched, true, "we asked for /p/nobody and that is where we landed");
+    assert.equal(missing.identity?.passed, false);
     assert.match((await browser.facts(tab)).text, /Page 2 of 2/, "a 404 is cheap and costs no place");
+  });
+
+  it("reports matched false when the URL did not land where it was aimed", async () => {
+    const tab = await browser.openTab(`${origin}/roster`);
+    const redirected = await peek(browser, { url: `${origin}/go-jobs`, tabId: tab });
+    assert.equal(redirected.matched, false);
+    assert.match(redirected.observation.url, /\/(jobs|login)$/);
   });
 
   it("carries our session, because a peek is us and not a stranger", async () => {

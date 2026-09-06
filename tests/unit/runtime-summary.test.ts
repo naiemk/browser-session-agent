@@ -93,13 +93,13 @@ describe("one line per tool result", () => {
     );
   });
 
-  it("reports a peek that landed on the wrong thing, and where it still is", () => {
+  it("reports a peek that landed on the wrong url, and where it still is", () => {
     const summary = summarizeToolResult(TOOL_PEEK, {
       page: toWireObservation(pageWith(2)),
       matched: false,
       stillOn: "https://www.instagram.com/vika/followers",
     });
-    assert.match(summary, /wrong thing/);
+    assert.match(summary, /wrong url/);
     assert.match(summary, /still on instagram\.com\/vika\/followers/);
   });
 

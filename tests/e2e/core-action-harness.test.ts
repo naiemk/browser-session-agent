@@ -79,6 +79,32 @@ describe("AGENT-00-T01 action harness", () => {
     assert.equal(result.reversibility, "navigational");
   });
 
+  it("refuses a JSON payload and restores the previous page", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(browser, {
+      kind: "navigate",
+      tabId: tab,
+      url: `${origin}/api/search`,
+    });
+    assert.equal(result.ok, false, "a JSON body is not a successful navigation");
+    assert.match(result.failure?.recovery ?? "", /not a page/);
+    assert.match(result.failure?.recovery ?? "", /json/i);
+    const here = await browser.observe(tab);
+    assert.match(here.url, /\/apply$/);
+  });
+
+  it("still navigates to HTML whose path contains /api/", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(browser, {
+      kind: "navigate",
+      tabId: tab,
+      url: `${origin}/api/page`,
+    });
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
+    assert.match(result.observation.url, /\/api\/page$/);
+    assert.match(result.observation.title, /API page/);
+  });
+
   it("drives the combobox: opening changes the page, choosing commits", async () => {
     const tab = await browser.openTab(`${origin}/combobox?mode=united-states-first`);
     const comboRef = await refFor(tab, "Country");
@@ -103,7 +129,7 @@ describe("AGENT-00-T01 action harness", () => {
     assert.equal(committed.status, "passed", JSON.stringify(committed.checks));
   });
 
-  it("honours an explicit expectation over the default postcondition", async () => {
+  it("does not let a page-text expect fail a fill that stuck", async () => {
     const tab = await browser.openTab(`${origin}/apply`);
     const ref = await refFor(tab, "Full name");
     const result = await act(browser, {
@@ -113,8 +139,36 @@ describe("AGENT-00-T01 action harness", () => {
       text: "Ada",
       expect: { kind: "text_visible", text: "definitely not on this page" },
     });
-    assert.equal(result.ok, false, "an explicit expectation must be able to fail a working action");
-    assert.match(result.failure?.recovery ?? "", /definitely not on this page/);
+    assert.equal(result.ok, true, "read-back is the fill oracle; page text is a check, not a fill postcondition");
+    assert.equal(result.verification.checks[0]?.predicate, "readBack");
+  });
+
+  it("still lets a value expect fail a fill", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const ref = await refFor(tab, "Full name");
+    const result = await act(browser, {
+      kind: "type",
+      tabId: tab,
+      ref,
+      text: "Ada",
+      expect: { kind: "value_equals", name: "Full name", text: "Grace" },
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.failure?.recovery ?? "", /Grace/);
+  });
+
+  it("reads back a multiline fill after collapsing whitespace", async () => {
+    const tab = await browser.openTab(`${origin}/notes`);
+    const ref = await refFor(tab, "Tracker");
+    const tracker = "# Outreach\n\n- Ada\n- Grace\n";
+    const result = await act(browser, {
+      kind: "type",
+      tabId: tab,
+      ref,
+      text: tracker,
+      expect: { kind: "text_visible", text: tracker },
+    });
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
   });
 
   it("refuses an unknown ref instead of guessing", async () => {
@@ -143,5 +197,67 @@ describe("AGENT-00-T01 action harness", () => {
     // Which rule fired is covered by the classifier's own tests; here the class is the point.
     assert.match(result.reversibilityReason, /submits a form|sending or publishing/);
     assert.equal(result.ok, true, JSON.stringify(result.verification));
+  });
+
+  it("drops a navigate expect with no text rather than checking url includes undefined", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await act(
+      browser,
+      {
+        kind: "navigate",
+        tabId: tab,
+        url: `${origin}/dialog`,
+        expect: { kind: "url_includes" } as never,
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(result.ok, true, JSON.stringify(result.verification));
+    assert.equal(result.observation.url, `${origin}/dialog`);
+    assert.doesNotMatch(result.failure?.recovery ?? "", /undefined/);
+  });
+
+  it("does not throw when expect is an unknown kind or an empty object", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const unknown = await act(
+      browser,
+      {
+        kind: "navigate",
+        tabId: tab,
+        url: `${origin}/dialog`,
+        expect: { kind: "changed" } as never,
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(unknown.ok, true, JSON.stringify(unknown.verification));
+
+    const empty = await act(
+      browser,
+      {
+        kind: "wait",
+        tabId: tab,
+        wait: { kind: "timeout", timeoutMs: 20 },
+        expect: {} as never,
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(typeof empty.ok, "boolean");
+    assert.equal(empty.ok, false, "a wait that changes nothing is not success");
+  });
+
+  it("does not treat an already-true wait expect as loaded more", async () => {
+    const tab = await browser.openTab(`${origin}/profile-stats`);
+    const result = await act(
+      browser,
+      {
+        kind: "wait",
+        tabId: tab,
+        wait: { kind: "timeout", timeoutMs: 20 },
+        expect: { kind: "text_visible", text: "followers" },
+        intent: "Load more following rows",
+      },
+      { settleMs: 0 },
+    );
+    assert.equal(result.ok, false, JSON.stringify(result.verification));
+    assert.match(result.failure?.recovery ?? "", /already held before the wait|did not change/);
   });
 });

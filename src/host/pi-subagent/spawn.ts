@@ -1,0 +1,283 @@
+/**
+ * Isolated Pi JSON subprocess. Fresh argv: not the parent web server, not the TUI
+ * flags that stripped coding tools and loaded the browser extension.
+ */
+
+import { spawn, type ChildProcess } from "node:child_process";
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { AgentConfig } from "./discover.ts";
+import { discoverPackagedAgents, findAgent } from "./discover.ts";
+
+const PI_CLI = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
+const DEFAULT_TIMEOUT_MS = 180_000;
+const FLOORS = new Set(["low", "medium", "high", "ultra"]);
+
+/** The model pi-model-auto registers. `@ultra` is a first-turn prefix, not this id. */
+export const ROUTER_MODEL = "pi-router/auto";
+
+export interface ChildInvocation {
+  command: string;
+  args: string[];
+}
+
+export interface WorkerResult {
+  agent: string;
+  text: string;
+  exitCode: number;
+  stderr: string;
+  aborted: boolean;
+}
+
+export type SpawnImpl = (
+  command: string,
+  args: string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv; stdio: ["ignore", "pipe", "pipe"] },
+) => ChildProcess;
+
+export function packageRootFrom(moduleUrl = import.meta.url): string {
+  return path.join(path.dirname(fileURLToPath(moduleUrl)), "..", "..", "..");
+}
+
+export function piCliPath(root = packageRootFrom()): string {
+  return path.join(root, "node_modules", ...PI_CLI.split(path.sep));
+}
+
+/** `@ultra` / `ultra` are Pi Router floors (D12), not `--model` ids. */
+export function capabilityFloor(model?: string): string | undefined {
+  const raw = model?.trim() ?? "";
+  if (!raw) return undefined;
+  const name = (raw.startsWith("@") ? raw.slice(1) : raw).toLowerCase();
+  return FLOORS.has(name) ? name : undefined;
+}
+
+export function loadsModelAuto(paths: readonly string[]): boolean {
+  return paths.some((item) => item.replace(/\\/g, "/").includes("pi-model-auto"));
+}
+
+/**
+ * `--model @ultra` is not a Pi model. With the router loaded, select `pi-router/auto`
+ * and prefix the first (only) turn. Without it, omit `--model` rather than crashing.
+ * Concrete `provider/id` still passes through.
+ */
+export function childModelFlag(agentModel: string | undefined, extraExtensions: readonly string[]): string | undefined {
+  const floor = capabilityFloor(agentModel);
+  if (floor) return loadsModelAuto(extraExtensions) ? ROUTER_MODEL : undefined;
+  const concrete = agentModel?.trim();
+  return concrete || undefined;
+}
+
+export function childPrompt(task: string, agentModel: string | undefined, extraExtensions: readonly string[]): string {
+  const body = `Task: ${task}`;
+  const floor = capabilityFloor(agentModel);
+  if (floor && loadsModelAuto(extraExtensions)) return `@${floor} ${body}`;
+  return body;
+}
+
+/** Map `--model @ultra` in a Pi argv to `pi-router/auto`, or drop the flag. */
+export function rewriteArgvModelFlag(args: string[], extraExtensions: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--model" && args[i + 1] !== undefined) {
+      const mapped = childModelFlag(args[i + 1], extraExtensions);
+      i += 1;
+      if (mapped) {
+        out.push("--model", mapped);
+      }
+      continue;
+    }
+    out.push(args[i]!);
+  }
+  return out;
+}
+
+/** Optional: @ultra / @medium need the router; --no-extensions would otherwise drop it. */
+export function modelAutoExtensionPath(): string | undefined {
+  try {
+    const require = createRequire(import.meta.url);
+    try {
+      const pkg = require.resolve("pi-model-auto/package.json");
+      const dir = path.dirname(pkg);
+      for (const rel of ["src/index.ts", "dist/pi/extension.js", "dist/extension.js"]) {
+        const file = path.join(dir, rel);
+        if (existsSync(file)) return file;
+      }
+    } catch {
+      /* package.json is not in "exports"; the main entry is the extension. */
+    }
+    const main = require.resolve("pi-model-auto");
+    return existsSync(main) ? main : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildChildInvocation(input: {
+  piEntry: string;
+  agent: AgentConfig;
+  task: string;
+  promptFile: string;
+  extraExtensions?: string[];
+}): ChildInvocation {
+  const args = [
+    input.piEntry,
+    "--mode",
+    "json",
+    "-p",
+    "--no-session",
+    "--no-extensions",
+  ];
+  const extra = input.extraExtensions ?? [];
+  for (const ext of extra) {
+    args.push("-e", ext);
+  }
+  const model = childModelFlag(input.agent.model, extra);
+  if (model) args.push("--model", model);
+  if (input.agent.thinking) args.push("--thinking", input.agent.thinking);
+  if (input.agent.tools.length > 0) args.push("--tools", input.agent.tools.join(","));
+  args.push("--append-system-prompt", input.promptFile);
+  args.push(childPrompt(input.task, input.agent.model, extra));
+  return { command: process.execPath, args };
+}
+
+function textFromMessages(messages: Array<{ role?: string; content?: unknown }>): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role !== "assistant") continue;
+    const content = msg.content;
+    if (typeof content === "string" && content.trim()) return content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part && typeof part === "object" && (part as { type?: string }).type === "text") {
+        const text = (part as { text?: string }).text;
+        if (text?.trim()) return text;
+      }
+    }
+  }
+  return "";
+}
+
+export function parsePiJsonLine(line: string, messages: Array<{ role?: string; content?: unknown }>): void {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  let event: { type?: string; message?: { role?: string; content?: unknown } };
+  try {
+    event = JSON.parse(trimmed) as typeof event;
+  } catch {
+    return;
+  }
+  if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
+    messages.push(event.message);
+  }
+}
+
+export interface RunWorkerOptions {
+  agentName: string;
+  task: string;
+  scratchDir: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  spawnImpl?: SpawnImpl;
+  piEntry?: string;
+  extraExtensions?: string[];
+  agents?: AgentConfig[];
+}
+
+export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult> {
+  const agents = options.agents ?? discoverPackagedAgents();
+  const agent = findAgent(options.agentName, agents);
+  if (!agent) {
+    const available = agents.map((item) => item.name).join(", ") || "none";
+    return {
+      agent: options.agentName,
+      text: "",
+      exitCode: 1,
+      stderr: `Unknown agent: "${options.agentName}". Available: ${available}.`,
+      aborted: false,
+    };
+  }
+
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "bsa-worker-"));
+  const promptFile = path.join(tmp, "prompt.md");
+  await writeFile(promptFile, agent.systemPrompt, { encoding: "utf8", mode: 0o600 });
+
+  const extra = options.extraExtensions ?? [modelAutoExtensionPath()].filter(
+    (item): item is string => Boolean(item),
+  );
+  const invocation = buildChildInvocation({
+    piEntry: options.piEntry ?? piCliPath(),
+    agent,
+    task: options.task,
+    promptFile,
+    extraExtensions: extra,
+  });
+
+  const spawnImpl = options.spawnImpl ?? (spawn as SpawnImpl);
+  const messages: Array<{ role?: string; content?: unknown }> = [];
+  let stderr = "";
+  let aborted = false;
+  const timeoutMs = options.timeoutMs ?? Number(process.env.BSA_SUBAGENT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+
+  try {
+    const exitCode = await new Promise<number>((resolve) => {
+      const proc = spawnImpl(invocation.command, invocation.args, {
+        cwd: options.scratchDir,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let buffer = "";
+      let settled = false;
+      const finish = (code: number) => {
+        if (settled) return;
+        settled = true;
+        if (buffer.trim()) parsePiJsonLine(buffer, messages);
+        resolve(code);
+      };
+
+      proc.stdout?.on("data", (chunk: Buffer | string) => {
+        buffer += String(chunk);
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) parsePiJsonLine(line, messages);
+      });
+      proc.stderr?.on("data", (chunk: Buffer | string) => {
+        stderr += String(chunk);
+      });
+      proc.on("close", (code) => finish(code ?? 0));
+      proc.on("error", () => finish(1));
+
+      const killProc = () => {
+        aborted = true;
+        proc.kill("SIGTERM");
+        setTimeout(() => {
+          if (!proc.killed) proc.kill("SIGKILL");
+        }, 5_000);
+      };
+      const timer = setTimeout(killProc, timeoutMs);
+      const onAbort = () => {
+        clearTimeout(timer);
+        killProc();
+      };
+      if (options.signal?.aborted) onAbort();
+      else options.signal?.addEventListener("abort", onAbort, { once: true });
+      proc.on("close", () => {
+        clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
+      });
+    });
+
+    return {
+      agent: agent.name,
+      text: textFromMessages(messages),
+      exitCode,
+      stderr,
+      aborted,
+    };
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}

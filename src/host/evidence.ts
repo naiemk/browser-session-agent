@@ -44,6 +44,9 @@ export function fileEvidence(options: FileEvidenceOptions): Evidence {
     async append(input: LedgerInput): Promise<LedgerEvent> {
       return (await ledgerOnce()).append(input);
     },
+    async read() {
+      return (await ledgerOnce()).read();
+    },
   };
 
   const storeOnce = once(() => GoalStore.open(root, options.goalId, options.goal));

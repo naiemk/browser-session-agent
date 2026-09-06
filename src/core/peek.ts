@@ -21,6 +21,7 @@ import type { BrowserPort } from "./browser.ts";
 import type { LedgerSink } from "./ledger.ts";
 import { evaluatePredicate } from "./predicates.ts";
 import { CoreError, type CheckResult, type Observation, type Predicate } from "./types.ts";
+import { urlMatchesIntent } from "./url-intent.ts";
 
 export interface PeekOptions {
   /** Where to look. Absolute, or same-origin absolute path. */
@@ -43,7 +44,7 @@ export interface PeekResult {
   observation: Observation;
   /** Absent when the caller asked for no verification. */
   identity?: CheckResult;
-  /** False when the peek landed somewhere that is not what we asked for. */
+  /** False when the side tab's URL is not the URL we asked to open. */
   matched: boolean;
   /** The tab we came from, proven not to have moved. */
   origin: { url: string; unchanged: boolean };
@@ -73,7 +74,7 @@ export async function peek(browser: BrowserPort, options: PeekOptions): Promise<
     await browser.closeTab(sideTab);
   }
 
-  const matched = identity ? identity.passed : true;
+  const matched = urlMatchesIntent(observation.url, options.url);
 
   // The origin was never navigated, so there is nothing to restore. Confirming that
   // rather than asserting it is what makes the route trustworthy enough to prefer.

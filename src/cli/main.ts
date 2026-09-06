@@ -97,6 +97,7 @@ Usage:
   browser-agent replay <goalId> [--root <dir>]
   browser-agent metrics <goalId> [--root <dir>] [--json]
   browser-agent compare <baseline.json> <current.json>
+  browser-agent acp                   speak ACP on stdio (goal in, verdict out)
   browser-agent perceive diff <url> [--a reference] [--b lean]
   browser-agent perceive golden <dir> [--perceiver lean]
 
@@ -121,7 +122,7 @@ suite options:
   --only <id,id>           specific task ids
   --tags <tag,tag>         tasks carrying any of these tags
   --view <name>            page description to measure (default: table)
-  --perceiver <name>       how the page is read (default: reference)
+  --perceiver <name>       how the page is read (default: lean)
   --out <file>             write the JSON report
   --optimize-out <file>    write just the cost summary, for a committed baseline
   --pause <ms>             gap between tasks (live default: 2000)
@@ -350,7 +351,7 @@ async function buildDriver(target: string, root: string, options: { model?: stri
 
   const { RuntimeDriver } = await import("../suite/runtime-driver.ts");
   const { createMockModel } = await import("../runtime/mock-model.ts");
-  const { planForTask } = await import("../suite/mock-plan.ts");
+  const { planForSteps, planForTask } = await import("../suite/mock-plan.ts");
   const { viewByName } = await import("../runtime/view/index.ts");
 
   // Named on the command line so a candidate description can be measured against the
@@ -367,7 +368,14 @@ async function buildDriver(target: string, root: string, options: { model?: stri
       // The same view the tools were built with: the mock resolves a named target by
       // reading back the snapshot it was shown, so a mismatch here would fail every task
       // for a reason that has nothing to do with the description being measured.
-      createStream: (task, origin) => createMockModel({ plan: planForTask(task, origin), view }),
+      createStream: (task, origin) =>
+        createMockModel({
+          plans: [
+            planForTask(task, origin),
+            ...(task.followUps ?? []).map((follow) => planForSteps(follow.reference, origin)),
+          ],
+          view,
+        }),
     });
   }
 
@@ -595,6 +603,12 @@ async function commandGoals(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+async function commandAcp(): Promise<number> {
+  const { AcpServer, serveAcpStdio } = await import("../hosts/acp/server.ts");
+  await serveAcpStdio(new AcpServer());
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   switch (args.command) {
@@ -612,6 +626,8 @@ export async function main(argv: string[]): Promise<number> {
       return commandCompare(args);
     case "perceive":
       return commandPerceive(args);
+    case "acp":
+      return commandAcp();
     case "help":
     case "--help":
     case "-h":

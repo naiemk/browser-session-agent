@@ -33,6 +33,11 @@ export interface GoalPaths {
   entitiesDir: string;
   tasksDir: string;
   artifactsDir: string;
+  /**
+   * Working files for typed workers (plan.md, extracts, drafts). Not the ledger.
+   * Safe to delete; screenshots and events are not stored here.
+   */
+  scratchDir: string;
 }
 
 export function goalPaths(root: string, goalId: string): GoalPaths {
@@ -47,6 +52,7 @@ export function goalPaths(root: string, goalId: string): GoalPaths {
     entitiesDir: path.join(dir, "entities"),
     tasksDir: path.join(dir, "tasks"),
     artifactsDir: path.join(dir, "artifacts"),
+    scratchDir: path.join(dir, "scratch"),
   };
 }
 
@@ -54,4 +60,5 @@ export async function ensureGoalDirs(paths: GoalPaths): Promise<void> {
   await mkdir(paths.entitiesDir, { recursive: true });
   await mkdir(paths.tasksDir, { recursive: true });
   await mkdir(paths.artifactsDir, { recursive: true });
+  await mkdir(paths.scratchDir, { recursive: true });
 }

@@ -16,13 +16,14 @@
 
 import type { Page } from "playwright";
 import { PlaywrightBrowserPort, type AcquiredTab } from "../core/browser.ts";
+import { perceiverByName } from "../core/perception/index.ts";
 import type { BrowserWorker } from "../worker/browser-worker.ts";
 
 export class WorkerBrowserPort extends PlaywrightBrowserPort {
   private adopted = false;
 
   private constructor(private readonly worker: BrowserWorker) {
-    super();
+    super(perceiverByName(process.env.BSA_PERCEIVER));
   }
 
   /**

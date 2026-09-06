@@ -36,6 +36,7 @@ export interface WireObservation {
   consoleErrors?: string[];
   failedRequests?: string[];
   changes?: string[];
+  identity?: { heading?: string; stats?: Array<{ label: string; value: string }> };
   note?: string;
 }
 
@@ -88,6 +89,17 @@ export function toWireObservation(observation: Observation): WireObservation {
   if (changes) wire.changes = changes;
   if (dropped > 0) {
     wire.note = `${controls.length} of ${total} controls shown; probe with a selector to narrow down`;
+  }
+  const heading = observation.identity?.heading?.trim();
+  const stats = observation.identity?.stats
+    ?.filter((stat) => stat.label && stat.value)
+    .slice(0, 6)
+    .map((stat) => ({ label: clip(stat.label, 40), value: clip(stat.value, 40) }));
+  if (heading || (stats && stats.length > 0)) {
+    wire.identity = {
+      ...(heading ? { heading: clip(heading, 80) } : {}),
+      ...(stats && stats.length > 0 ? { stats } : {}),
+    };
   }
   return wire;
 }
@@ -208,4 +220,19 @@ export function payloadInContent(content: unknown): unknown {
 export function observationInContent(content: unknown): WireObservation | undefined {
   const payload = payloadInContent(content);
   return payload === undefined ? undefined : findWireObservation(payload);
+}
+
+function isControlList(value: unknown): boolean {
+  return Array.isArray(value) || (typeof value === "string" && value.length > 0);
+}
+
+/**
+ * Whether this tool result carried a page, in either view's format.
+ *
+ * The table view writes controls as a string. Matching only arrays is how compaction
+ * at a sub-goal boundary dropped nothing once the table became the default.
+ */
+export function contentCarriesSnapshot(content: unknown): boolean {
+  const payload = payloadInContent(content);
+  return payload !== undefined && Boolean(findSnapshot(payload, isControlList));
 }

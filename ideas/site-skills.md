@@ -159,6 +159,8 @@ First framing: a database of site how-tos, update on fail, local obsolete list, 
 
 Cold-start tax is real; mixed with harness walls. Technique “prefer a native textarea” would have helped first contact more than six site packs. First-party persist would have made the tour unnecessary.
 
+Next useful move is still a with/without measurement (maturity bar §1) and AGENT-07-T02 instrumentation, not shipping a schema from this folder.
+
 ### 2026-09-05 — compact non-DOM schema
 
 Four fields, no DOM, injection = data not instructions, few tries then drop. Format that has a chance; product loop only if retrieval is automatic (enterprise) or explicit (paste), `stop` is enforced in runtime, authoring stays distillation.
@@ -170,3 +172,5 @@ World-writable lessons are not the product. Owner/trainer **publish**, consumer 
 ### 2026-09-05 — record sandwich
 
 Human assistance: goal → shortcut Your controls → drive → shortcut My controls → draft skill. Practical as authoring for the maps above; not as watching video or replaying clicks. Reuse takeover; add span + compiler; beep last.
+
+Scratch, a planner artifact, and a coder in a jail are a different idea: [typed-workers.md](./typed-workers.md). Skills are their UI; scratch is ours.
