@@ -146,6 +146,7 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     maxTurns,
   });
 
+  let previousSent: PrunableMessage[] = [];
   const agent = new Agent({
     initialState: {
       systemPrompt: card,
@@ -162,8 +163,17 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
       // Shape is not optional with pruning. A suite task on an OpenAI-compat model
       // crashes the same way the chat did if a tool result is still a string.
       const shaped = normalizeToolResultContent(compacted);
-      const measured = measureContext(incoming, shaped);
+      // Against what we last sent, not this turn's pre-compact incoming. Incoming vs
+      // shaped treats a string→parts upgrade of an already-sent placeholder as a cache
+      // break; the provider already saw the parts.
+      const measured = measureContext(previousSent, shaped);
       metrics.record({ kind: "context", turn: currentTurn, ...measured, messages: shaped.length });
+      previousSent = shaped.map((message) => ({
+        ...message,
+        content: Array.isArray(message.content)
+          ? message.content.map((part) => (part && typeof part === "object" ? { ...part } : part))
+          : message.content,
+      }));
       // Pi applies this as a view over context.messages and then appends to the original.
       // Writing the compacted prefix back is how the next turn's provider request can
       // reuse the cache: without it, every follow-up turn looks like a rewrite of the

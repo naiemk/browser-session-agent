@@ -66,8 +66,17 @@ describe("act expect at the tool boundary", () => {
     });
     const details = changed.details as { error?: string };
     assert.match(details.error ?? "", /unknown predicate kind "download"/);
-    assert.match(details.error ?? "", /Allowed kinds:/);
+    assert.match(details.error ?? "", /allowed:/i);
     assert.doesNotMatch(JSON.stringify(changed.details), /Cannot read properties of undefined/);
+    assert.doesNotMatch(JSON.stringify(changed.details), /download predicate/i);
+
+    const role = await tool.execute("t-role", {
+      kind: "navigate",
+      url: "https://example.test/jobs",
+      expect: { kind: "role" },
+    });
+    assert.match((role.details as { error?: string }).error ?? "", /unknown predicate kind "role"/);
+    assert.doesNotMatch(JSON.stringify(role.details), /download/i);
 
     const empty = await tool.execute("t2", {
       kind: "navigate",

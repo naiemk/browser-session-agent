@@ -12,7 +12,7 @@ function observation(url: string): Observation {
     tabId: "tab_1",
     url,
     title: "Roster",
-    controls: [],
+    controls: [{ ref: "e1", role: "button", name: "Mark this one", tag: "button" }],
     dialogs: [],
     errors: [],
     consoleErrors: [],

@@ -17,6 +17,10 @@ export interface DocumentInfo {
   bytes: number;
 }
 
+export function describeDataDocument(info: Pick<DocumentInfo, "contentType" | "bytes">): string {
+  return `not a page (${info.contentType}, ${info.bytes} bytes)`;
+}
+
 const DATA_MIME = new Set([
   "application/json",
   "text/json",

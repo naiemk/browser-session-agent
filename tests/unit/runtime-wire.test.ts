@@ -148,6 +148,35 @@ describe("what the model sees", () => {
     assert.deepEqual(bad.consoleErrors, ["boom"]);
   });
 
+  it("clips failed-request URLs and does not repeat them at the top level", () => {
+    const longUrl = `GET https://cdn.example.test/o1/${"a".repeat(400)} — net::ERR_ABORTED`;
+    const observed = observation({
+      failedRequests: [longUrl],
+      consoleErrors: ["Permissions policy violation: unload"],
+    });
+    const wire = toWireActionResult({
+      ok: false,
+      kind: "click",
+      reversibility: "reversible",
+      reversibilityReason: "view change",
+      observation: observed,
+      verification: {
+        status: "failed",
+        checks: [{ passed: false, detail: "no match", predicate: "text_visible" }],
+      },
+      failure: {
+        recovery: "text visible failed",
+        changes: [],
+        consoleErrors: ["Permissions policy violation: unload"],
+        failedRequests: [longUrl, longUrl, longUrl],
+      },
+    });
+    assert.equal("failedRequests" in wire, false, "already on observation");
+    assert.equal("consoleErrors" in wire, false, "already on observation");
+    assert.ok((wire.observation.failedRequests?.[0]?.length ?? 0) < 130);
+    assert.match(wire.observation.failedRequests?.[0] ?? "", /…$/);
+  });
+
   it("does not throw when verification is missing", () => {
     const wire = toWireActionResult({
       ok: true,

@@ -33,6 +33,7 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 - AGENT-07: Let measurement pick what comes next
 - AGENT-08: Gated next layers (blocked by design)
 - AGENT-10: Honest loop after a live run
+- AGENT-11: Hollow pages, fake pages, and a long epoch
 
 ## Tasks
 
@@ -64,6 +65,11 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 | [AGENT-10-T08](../tasks/agent-10-t08-report-yields.md) | AGENT-10 | done |
 | [AGENT-10-T09](../tasks/agent-10-t09-schema-trim.md) | AGENT-10 | done |
 | [AGENT-10-T10](../tasks/agent-10-t10-site-skill.md) | AGENT-10 | done |
+| [AGENT-11-T01](../tasks/agent-11-t01-stable-settle.md) | AGENT-11 | done |
+| [AGENT-11-T02](../tasks/agent-11-t02-data-peek.md) | AGENT-11 | done |
+| [AGENT-11-T03](../tasks/agent-11-t03-expect-note.md) | AGENT-11 | done |
+| [AGENT-11-T04](../tasks/agent-11-t04-clip-failures.md) | AGENT-11 | done |
+| [AGENT-11-T05](../tasks/agent-11-t05-epoch-snapshots.md) | AGENT-11 | done |
 
 Also built beyond the original table, because the todo list called for them: the
 independent evaluator (`src/core/evaluator.ts`), the living task graph

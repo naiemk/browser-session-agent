@@ -147,6 +147,55 @@ describe("settling a verdict", () => {
   });
 });
 
+describe("settling until the paint is stable", () => {
+  it("keeps looking after a pass while the control count is still changing", async () => {
+    const empty = factsWith([]);
+    const painted = factsWith([control("Continue"), control("Home")]);
+    // Two hollow reads in a row is what a 400ms SPA paint looks like: the URL is
+    // already right, the button is not. Stopping on that pair is the lie.
+    const { port, calls } = portServing([empty, empty, painted, painted]);
+
+    const { facts, verification } = await settleVerification(port, passes, { until: "stable" });
+
+    assert.equal(verification.status, "passed");
+    assert.equal(facts.observation.controls.length, 2);
+    assert.ok(calls() >= 4, "a growing page is not believed on the first yes");
+    assert.ok((verification.waitedMs ?? 0) > 0);
+  });
+
+  it("stops when two consecutive passes agree on url and control count", async () => {
+    const painted = factsWith([control("Continue")]);
+    const { port, calls } = portServing([painted, painted, painted]);
+
+    const { verification, facts } = await settleVerification(port, passes, { until: "stable" });
+
+    assert.equal(verification.status, "passed");
+    assert.equal(facts.observation.controls.length, 1);
+    assert.equal(calls(), 2, "a page that is already painted costs one confirming read");
+    assert.equal(verification.waitedMs, 100);
+  });
+
+  it("a page that stays empty still passes when the budget ends", async () => {
+    const empty = factsWith([]);
+    const { port, calls } = portServing([empty]);
+    const { verification, facts } = await settleVerification(port, passes, {
+      until: "stable",
+      budgetMs: 300,
+    });
+    assert.equal(verification.status, "passed");
+    assert.equal(facts.observation.controls.length, 0);
+    assert.equal(verification.waitedMs, 300);
+    assert.ok(calls() >= 2);
+  });
+
+  it("does not change the default: a pass with until omitted is still one read", async () => {
+    const { port, calls } = portServing([factsWith([])]);
+    const { verification } = await settleVerification(port, passes);
+    assert.equal(verification.waitedMs, 0);
+    assert.equal(calls(), 1);
+  });
+});
+
 describe("describing a verdict", () => {
   it("says nothing about waiting when there was none", () => {
     const line = describeVerification({
