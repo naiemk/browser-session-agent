@@ -169,6 +169,19 @@ describe("peeking a page", () => {
     assert.equal(payload.originUnchanged, true);
   });
 
+  it("does not treat a JSON payload as a successful peek", async () => {
+    const tab = await browser.openTab(`${origin}/roster`);
+    const result = await peek(browser, { url: `${origin}/api/search`, tabId: tab });
+    assert.equal(result.matched, false);
+    assert.ok(result.dataDocument);
+    assert.match(result.dataDocument?.contentType ?? "", /json/i);
+    assert.ok((result.dataDocument?.bytes ?? 0) > 0);
+    const blob = JSON.stringify(result);
+    assert.doesNotMatch(blob, /User 12/);
+    assert.doesNotMatch(blob, /"users"/);
+    assert.match((await browser.facts(tab)).url, /\/roster$/);
+  });
+
   it("refuses an empty url rather than opening a blank tab", async () => {
     const tab = await browser.openTab(`${origin}/roster`);
     await assert.rejects(() => peek(browser, { url: "   ", tabId: tab }), CoreError);

@@ -22,8 +22,8 @@ after(async () => {
   await server.stop();
 });
 
-describe("compaction at a sub-goal boundary", () => {
-  it("rewrites once when the operator sends a second message, then leaves the prefix", async () => {
+describe("compaction during a long epoch", () => {
+  it("drops superseded snapshots without rewriting the front of the prompt", async () => {
     const tab = await browser.openTab(`${origin}/apply`);
     const evidence = memoryEvidence();
     await runTask({
@@ -56,18 +56,30 @@ describe("compaction at a sub-goal boundary", () => {
       )
       .join("; ");
     assert.ok(contexts.length >= 3, `expected several turns, saw ${contexts.length} (${dump})`);
+    assert.ok(
+      contexts.every((record) => record.rewrittenFrom !== 0),
+      `must not invalidate the prompt from index 0 (${dump})`,
+    );
 
     const firstPlaceholders = contexts.find((record) => record.placeholderBytes > 0);
-    assert.ok(firstPlaceholders, `compaction should drop snapshots on the follow-up (${dump})`);
+    assert.ok(firstPlaceholders, `compaction should drop superseded snapshots (${dump})`);
     assert.ok(
       firstPlaceholders.turn > 1,
       `placeholders on turn ${firstPlaceholders.turn} is too early (${dump})`,
     );
-    assert.ok(
-      contexts
-        .filter((record) => record.turn > firstPlaceholders.turn)
-        .every((record) => record.rewrittenFrom < 0),
-      `later turns must leave the prefix (${dump})`,
-    );
+
+    const last = contexts[contexts.length - 1]!;
+    assert.ok(last.placeholderBytes > 0, `the run should keep placeholders (${dump})`);
+    assert.ok(last.rewrittenFrom < 0, `the last turn must leave the prefix (${dump})`);
+
+    let floor = firstPlaceholders.rewrittenFrom;
+    for (const record of contexts) {
+      if (record.turn <= firstPlaceholders.turn || record.rewrittenFrom < 0) continue;
+      assert.ok(
+        record.rewrittenFrom >= floor,
+        `turn ${record.turn} rewrote index ${record.rewrittenFrom}, inside the placeholder prefix (${dump})`,
+      );
+      floor = record.rewrittenFrom;
+    }
   });
 });

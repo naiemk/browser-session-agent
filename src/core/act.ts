@@ -115,11 +115,16 @@ export async function act(
   const refused = request.kind === "navigate"
     ? await refuseDataDocument(browser, request, before, timeout)
     : undefined;
-  const { facts, verification } =     refused
+  const { facts, verification } = refused
     ?? await settleVerification(
       browser,
       (settled) => postcondition(request, before, settled, control, beforeFacts),
-      { tabId: request.tabId, since: before, budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS },
+      {
+        tabId: request.tabId,
+        since: before,
+        budgetMs: options.settleMs ?? DEFAULT_SETTLE_MS,
+        until: request.kind === "navigate" ? "stable" : "pass",
+      },
     );
 
   const result: ActionResult = {

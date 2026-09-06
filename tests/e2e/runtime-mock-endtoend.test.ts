@@ -197,7 +197,7 @@ describe("runtime end to end with a mock model", () => {
     assert.match(failures[0]?.outcome?.detail ?? "", /noop click/);
   });
 
-  it("does not drop snapshots while a sub-goal is still live", async () => {
+  it("keeps one live snapshot in the current epoch and drops the rest", async () => {
     const LOOKS = 6;
 
     async function lookRepeatedly(goalId: string, prune: false | { keepLatest: number }) {
@@ -229,24 +229,23 @@ describe("runtime end to end with a mock model", () => {
       return { snapshotsPerTurn, finalSize };
     }
 
-    // D52: compacting every turn invalidates the prompt cache. keepLatest is honoured
-    // at a sub-goal boundary, not while the current request is still in progress, so a
-    // single-goal run keeps its snapshots the same way a prune:false run does.
+    // D52: rewriting the front every turn is the 2.5× cache failure. Dropping the
+    // oldest extra snapshot in place shrinks a long epoch without touching index 0.
     const live = await lookRepeatedly("g_live", { keepLatest: 1 });
     const unpruned = await lookRepeatedly("g_unpruned", false);
 
     assert.ok(live.snapshotsPerTurn.length >= LOOKS, "several turns should have happened");
     assert.ok(
-      Math.max(...live.snapshotsPerTurn) > 1,
-      `live work must keep snapshots addressable, saw ${live.snapshotsPerTurn.join(",")}`,
+      live.snapshotsPerTurn.slice(1).every((count) => count === 1),
+      `current epoch keeps exactly one snapshot, saw ${live.snapshotsPerTurn.join(",")}`,
     );
     assert.ok(
       Math.max(...unpruned.snapshotsPerTurn) > 1,
       "without pruning, snapshots should pile up — otherwise this test proves nothing",
     );
     assert.ok(
-      live.finalSize >= unpruned.finalSize * 0.8,
-      `mid-goal compaction would shrink the transcript; live ${live.finalSize} vs unpruned ${unpruned.finalSize}`,
+      live.finalSize < unpruned.finalSize,
+      `in-epoch prune should shrink the transcript; live ${live.finalSize} vs unpruned ${unpruned.finalSize}`,
     );
   });
 });

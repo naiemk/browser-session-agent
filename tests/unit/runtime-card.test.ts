@@ -62,7 +62,7 @@ describe("task card", () => {
 
   it("stays short, because the prompt is resent every turn", () => {
     const card = buildTaskCard({ ...CARD, maxTurns: 12 });
-    assert.ok(card.length < 3400, `card is ${card.length} chars; trim it`);
+    assert.ok(card.length < 3600, `card is ${card.length} chars; trim it`);
     assert.match(card, /about 12 turns/);
   });
 
@@ -76,6 +76,7 @@ describe("task card", () => {
     // The route only changes the cost, so it is chosen and not asked about.
     assert.match(card, /take the cheap one and do not ask about it/);
     assert.match(card, /navigating away loses your place/);
+    assert.match(card, /Do not peek file:\/\//);
     assert.match(card, /scratch_ls \/ scratch_read/);
   });
 

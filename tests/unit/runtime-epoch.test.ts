@@ -120,12 +120,16 @@ describe("finding where the current piece of work starts", () => {
   });
 });
 
-describe("dropping the snapshots from finished work", () => {
-  it("leaves the current piece of work completely alone", () => {
+describe("dropping superseded snapshots", () => {
+  it("keeps the current epoch's newest snapshot and drops the rest", () => {
     const messages = transcript();
     const compacted = compactFinishedWork(messages);
 
-    assert.deepEqual(compacted.slice(7), messages.slice(7));
+    assert.equal(isPlaceholder(compacted[9]!.content), false, "the live observe stays");
+    assert.deepEqual(
+      compacted.slice(7, 9).map((message) => message.role),
+      ["user", "assistant"],
+    );
   });
 
   it("keeps what was worked out, and drops the pages it was worked out on", () => {
@@ -150,11 +154,9 @@ describe("dropping the snapshots from finished work", () => {
     assert.equal(live.filter((message) => message.toolName !== "remember").length, 1);
   });
 
-  it("changes nothing at all inside a piece of work", () => {
-    // The property the saving depends on. Providers bill a cached prefix at a fraction of
-    // the input price and a rewrite near the front invalidates everything after it, so
-    // compacting every turn costs more than never compacting. This must be idempotent
-    // across the turns of one epoch.
+  it("rewrites the superseded snapshot in the current epoch, not the front of the prompt", () => {
+    // The property the saving depends on: a rewrite near the front invalidates the
+    // cached prefix. Dropping the previous live snapshot is a rewrite near the end.
     const messages = transcript();
     const first = compactFinishedWork(messages);
     const later = compactFinishedWork([
@@ -163,7 +165,46 @@ describe("dropping the snapshots from finished work", () => {
       look("act", "https://example.com/e"),
     ]);
 
-    assert.equal(measureContext(first, later).rewrittenFrom, -1, "the prefix must not move");
+    const rewritten = measureContext(first, later).rewrittenFrom;
+    assert.equal(rewritten, 9, "the previous live snapshot is what moved");
+    assert.notEqual(rewritten, 0, "the front of the prompt must stay cacheable");
+    assert.equal(isPlaceholder(later[9]!.content), true);
+    assert.equal(isPlaceholder(later[later.length - 1]!.content), false);
+    for (let index = 0; index < 9; index++) {
+      assert.deepEqual(later[index]!.content, first[index]!.content, `prefix ${index} must not move`);
+    }
+  });
+
+  it("drops extra snapshots while the operator has only asked once", () => {
+    const messages: PrunableMessage[] = [
+      { role: "user", content: "find names" },
+      look("act", "https://example.com/p/1"),
+      look("act", "https://example.com/p/2"),
+      look("act", "https://example.com/p/3"),
+    ];
+    const compacted = compactFinishedWork(messages);
+    assert.equal(isPlaceholder(compacted[1]!.content), true);
+    assert.equal(isPlaceholder(compacted[2]!.content), true);
+    assert.equal(isPlaceholder(compacted[3]!.content), false, "newest act stays for refs");
+    glmCanReadTranscript(compacted);
+
+    const later = compactFinishedWork([...compacted, look("act", "https://example.com/p/4")]);
+    assert.equal(measureContext(compacted, later).rewrittenFrom, 3);
+    assert.notEqual(measureContext(compacted, later).rewrittenFrom, 0);
+    assert.equal(isPlaceholder(later[3]!.content), true);
+    assert.equal(isPlaceholder(later[4]!.content), false);
+  });
+
+  it("does not rewrite a placeholder it already wrote", () => {
+    const messages: PrunableMessage[] = [
+      { role: "user", content: "find names" },
+      look("act", "https://example.com/p/1"),
+      look("act", "https://example.com/p/2"),
+    ];
+    const first = compactFinishedWork(messages);
+    const second = compactFinishedWork(first);
+    assert.equal(first[1]!.content, second[1]!.content, "the placeholder object must stay put");
+    assert.equal(measureContext(first, second).rewrittenFrom, -1);
   });
 
   it("does not touch a failure, which is the reason a step went the way it did", () => {

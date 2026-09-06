@@ -133,6 +133,16 @@ describe("viewing a page without a session", () => {
       "an anonymous look must not log us out",
     );
   });
+
+  it("does not dump a data document as an anonymous page", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    const result = await viewWithoutSession(browser, { url: `${origin}/api/search`, tabId: tab });
+    assert.ok(result.dataDocument);
+    assert.match(result.dataDocument?.contentType ?? "", /json/i);
+    assert.equal(result.signedOut.controls.length, 0);
+    assert.doesNotMatch(JSON.stringify(result.signedOut), /User 12/);
+    assert.doesNotMatch(JSON.stringify(result.signedOut), /"users"/);
+  });
 });
 
 describe("comparing two observations", () => {

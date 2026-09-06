@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Late paint</title>
+  </head>
+  <body>
+    <h1>Loading</h1>
+    <!--
+      The URL is ready at domcontentloaded. The thing the agent came for is not.
+      A navigate judged on the first read returns this heading and no Continue.
+    -->
+    <div id="host"></div>
+    <script>
+      const DELAY_MS = Number("{{delay}}") || 350;
+      setTimeout(() => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = "continue";
+        button.textContent = "Continue";
+        document.getElementById("host").appendChild(button);
+        document.querySelector("h1").textContent = "Ready";
+        document.title = "Late paint ready";
+      }, DELAY_MS);
+    </script>
+  </body>
+</html>

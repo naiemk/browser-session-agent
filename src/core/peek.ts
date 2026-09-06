@@ -15,12 +15,18 @@
  * constructed URL fails in two very different ways: a 404 is cheap and obvious, but a URL
  * that resolves to the *wrong* entity is silent and poisons everything read from it. So a
  * peek can carry an expectation, and reports whether it held.
+ *
+ * A JSON (or XML, or bytes) response is a successful fetch and a failed place to peek:
+ * the URL matches, `matched` used to say yes, and then the model treated an empty
+ * snapshot as a page. Classify first; only then wait for paint.
  */
 
 import type { BrowserPort } from "./browser.ts";
+import { describeDataDocument, type DocumentInfo } from "./document.ts";
 import type { LedgerSink } from "./ledger.ts";
 import { evaluatePredicate } from "./predicates.ts";
-import { CoreError, type CheckResult, type Observation, type Predicate } from "./types.ts";
+import { settleVerification } from "./settle.ts";
+import { CoreError, type CheckResult, type Observation, type PageFacts, type Predicate } from "./types.ts";
 import { urlMatchesIntent } from "./url-intent.ts";
 
 export interface PeekOptions {
@@ -44,10 +50,29 @@ export interface PeekResult {
   observation: Observation;
   /** Absent when the caller asked for no verification. */
   identity?: CheckResult;
-  /** False when the side tab's URL is not the URL we asked to open. */
+  /** False when the side tab's URL is not the URL we asked to open, or is not a page. */
   matched: boolean;
+  /** Set when the tab landed on a payload rather than HTML. */
+  dataDocument?: DocumentInfo;
   /** The tab we came from, proven not to have moved. */
   origin: { url: string; unchanged: boolean };
+}
+
+/**
+ * Read a tab that was just opened.
+ *
+ * A data document is returned immediately: waiting will not turn JSON into a page.
+ * HTML waits until two reads agree on URL and control count (or the settle budget).
+ */
+export async function readOpenedTab(browser: BrowserPort, tabId: string): Promise<PageFacts> {
+  const first = await browser.facts(tabId);
+  if (first.document?.kind === "data") return first;
+  const { facts } = await settleVerification(
+    browser,
+    () => ({ status: "passed", checks: [{ passed: true, predicate: "htmlDocument", detail: "page" }] }),
+    { tabId, until: "stable" },
+  );
+  return facts;
 }
 
 /**
@@ -64,17 +89,18 @@ export async function peek(browser: BrowserPort, options: PeekOptions): Promise<
   const before = await browser.observe(options.tabId);
 
   const sideTab = await browser.openTab(options.url);
-  let observation: Observation;
-  let identity: CheckResult | undefined;
+  let facts: PageFacts;
   try {
-    const facts = await browser.facts(sideTab);
-    observation = facts.observation;
-    identity = options.expect ? evaluatePredicate(options.expect, facts) : undefined;
+    facts = await readOpenedTab(browser, sideTab);
   } finally {
     await browser.closeTab(sideTab);
   }
 
-  const matched = urlMatchesIntent(observation.url, options.url);
+  const dataDocument = facts.document?.kind === "data" ? facts.document : undefined;
+  const observation = facts.observation;
+  const matched = !dataDocument && urlMatchesIntent(observation.url, options.url);
+  const identity =
+    !dataDocument && options.expect ? evaluatePredicate(options.expect, facts) : undefined;
 
   // The origin was never navigated, so there is nothing to restore. Confirming that
   // rather than asserting it is what makes the route trustworthy enough to prefer.
@@ -97,9 +123,8 @@ export async function peek(browser: BrowserPort, options: PeekOptions): Promise<
       matched,
       identity: identity?.detail,
       originUnchanged: unchanged,
-      // Recorded for the observability gate: this read carried our session, so whoever
-      // owns the page may be able to see that we made it.
       withSession: true,
+      ...(dataDocument ? { document: describeDataDocument(dataDocument) } : {}),
     },
   });
 
@@ -107,6 +132,7 @@ export async function peek(browser: BrowserPort, options: PeekOptions): Promise<
     observation,
     ...(identity ? { identity } : {}),
     matched,
+    ...(dataDocument ? { dataDocument } : {}),
     origin: { url: before.url, unchanged },
   };
 }
