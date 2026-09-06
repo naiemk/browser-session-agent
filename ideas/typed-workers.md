@@ -35,8 +35,8 @@ Never mount `profile/` or the cookie jar into a worker. Helping the browser with
 
 | Kind | Tools | Model floor | Browser |
 | --- | --- | --- | --- |
-| **plan** | read scratch, no `act` | `@ultra` + high thinking | no |
-| **operate** | existing harness | GLM / medium (parent today) | helper |
+| **plan** | read scratch, no `act` | Opus (`anthropic/claude-opus-5`) | no |
+| **operate** | existing harness | GLM / the parent's session model | helper |
 | **write** | read/write only | `@ultra` | no |
 | **review** | read files | `@ultra` | no |
 | **code** | read/write/bash in jail | `@medium` | no |
@@ -103,3 +103,9 @@ Idea plus additive code: scratch dir, four packaged agents, `subagent` + `/plan`
 `--model @ultra` is not a Pi model id (Pi: "Model not found. Use --list-models"). Workers select `pi-router/auto` and prefix the first turn `@ultra` so pi-model-auto routes. The parent TUI also loads that extension and remaps a floor `--model` the same way. Concrete `provider/id` still passes through. Without the router extension, omit `--model` rather than crash.
 
 `require.resolve("pi-model-auto/package.json")` throws because the package `exports` map omits `package.json`. Resolve the main entry (`src/index.ts`) instead.
+
+### 2026-09-06 — plan is Opus, operate is GLM, ask_user waits
+
+A live TUI run (`z-ai/glm-5.3-flash`, ~47 turns) never spawned the planner: metrics have one model, payloads have no `subagent`, and `/plan` was a toast if it ran at all. `ask_user` called `session.askUser` with no `ctx.ui.input`, so both clarifying questions returned "Nobody available" and GLM invented 1k–20k defaults.
+
+Planner frontmatter is now `anthropic/claude-opus-5` (a `--model` id, not an `@ultra` floor). `/plan` announces the worker and model, then `confirm`s the digest so it is obvious the planner finished and the operate agent did not. `scratch/plan.md` is injected on the next operate turn. Local `ask_user` uses Pi's blocking `ui.input`.

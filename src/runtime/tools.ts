@@ -342,12 +342,25 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_ASK,
       label: "Ask operator",
-      description: "Ask the operator for something only they know. Never invent personal data.",
-      promptSnippet: "Ask rather than guess personal facts.",
+      description:
+        "Ask the operator for something only they know. Blocks until they answer. Never invent personal data or continue with guessed defaults.",
+      promptSnippet: "Ask rather than guess personal facts, then wait.",
       parameters: Type.Object({ question: Type.String() }),
       execute: async (_id: string, params: unknown) => {
         const question = String((params as { question: unknown }).question);
-        const answer = await context.askUser?.(question);
+        if (!context.askUser) {
+          await context.evidence.ledger.append({
+            type: "note",
+            entityId: context.evidence.entityId,
+            intent: `asked: ${question}`,
+            outcome: { ok: false, detail: "unanswered" },
+          });
+          return reply({
+            answered: false,
+            note: "Nobody available. Report what you are missing.",
+          });
+        }
+        const answer = await context.askUser(question);
         await context.evidence.ledger.append({
           type: "note",
           entityId: context.evidence.entityId,
@@ -355,7 +368,10 @@ export function buildTools(context: ToolContext): AgentTool[] {
           outcome: { ok: answer !== undefined, detail: answer ?? "unanswered" },
         });
         return answer === undefined
-          ? reply({ answered: false, note: "Nobody available. Report what you are missing." })
+          ? reply({
+              answered: false,
+              note: "The operator did not answer. Stop. Do not invent defaults. Wait for them to reply.",
+            })
           : reply({ answered: true, answer });
       },
     },

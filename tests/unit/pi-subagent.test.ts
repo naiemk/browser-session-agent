@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,8 @@ import {
   DIGEST_MAX_CHARS,
   ensureScratch,
   PLAN_COMMAND,
+  PLANNER_AGENT_NAME,
+  standingPlanPrompt,
   SUBAGENT_TOOL_NAME,
 } from "../../src/host/pi-subagent/bind.ts";
 import { discoverPackagedAgents, findAgent } from "../../src/host/pi-subagent/discover.ts";
@@ -93,7 +95,7 @@ describe("packaged worker agents", () => {
     assert.ok(!planner.tools.includes("bash"), "planner has no bash");
     assert.ok(!planner.tools.includes("write"), "planner has no write");
     assert.ok(planner.tools.includes("read"));
-    assert.equal(planner.model, "@ultra");
+    assert.equal(planner.model, "anthropic/claude-opus-5");
 
     const writer = findAgent("writer", agents)!;
     assert.ok(writer.tools.includes("write"));
@@ -153,7 +155,7 @@ describe("worker spawn isolation", () => {
   it("does not pass @ultra as --model", () => {
     assert.equal(childModelFlag("@ultra", ["/opt/pi-model-auto/src/index.ts"]), ROUTER_MODEL);
     assert.equal(childModelFlag("@medium", []), undefined);
-    assert.equal(childModelFlag("anthropic/claude-opus-4-8", []), "anthropic/claude-opus-4-8");
+    assert.equal(childModelFlag(findAgent("planner")!.model, []), "anthropic/claude-opus-5");
     assert.equal(
       childPrompt("three jobs", "@ultra", ["/opt/pi-model-auto/src/index.ts"]),
       "@ultra Task: three jobs",
@@ -216,8 +218,9 @@ describe("worker spawn isolation", () => {
       calls[0]?.args.some((arg) => arg.endsWith(path.join("src", "extension.ts"))),
       false,
     );
-    assert.equal(calls[0]?.args.includes("--model"), false);
+    assert.equal(calls[0]?.args[calls[0]!.args.indexOf("--model") + 1], "anthropic/claude-opus-5");
     assert.ok(calls[0]?.args.includes("Task: three jobs"));
+    assert.equal(calls[0]?.args.includes("@ultra"), false);
   });
 
   it("parses Pi JSONL assistant text", () => {
@@ -240,17 +243,24 @@ describe("subagent bind", () => {
     const host = new MemoryOperatorHost();
     const api = createExtensionApi(host);
     const notes: string[] = [];
+    const confirms: string[] = [];
     host.listeners.onNotify = (message) => notes.push(message);
+    host.listeners.onUiRequest = (request) => {
+      if (request.kind === "confirm") {
+        confirms.push(request.title);
+        host.answer(request.requestId, true);
+      }
+    };
 
     bindSubagent(api, {
       goalId: "goal_plan",
       root,
       runtime: {
         async run(input) {
-          assert.equal(input.agentName, "planner");
+          assert.equal(input.agentName, PLANNER_AGENT_NAME);
           assert.ok(input.scratchDir.endsWith(`${path.sep}scratch`));
           return {
-            agent: "planner",
+            agent: PLANNER_AGENT_NAME,
             text: "## Goal\nApply to three roles.\n\n## Digest\nThree roles, one CV.",
             exitCode: 0,
             stderr: "",
@@ -270,8 +280,9 @@ describe("subagent bind", () => {
     const planFile = path.join(root, "goals", "goal_plan", "scratch", "plan.md");
     const body = await readFile(planFile, "utf8");
     assert.match(body, /Apply to three roles/);
-    assert.match(notes.at(-1) ?? "", /Plan written to /);
-    assert.match(notes.at(-1) ?? "", /Three roles/);
+    assert.match(notes[0] ?? "", /Starting planner worker \(anthropic\/claude-opus-5\)/);
+    assert.match(notes.at(-1) ?? "", /Planner \(anthropic\/claude-opus-5\) wrote /);
+    assert.match(confirms.at(-1) ?? "", /Planner \(anthropic\/claude-opus-5\) finished/);
 
     const pi = createFakePi();
     browserSessionAgent(pi);
@@ -280,6 +291,33 @@ describe("subagent bind", () => {
     assert.equal(pi.getActiveTools().includes(SUBAGENT_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes("bash"), false);
     assert.match(CHAT_WORKER_HINT, /no shell/);
+    assert.match(CHAT_WORKER_HINT, /Opus/);
+  });
+
+  it("names the planner when it fails, without writing a plan", async () => {
+    const root = await tempRoot();
+    const host = new MemoryOperatorHost();
+    const api = createExtensionApi(host);
+    const notes: string[] = [];
+    host.listeners.onNotify = (message) => notes.push(message);
+    bindSubagent(api, {
+      goalId: "goal_fail",
+      root,
+      runtime: {
+        async run() {
+          return {
+            agent: PLANNER_AGENT_NAME,
+            text: "",
+            exitCode: 1,
+            stderr: "Model not found",
+            aborted: false,
+          };
+        },
+      },
+    });
+    await api.commands.get(PLAN_COMMAND)!.handler("x", extensionContext(host));
+    assert.match(notes.at(-1) ?? "", /Planner \(anthropic\/claude-opus-5\) did not write a plan/);
+    assert.match(notes.at(-1) ?? "", /operate agent was not switched/);
   });
 
   it("rejects parallel/chain and unknown agents on the tool", async () => {
@@ -319,7 +357,7 @@ describe("subagent bind", () => {
 
   it("exposes /plan on the hosted chat command bar", async () => {
     const source = await readFile(path.join(ROOT, "src/hosts/web/public/app.js"), "utf8");
-    assert.match(source, /\["plan",/);
+    assert.match(source, /\["plan", "Plan with Opus"\]/);
   });
 
   it("usage-notifies when /plan has no argument", async () => {
@@ -336,5 +374,29 @@ describe("subagent bind", () => {
     });
     await runCommand(pi, PLAN_COMMAND, "  ");
     assert.match(pi.notifications.at(-1) ?? "", /Usage: \/plan/);
+  });
+
+  it("injects scratch/plan.md into the operate prompt", async () => {
+    const root = await tempRoot();
+    const scratchDir = await ensureScratch("goal_standing", root);
+    await writeFile(
+      path.join(scratchDir, "plan.md"),
+      "## Goal\nFind ten people.\n\n## Digest\nInstagram first.\n",
+    );
+    const snippet = await standingPlanPrompt("goal_standing", root);
+    assert.match(snippet, /planner worker \(anthropic\/claude-opus-5\)/);
+    assert.match(snippet, /You are the operate agent/);
+    assert.match(snippet, /Instagram first/);
+  });
+
+  it("ask_user blocks on Pi input instead of returning nobody available", async () => {
+    const pi = createFakePi(["Instagram, about 20"]);
+    browserSessionAgent(pi);
+    await pi.startSession();
+    const result = await runTool(pi, "ask_user", { question: "Which platform?" });
+    const text = result.content.map((part) => ("text" in part ? part.text : "")).join("");
+    assert.match(text, /"answered":true/);
+    assert.match(text, /Instagram, about 20/);
+    assert.doesNotMatch(text, /Nobody available/);
   });
 });
