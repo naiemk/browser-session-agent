@@ -29,6 +29,7 @@ import {
   markCompletedSteps,
   type TodoItem,
 } from "./pi-plan-todos.ts";
+import { clipWidgetLines } from "./pi-tool-view.ts";
 
 export const PLAN_COMMAND = "plan";
 
@@ -59,7 +60,7 @@ You are in plan mode: look at the page, do not change it.
 
 Restrictions:
 - act, downloads-to-scratch, side tabs, report, and subagent/coder are disabled
-- observe, probe, survey, peek, check, ask_user, and remember stay available
+- observe, probe, survey, peek, check, ask_user, remember, scratch_ls, and scratch_read stay available
 - This session's model is unchanged. The operator can Ctrl+P to pick a stronger class for these turns.
 
 Ask with ask_user when a personal fact is missing. Do not invent defaults.
@@ -88,6 +89,19 @@ export function parentSafeTools(names: readonly string[]): string[] {
 
 export function planModeTools(activeToolNames: string[]): string[] {
   return parentSafeTools(activeToolNames).filter((name) => !PLAN_MODE_DISABLED_TOOLS.has(name));
+}
+
+/** User/assistant messages only — custom UI entries do not count as the session moving. */
+export function sessionTurnCount(
+  entries: ReadonlyArray<{ type?: string; message?: unknown }>,
+): number {
+  let count = 0;
+  for (const entry of entries) {
+    if (entry.type !== "message") continue;
+    const role = (entry.message as { role?: string } | undefined)?.role;
+    if (role === "user" || role === "assistant") count += 1;
+  }
+  return count;
 }
 
 export function bindPlanMode(pi: ExtensionAPI): PlanModeHandle {
@@ -124,7 +138,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
 
     if (executionMode && todoItems.length > 0) {
       const lines = todoItems.map((item) => (item.completed ? `☑ ${item.text}` : `☐ ${item.text}`));
-      ctx.ui.setWidget?.("plan-todos", lines);
+      ctx.ui.setWidget?.("plan-todos", clipWidgetLines(lines));
     } else {
       ctx.ui.setWidget?.("plan-todos", undefined);
     }
@@ -303,11 +317,13 @@ After completing a step, include a [DONE:n] tag in your response.`;
     };
 
     if (!ctx?.ui?.select) return;
+    const turnsBefore = sessionTurnCount(ctx.sessionManager?.getEntries?.() ?? []);
     const choice = await ctx.ui.select("Plan mode - what next?", [
       "Execute the plan (track progress)",
       "Stay in plan mode",
       "Refine the plan",
     ]);
+    const sessionMoved = sessionTurnCount(ctx.sessionManager?.getEntries?.() ?? []) > turnsBefore;
 
     if (choice?.startsWith("Execute")) {
       const first = todoItems[0];
@@ -328,7 +344,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
       pi.sendMessage?.(planTodoListMessage, { deliverAs: "followUp" });
       pi.sendMessage?.(
         { customType: "plan-mode-execute", content: execMessage, display: true },
-        { triggerTurn: true, deliverAs: "followUp" },
+        { triggerTurn: !sessionMoved, deliverAs: "followUp" },
       );
     } else if (choice === "Refine the plan") {
       const refinement = ctx.ui.editor
@@ -336,7 +352,9 @@ After completing a step, include a [DONE:n] tag in your response.`;
         : await ctx.ui.input("Refine the plan:", "What should change?");
       if (refinement?.trim()) {
         pi.sendMessage?.(planTodoListMessage, { deliverAs: "followUp" });
-        pi.sendUserMessage?.(refinement.trim(), { deliverAs: "followUp" });
+        if (!sessionMoved) {
+          pi.sendUserMessage?.(refinement.trim(), { deliverAs: "followUp" });
+        }
       }
     }
   });

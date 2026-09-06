@@ -76,6 +76,7 @@ describe("task card", () => {
     // The route only changes the cost, so it is chosen and not asked about.
     assert.match(card, /take the cheap one and do not ask about it/);
     assert.match(card, /navigating away loses your place/);
+    assert.match(card, /scratch_ls \/ scratch_read/);
   });
 
   it("teaches a method for establishing standing, and asserts no situation", () => {

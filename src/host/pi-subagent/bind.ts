@@ -1,22 +1,48 @@
 /**
- * Parent-only: a `subagent` tool (Pi JSON child) and scratch_write.
+ * Parent-only: a `subagent` tool (Pi JSON child) and scratch file tools.
  * Coding builtins stay off on this session. /plan is in-session plan-mode, not a worker.
  */
 
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
-import { writeScratchFile } from "../../core/scratch.ts";
+import {
+  formatScratchInventory,
+  listScratchFiles,
+  readScratchFile,
+  writeScratchFile,
+} from "../../core/scratch.ts";
 import { coreRoot, goalPaths } from "../../core/paths.ts";
-import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
+import type { ExtensionAPI, ExtensionContext, RegisteredTool, ToolResult } from "../../pi-api.ts";
 import { textResult } from "../../pi-api.ts";
+import { withToolView } from "../pi-tool-view.ts";
+import { hashOf, type MetricsSink, type PayloadSink } from "../../runtime/metrics.ts";
 import { discoverPackagedAgents } from "./discover.ts";
-import { runWorker, type WorkerResult, type WorkerUpdate } from "./spawn.ts";
+import {
+  CONFIRM_WAIT_MS,
+  DEFAULT_TIMEOUT_MS,
+  formatDurationMs,
+  MAX_EXTENSIONS,
+  MAX_TOTAL_TIMEOUT_MS,
+  resolveTimeoutMs,
+  runWorker,
+  type ExtendRequest,
+  type WorkerResult,
+  type WorkerUpdate,
+} from "./spawn.ts";
 
 export { PLAN_COMMAND } from "../pi-plan-mode.ts";
 
 export const SUBAGENT_TOOL_NAME = "subagent";
 export const SCRATCH_WRITE_TOOL_NAME = "scratch_write";
+export const SCRATCH_LS_TOOL_NAME = "scratch_ls";
+export const SCRATCH_READ_TOOL_NAME = "scratch_read";
+export const PARENT_TOOL_NAMES = [
+  SUBAGENT_TOOL_NAME,
+  SCRATCH_WRITE_TOOL_NAME,
+  SCRATCH_LS_TOOL_NAME,
+  SCRATCH_READ_TOOL_NAME,
+] as const;
 export const PLAN_FILE = "plan.md";
 export const PLANNER_AGENT_NAME = "planner";
 /** About 500 tokens; the parent must not ingest the child transcript. */
@@ -25,7 +51,11 @@ export const DIGEST_MAX_CHARS = 2000;
 export const CHAT_WORKER_HINT =
   "/plan toggles read-only plan mode in this session (same model; Ctrl+P to change). " +
   "For code, files, unzip, or public curl, call subagent with agent=coder. " +
-  "That child is a real Pi coding agent in this goal's scratch directory.";
+  `That child is a real Pi coding agent in this goal's scratch directory. ` +
+  `Default wall ${formatDurationMs(DEFAULT_TIMEOUT_MS)} (cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
+  `${MAX_EXTENSIONS} extensions); the host asks before extending. ` +
+  "Files in scratch are the artifact — scratch_ls / scratch_read, not peek file://. " +
+  "Abort and provider quota kill the child; partial files may still be there.";
 
 export function plannerModel(): string {
   return discoverPackagedAgents().find((agent) => agent.name === PLANNER_AGENT_NAME)?.model
@@ -50,10 +80,17 @@ export async function standingPlanPrompt(goalId: string, root?: string): Promise
   ].join("\n\n");
 }
 
+export interface SubagentEvidence {
+  metrics: MetricsSink;
+  payloads: PayloadSink;
+  turn?: () => number;
+}
+
 export interface SubagentHostOptions {
   goalId: string;
   root?: string;
   runtime?: SubagentRuntime;
+  evidence?: SubagentEvidence;
 }
 
 export interface SubagentRuntime {
@@ -63,6 +100,8 @@ export interface SubagentRuntime {
     scratchDir: string;
     signal?: AbortSignal;
     onUpdate?: WorkerUpdate;
+    timeoutMs?: number;
+    confirmExtend?: (request: ExtendRequest) => Promise<boolean>;
   }): Promise<WorkerResult>;
 }
 
@@ -91,20 +130,75 @@ function agentList(): string {
   return names.length > 0 ? names.join(", ") : "none";
 }
 
-function formatWorkerReply(result: WorkerResult, scratchDir: string): string {
+function recordParentTool(options: SubagentHostOptions, tool: string, text: string): void {
+  if (!options.evidence) return;
+  const turn = options.evidence.turn?.() ?? 0;
+  const hash = hashOf(text);
+  options.evidence.payloads.write({
+    at: new Date().toISOString(),
+    turn,
+    tool,
+    bytes: text.length,
+    hash,
+    text,
+  });
+  options.evidence.metrics.record({
+    kind: "tool_result",
+    turn,
+    tool,
+    bytes: text.length,
+    hash,
+  });
+}
+
+async function formatWorkerReply(result: WorkerResult, scratchDir: string): Promise<string> {
   const body = result.text.trim() || result.stderr.trim() || result.errorMessage?.trim() || "(no output)";
+  const listings = await listScratchFiles(scratchDir);
   const lines = [
     `${result.agent} finished (exit ${result.exitCode}${result.aborted ? ", aborted" : ""}).`,
     `Scratch: ${scratchDir}`,
+    formatScratchInventory(listings),
     "",
     digestText(body),
   ];
   return lines.join("\n");
 }
 
+function workerIsError(result: WorkerResult): boolean {
+  return result.exitCode !== 0 || result.aborted || Boolean(result.errorMessage);
+}
+
+async function confirmLongerRun(
+  ctx: ExtensionContext | undefined,
+  requestedMs: number,
+  defaultMs: number,
+): Promise<number> {
+  const capped = Math.min(requestedMs, MAX_TOTAL_TIMEOUT_MS);
+  if (!(capped > defaultMs)) return capped > 0 ? capped : defaultMs;
+  if (!ctx?.ui?.confirm) return defaultMs;
+  const ok = await ctx.ui.confirm(
+    "Allow a longer coder run?",
+    `Requested ${formatDurationMs(capped)} (default ${formatDurationMs(defaultMs)}). Cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}.`,
+  );
+  return ok ? capped : defaultMs;
+}
+
+function confirmExtend(ctx: ExtensionContext | undefined) {
+  return async (request: ExtendRequest): Promise<boolean> => {
+    if (!ctx?.ui?.confirm) return false;
+    return ctx.ui.confirm(
+      "Coder still running",
+      `About ${formatDurationMs(request.elapsedMs)} elapsed. Allow another ${formatDurationMs(request.sliceMs)}? ` +
+        `(${request.extensionsUsed}/${MAX_EXTENSIONS} extensions used; confirm ignored after ${formatDurationMs(CONFIRM_WAIT_MS)}.)`,
+    );
+  };
+}
+
 export function subagentTool(options: SubagentHostOptions): RegisteredTool {
   const runtime = options.runtime ?? defaultRuntime();
   const available = agentList();
+  const slice = formatDurationMs(DEFAULT_TIMEOUT_MS);
+  const cap = formatDurationMs(MAX_TOTAL_TIMEOUT_MS);
   return {
     name: SUBAGENT_TOOL_NAME,
     label: "Subagent",
@@ -113,45 +207,67 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       "Prefer agent=coder for files, unzip, public curl, extracts, or conversion.",
       `Agents: ${available}. Single mode only (agent + task).`,
       "The worker's cwd is this goal's scratch directory. It does not share the browser profile.",
+      `Default wall ${slice}; the host asks before extending (cap ${cap}, ${MAX_EXTENSIONS} extensions).`,
+      `timeoutMs is a request, not a grant: above the default needs operator confirm, never unbounded.`,
+      "The digest is short; files in scratch are the artifact. Use scratch_ls / scratch_read. Public curl only.",
+      "Abort and provider quota kill the child. Chunk work that may exceed one slice.",
     ].join(" "),
     parameters: Type.Object({
       agent: Type.String({ description: `Worker to invoke (${available}). Use coder for code and files.` }),
       task: Type.String({ description: "Task for that worker" }),
+      timeoutMs: Type.Optional(Type.Number({
+        description: `Requested wall in ms (default ${DEFAULT_TIMEOUT_MS}). Above default asks the operator.`,
+      })),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx) {
       if (params.tasks != null || params.chain != null) {
-        return textResult(
-          "Phase 1 supports a single agent. Omit tasks/chain and pass agent + task.",
-          { error: "unsupported_mode" },
-          true,
+        return finish(
+          options,
+          SUBAGENT_TOOL_NAME,
+          textResult(
+            "Phase 1 supports a single agent. Omit tasks/chain and pass agent + task.",
+            { error: "unsupported_mode" },
+            true,
+          ),
         );
       }
       const agent = typeof params.agent === "string" ? params.agent.trim() : "";
       const task = typeof params.task === "string" ? params.task.trim() : "";
       if (!agent || !task) {
-        return textResult("Need agent and task.", { error: "bad_args" }, true);
+        return finish(options, SUBAGENT_TOOL_NAME, textResult("Need agent and task.", { error: "bad_args" }, true));
       }
+      const defaultMs = resolveTimeoutMs();
+      const requested = typeof params.timeoutMs === "number" ? params.timeoutMs : undefined;
+      const timeoutMs = requested != null
+        ? await confirmLongerRun(ctx, requested, defaultMs)
+        : defaultMs;
       const scratchDir = await ensureScratch(options.goalId, options.root);
       const result = await runtime.run({
         agentName: agent,
         task,
         scratchDir,
         signal,
+        timeoutMs,
+        confirmExtend: confirmExtend(ctx),
         onUpdate: typeof onUpdate === "function"
           ? (update) => {
               (onUpdate as WorkerUpdate)(update);
             }
           : undefined,
       });
-      const isError = result.exitCode !== 0 || result.aborted || Boolean(result.errorMessage);
-      return textResult(formatWorkerReply(result, scratchDir), {
-        agent,
-        scratchDir,
-        exitCode: result.exitCode,
-        aborted: result.aborted,
-        errorMessage: result.errorMessage,
-        stopReason: result.stopReason,
-      }, isError);
+      const text = await formatWorkerReply(result, scratchDir);
+      return finish(
+        options,
+        SUBAGENT_TOOL_NAME,
+        textResult(text, {
+          agent,
+          scratchDir,
+          exitCode: result.exitCode,
+          aborted: result.aborted,
+          errorMessage: result.errorMessage,
+          stopReason: result.stopReason,
+        }, workerIsError(result)),
+      );
     },
   };
 }
@@ -171,24 +287,111 @@ export function scratchWriteTool(options: SubagentHostOptions): RegisteredTool {
       const name = typeof params.name === "string" ? params.name : "";
       const content = typeof params.content === "string" ? params.content : "";
       if (!name.trim()) {
-        return textResult("scratch_write needs a file name.", { error: "bad_args" }, true);
+        return finish(
+          options,
+          SCRATCH_WRITE_TOOL_NAME,
+          textResult("scratch_write needs a file name.", { error: "bad_args" }, true),
+        );
       }
       const scratchDir = await ensureScratch(options.goalId, options.root);
       const written = await writeScratchFile(scratchDir, name, content);
       if ("error" in written) {
-        return textResult(written.error, { error: "path_rejected" }, true);
+        return finish(
+          options,
+          SCRATCH_WRITE_TOOL_NAME,
+          textResult(written.error, { error: "path_rejected" }, true),
+        );
       }
-      return textResult(`Wrote ${written.path}`, {
-        path: written.path,
-        bytes: Buffer.byteLength(content, "utf8"),
-      });
+      return finish(
+        options,
+        SCRATCH_WRITE_TOOL_NAME,
+        textResult(`Wrote ${written.path}`, {
+          path: written.path,
+          bytes: Buffer.byteLength(content, "utf8"),
+        }),
+      );
     },
   };
 }
 
+export function scratchLsTool(options: SubagentHostOptions): RegisteredTool {
+  return {
+    name: SCRATCH_LS_TOOL_NAME,
+    label: "List scratch",
+    description:
+      "List files in this goal's scratch directory. Use this instead of peek file://. Paths stay inside scratch.",
+    parameters: Type.Object({}),
+    async execute() {
+      const scratchDir = await ensureScratch(options.goalId, options.root);
+      const listings = await listScratchFiles(scratchDir);
+      return finish(
+        options,
+        SCRATCH_LS_TOOL_NAME,
+        textResult(formatScratchInventory(listings), {
+          scratchDir,
+          count: listings.length,
+          files: listings,
+        }),
+      );
+    },
+  };
+}
+
+export function scratchReadTool(options: SubagentHostOptions): RegisteredTool {
+  return {
+    name: SCRATCH_READ_TOOL_NAME,
+    label: "Read scratch",
+    description:
+      "Read a text file from this goal's scratch directory. Capped. Binary is refused. Not a browser peek.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Relative path under scratch" }),
+    }),
+    async execute(_id, params) {
+      const name = typeof params.name === "string" ? params.name : "";
+      if (!name.trim()) {
+        return finish(
+          options,
+          SCRATCH_READ_TOOL_NAME,
+          textResult("scratch_read needs a file name.", { error: "bad_args" }, true),
+        );
+      }
+      const scratchDir = await ensureScratch(options.goalId, options.root);
+      const read = await readScratchFile(scratchDir, name, DIGEST_MAX_CHARS);
+      if ("error" in read) {
+        return finish(
+          options,
+          SCRATCH_READ_TOOL_NAME,
+          textResult(read.error, { error: "read_failed" }, true),
+        );
+      }
+      return finish(
+        options,
+        SCRATCH_READ_TOOL_NAME,
+        textResult(read.text, {
+          path: name,
+          bytes: read.bytes,
+          truncated: read.truncated,
+        }),
+      );
+    },
+  };
+}
+
+function finish(options: SubagentHostOptions, tool: string, result: ToolResult): ToolResult {
+  const text = result.content.map((part) => ("text" in part ? part.text : "")).join("");
+  recordParentTool(options, tool, text);
+  return result;
+}
+
 /** Registers parent-only tools. /plan is bindPlanMode, not a planner spawn. */
 export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): string[] {
-  pi.registerTool(subagentTool(options));
-  pi.registerTool(scratchWriteTool(options));
-  return [SUBAGENT_TOOL_NAME, SCRATCH_WRITE_TOOL_NAME];
+  for (const tool of [
+    subagentTool(options),
+    scratchWriteTool(options),
+    scratchLsTool(options),
+    scratchReadTool(options),
+  ]) {
+    pi.registerTool(withToolView(tool));
+  }
+  return [...PARENT_TOOL_NAMES];
 }

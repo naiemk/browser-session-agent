@@ -4,7 +4,7 @@ import { fileEvidence } from "../../host/evidence.ts";
 import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
-import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, SCRATCH_WRITE_TOOL_NAME, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -127,7 +127,14 @@ export class OperatorRuntime {
     // Product commands, plus the worker tool. Browser tools still come from composeAgent
     // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
-    bindSubagent(this.api, { goalId: this.evidenceGoalId });
+    bindSubagent(this.api, {
+      goalId: this.evidenceGoalId,
+      evidence: {
+        metrics: this.evidence.metrics,
+        payloads: this.evidence.payloads,
+        turn: () => this.clock.current(),
+      },
+    });
     this.planMode = bindPlanMode(this.api);
     this.api.on("before_agent_start", async () => {
       if (!this.browserPrompt) return undefined;
@@ -257,7 +264,7 @@ export class OperatorRuntime {
          * task does not. What the agent is, and what drives it, are different questions.
          */
         const composedTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
-        const parentTools = [SUBAGENT_TOOL_NAME, SCRATCH_WRITE_TOOL_NAME]
+        const parentTools = PARENT_TOOL_NAMES
           .map((name) => this.api.tools.get(name))
           .filter((tool): tool is import("../../pi-api.ts").RegisteredTool => Boolean(tool))
           .map((tool) => this.toPiTool(tool));
@@ -561,7 +568,7 @@ export class OperatorRuntime {
 
   private sessionToolNames(): string[] {
     const names = [...this.browserTools.keys()];
-    for (const extra of [SUBAGENT_TOOL_NAME, SCRATCH_WRITE_TOOL_NAME]) {
+    for (const extra of PARENT_TOOL_NAMES) {
       if (!names.includes(extra)) names.push(extra);
     }
     return names;

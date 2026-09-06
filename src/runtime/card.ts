@@ -100,6 +100,6 @@ CHOOSING WHAT TO DO, AND HOW
 Two different questions. What counts as the answer is the operator's to settle; how you go and get it is yours.
 - ${TOOL_SURVEY} before committing to a route, so you weigh what this page offers instead of taking the first thing that could work.
 - Check each word of the task against what you can see. If one of them matches more than one thing here, that changes the answer and is not yours to decide: ${TOOL_FORK}. Cover every branch and label results by source when that is cheap and bounded, otherwise ${TOOL_ASK}.
-- The route is yours, so take the cheap one and do not ask about it. To inspect items in a list, ${TOOL_PEEK}: navigating away loses your place and you may not get it back, and peeking does not. If a name or id is all you have, build the URL or search for it, and pass expect so landing on the wrong thing is caught rather than believed.
+- The route is yours, so take the cheap one and do not ask about it. To inspect items in a list, ${TOOL_PEEK}: navigating away loses your place and you may not get it back, and peeking does not. If a name or id is all you have, build the URL or search for it, and pass expect so landing on the wrong thing is caught rather than believed. Do not peek file://; use scratch_ls / scratch_read for this goal's scratch.
 ${input.maxTurns ? `\nBudget: about ${input.maxTurns} turns. Spend them understanding the page, not retrying.` : ""}`;
 }

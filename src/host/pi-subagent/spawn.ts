@@ -18,7 +18,13 @@ import type { AgentConfig } from "./discover.ts";
 import { discoverPackagedAgents, findAgent } from "./discover.ts";
 
 const PI_CLI = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
-const DEFAULT_TIMEOUT_MS = 180_000;
+/** First wall-clock slice before the host asks to extend. */
+export const DEFAULT_TIMEOUT_MS = 180_000;
+/** How long to wait for the operator before treating extend as no. */
+export const CONFIRM_WAIT_MS = 60_000;
+/** Hard cap across slices so a runaway child cannot run forever. */
+export const MAX_TOTAL_TIMEOUT_MS = 15 * 60_000;
+export const MAX_EXTENSIONS = 3;
 const FLOORS = new Set(["low", "medium", "high", "ultra"]);
 
 /** The model pi-model-auto registers. `@ultra` is a first-turn prefix, not this id. */
@@ -242,17 +248,45 @@ export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface ExtendRequest {
+  elapsedMs: number;
+  sliceMs: number;
+  extensionsUsed: number;
+}
+
 export interface RunWorkerOptions {
   agentName: string;
   task: string;
   scratchDir: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  confirmExtend?: (request: ExtendRequest) => Promise<boolean>;
+  confirmWaitMs?: number;
+  maxTotalMs?: number;
+  maxExtensions?: number;
   spawnImpl?: SpawnImpl;
   piEntry?: string;
   extraExtensions?: string[];
   agents?: AgentConfig[];
   onUpdate?: WorkerUpdate;
+}
+
+export function resolveTimeoutMs(
+  requested?: number,
+  env = process.env.BSA_SUBAGENT_TIMEOUT_MS,
+): number {
+  const raw = requested ?? Number(env ?? DEFAULT_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
+}
+
+export function formatDurationMs(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  const minutes = ms / 60_000;
+  return Number.isInteger(minutes) ? `${minutes} min` : `${minutes.toFixed(1)} min`;
 }
 
 export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult> {
@@ -299,7 +333,10 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
   const capture: JsonCapture = { messages: [], tools: [] };
   let stderr = "";
   let aborted = false;
-  const timeoutMs = options.timeoutMs ?? Number(process.env.BSA_SUBAGENT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const confirmWaitMs = options.confirmWaitMs ?? CONFIRM_WAIT_MS;
+  const maxTotalMs = options.maxTotalMs ?? MAX_TOTAL_TIMEOUT_MS;
+  const maxExtensions = options.maxExtensions ?? MAX_EXTENSIONS;
 
   const emitUpdate = () => {
     if (!options.onUpdate) return;
@@ -347,17 +384,75 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
           if (!proc.killed) proc.kill("SIGKILL");
         }, 5_000);
       };
-      const timer = setTimeout(killProc, timeoutMs);
+
+      const closed = new Promise<number>((done) => {
+        proc.on("close", (code) => done(code ?? 0));
+        proc.on("error", () => done(1));
+      });
+      const abortWait = new Promise<"abort">((done) => {
+        if (options.signal?.aborted) done("abort");
+        else options.signal?.addEventListener("abort", () => done("abort"), { once: true });
+      });
       const onAbort = () => {
-        clearTimeout(timer);
         killProc();
       };
       if (options.signal?.aborted) onAbort();
       else options.signal?.addEventListener("abort", onAbort, { once: true });
-      proc.on("close", () => {
-        clearTimeout(timer);
-        options.signal?.removeEventListener("abort", onAbort);
-      });
+
+      void (async () => {
+        let sliceMs = timeoutMs;
+        let extensions = 0;
+        const started = Date.now();
+        while (!settled) {
+          const winner = await Promise.race([
+            closed.then((code) => ({ kind: "exit" as const, code })),
+            abortWait.then(() => ({ kind: "abort" as const })),
+            sleep(sliceMs).then(() => ({ kind: "timeout" as const })),
+          ]);
+          if (winner.kind === "exit") {
+            options.signal?.removeEventListener("abort", onAbort);
+            finish(winner.code);
+            return;
+          }
+          if (winner.kind === "abort") {
+            killProc();
+            finish(await closed);
+            return;
+          }
+          const elapsed = Date.now() - started;
+          const budget = maxTotalMs - elapsed;
+          const canAsk =
+            Boolean(options.confirmExtend) && extensions < maxExtensions && budget > 0;
+          if (!canAsk) {
+            killProc();
+            finish(await closed);
+            return;
+          }
+          options.onUpdate?.({ content: [{ type: "text", text: "(waiting to extend…)" }] });
+          const confirmWinner = await Promise.race([
+            closed.then((code) => ({ kind: "exit" as const, code })),
+            abortWait.then(() => ({ kind: "abort" as const })),
+            options.confirmExtend!({
+              elapsedMs: elapsed,
+              sliceMs,
+              extensionsUsed: extensions,
+            }).then((ok) => ({ kind: "confirm" as const, ok: Boolean(ok) })),
+            sleep(confirmWaitMs).then(() => ({ kind: "confirm" as const, ok: false })),
+          ]);
+          if (confirmWinner.kind === "exit") {
+            options.signal?.removeEventListener("abort", onAbort);
+            finish(confirmWinner.code);
+            return;
+          }
+          if (confirmWinner.kind !== "confirm" || !confirmWinner.ok) {
+            killProc();
+            finish(await closed);
+            return;
+          }
+          extensions += 1;
+          sliceMs = Math.min(timeoutMs, Math.max(1, budget));
+        }
+      })();
     });
 
     const text =

@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { fitLine, renderToolResult, wrapToWidth } from "../../src/host/pi-tool-view.ts";
+import { clipWidgetLines, fitLine, renderToolResult, visibleWidth, wrapToWidth } from "../../src/host/pi-tool-view.ts";
 import { TOOL_ACT, TOOL_OBSERVE } from "../../src/runtime/names.ts";
 
 function everyLineFits(lines: string[], width: number): void {
   for (const [index, line] of lines.entries()) {
+    const columns = visibleWidth(line);
     assert.ok(
-      line.length <= width,
-      `line ${index} is ${line.length} wide, terminal is ${width}: ${JSON.stringify(line)}`,
+      columns <= width,
+      `line ${index} is ${columns} columns (length ${line.length}), terminal is ${width}: ${JSON.stringify(line)}`,
     );
   }
 }
@@ -72,5 +73,17 @@ describe("wrapping and clipping", () => {
     const lines = wrapToWidth("abcdefghijklmnopqrstuvwxyz", 10);
     everyLineFits(lines, 10);
     assert.deepEqual(lines, ["abcdefghij", "klmnopqrst", "uvwxyz"]);
+  });
+
+  it("counts CJK as two columns, which is what crashed Pi on a language footer", () => {
+    assert.equal(visibleWidth("日本語"), 6);
+    assert.ok("日本語".length < 6);
+    const wrapped = wrapToWidth("日本語Italiano", 4);
+    everyLineFits(wrapped, 4);
+    assert.deepEqual(wrapped, ["日本", "語It", "alia", "no"]);
+    const clipped = fitLine("日本語", 5);
+    assert.ok(visibleWidth(clipped) <= 5);
+    assert.ok(clipped.endsWith("…"));
+    everyLineFits(clipWidgetLines(["☐ Cut the longlist to 日本語"]), 80);
   });
 });

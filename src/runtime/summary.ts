@@ -164,6 +164,18 @@ function describeTool(tool: string, details: unknown): string {
     case TOOL_DONE: {
       return `${str(get(details, "status")) ?? "?"}: ${str(get(details, "summary")) ?? ""}`;
     }
+    case "subagent": {
+      const agent = str(get(details, "agent")) ?? "worker";
+      const exit = get(details, "exitCode");
+      const aborted = get(details, "aborted") === true ? ", aborted" : "";
+      return `${agent} exit ${exit ?? "?"}${aborted}`;
+    }
+    case "scratch_write":
+      return `wrote ${str(get(details, "path")) ?? "scratch"}`;
+    case "scratch_ls":
+      return `${get(details, "count") ?? 0} scratch files`;
+    case "scratch_read":
+      return `read ${str(get(details, "path")) ?? "scratch"}${get(details, "truncated") === true ? " (truncated)" : ""}`;
     default:
       return "";
   }

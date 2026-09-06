@@ -15,6 +15,8 @@ import {
   DIGEST_MAX_CHARS,
   ensureScratch,
   PLAN_COMMAND,
+  SCRATCH_LS_TOOL_NAME,
+  SCRATCH_READ_TOOL_NAME,
   standingPlanPrompt,
   SUBAGENT_TOOL_NAME,
 } from "../../src/host/pi-subagent/bind.ts";
@@ -33,7 +35,7 @@ import {
   type SpawnImpl,
 } from "../../src/host/pi-subagent/spawn.ts";
 import { piEntryPath } from "../../src/hosts/local-cli/launch.ts";
-import { bindPlanMode, PARENT_NEVER_TOOLS, planModeTools } from "../../src/host/pi-plan-mode.ts";
+import { bindPlanMode, PARENT_NEVER_TOOLS, planModeTools, sessionTurnCount } from "../../src/host/pi-plan-mode.ts";
 import { extensionContext } from "../../src/host/memory-host.ts";
 import { NodeHub } from "../../src/hosts/web/hub.ts";
 import { OperatorRuntime } from "../../src/hosts/web/runtime.ts";
@@ -54,6 +56,23 @@ async function tempRoot(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "bsa-scratch-"));
   tmpDirs.push(dir);
   return dir;
+}
+
+function hangingChild(): ChildProcess {
+  const proc = new EventEmitter() as ChildProcess;
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+  Object.assign(proc, {
+    stdout,
+    stderr,
+    killed: false,
+    kill() {
+      (proc as ChildProcess & { killed: boolean }).killed = true;
+      queueMicrotask(() => proc.emit("close", 143));
+      return true;
+    },
+  });
+  return proc;
 }
 
 function fakeChild(stdoutLines: string[], exitCode = 0): ChildProcess {
@@ -315,6 +334,68 @@ describe("worker spawn isolation", () => {
     assert.equal(result.text.trim(), "");
     assert.equal(result.stopReason, "end_turn");
   });
+
+  it("kills a hung child after the slice when nobody can confirm", async () => {
+    const scratchDir = await tempRoot();
+    const result = await runWorker({
+      agentName: "coder",
+      task: "hang",
+      scratchDir,
+      timeoutMs: 40,
+      confirmWaitMs: 10,
+      spawnImpl: () => hangingChild(),
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+    });
+    assert.equal(result.aborted, true);
+    assert.equal(result.exitCode, 143);
+  });
+
+  it("extends once when the host confirms, then kills at the cap", async () => {
+    const scratchDir = await tempRoot();
+    const asks: number[] = [];
+    const result = await runWorker({
+      agentName: "coder",
+      task: "hang",
+      scratchDir,
+      timeoutMs: 40,
+      confirmWaitMs: 200,
+      maxTotalMs: 10_000,
+      maxExtensions: 1,
+      confirmExtend: async () => {
+        asks.push(Date.now());
+        return true;
+      },
+      spawnImpl: () => hangingChild(),
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+    });
+    assert.equal(asks.length, 1);
+    assert.equal(result.aborted, true);
+  });
+
+  it("does not kill if the child exits while waiting to extend", async () => {
+    const scratchDir = await tempRoot();
+    const proc = hangingChild();
+    const resultPromise = runWorker({
+      agentName: "coder",
+      task: "hang",
+      scratchDir,
+      timeoutMs: 30,
+      confirmWaitMs: 5_000,
+      confirmExtend: () => new Promise(() => {
+        /* never answers */
+      }),
+      spawnImpl: () => proc,
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    proc.emit("close", 0);
+    const result = await resultPromise;
+    assert.equal(result.aborted, false);
+    assert.equal(result.exitCode, 0);
+  });
 });
 
 describe("subagent bind", () => {
@@ -324,6 +405,8 @@ describe("subagent bind", () => {
     await pi.startSession();
     assert.equal(pi.tools.has(SUBAGENT_TOOL_NAME), true);
     assert.equal(pi.tools.has("scratch_write"), true);
+    assert.equal(pi.tools.has(SCRATCH_LS_TOOL_NAME), true);
+    assert.equal(pi.tools.has(SCRATCH_READ_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes(SUBAGENT_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes("bash"), false);
     assert.match(CHAT_WORKER_HINT, /coder/);
@@ -350,6 +433,92 @@ describe("subagent bind", () => {
       content: "nope",
     });
     assert.equal(escaped.isError, true);
+  });
+
+  it("lists and reads scratch, and refuses a path that escapes it", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    bindSubagent(pi, { goalId: "goal_read", root });
+    await runTool(pi, "scratch_write", { name: "notes.md", content: "hello from scratch" });
+    const listed = await runTool(pi, SCRATCH_LS_TOOL_NAME, {});
+    assert.equal(listed.isError, false);
+    assert.match(listed.content[0]?.text ?? "", /notes.md/);
+    const read = await runTool(pi, SCRATCH_READ_TOOL_NAME, { name: "notes.md" });
+    assert.equal(read.isError, false);
+    assert.match(read.content[0]?.text ?? "", /hello from scratch/);
+    const escaped = await runTool(pi, SCRATCH_READ_TOOL_NAME, { name: "../events.jsonl" });
+    assert.equal(escaped.isError, true);
+    const scratchDir = path.join(root, "goals", "goal_read", "scratch");
+    await writeFile(path.join(scratchDir, "blob.bin"), Buffer.from([0, 1, 2, 3]));
+    const binary = await runTool(pi, SCRATCH_READ_TOOL_NAME, { name: "blob.bin" });
+    assert.equal(binary.isError, true);
+    assert.match(binary.content[0]?.text ?? "", /binary/);
+    await writeFile(path.join(scratchDir, "long.md"), "z".repeat(DIGEST_MAX_CHARS + 80));
+    const truncated = await runTool(pi, SCRATCH_READ_TOOL_NAME, { name: "long.md" });
+    assert.equal(truncated.isError, false);
+    assert.match(truncated.content[0]?.text ?? "", /\[truncated\]/);
+  });
+
+  it("marks abort and provider errors as isError and includes a scratch inventory", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    bindSubagent(pi, {
+      goalId: "goal_err",
+      root,
+      runtime: {
+        async run() {
+          return {
+            agent: "coder",
+            text: "",
+            exitCode: 143,
+            stderr: "",
+            aborted: true,
+            errorMessage: "Codex error: The usage limit has been reached",
+            stopReason: "error",
+          };
+        },
+      },
+    });
+    await runTool(pi, "scratch_write", { name: "partial.json", content: "[]" });
+    const result = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "status" });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]?.text ?? "", /aborted/);
+    assert.match(result.content[0]?.text ?? "", /partial.json/);
+  });
+
+  it("records parent-only tools on the payload log", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    const payloads: Array<{ tool: string; text: string }> = [];
+    bindSubagent(pi, {
+      goalId: "goal_log",
+      root,
+      runtime: {
+        async run() {
+          return { agent: "coder", text: "ok", exitCode: 0, stderr: "", aborted: false };
+        },
+      },
+      evidence: {
+        payloads: {
+          write(record) {
+            payloads.push({ tool: record.tool, text: record.text });
+          },
+          async flush() {},
+        },
+        metrics: { record() {}, async flush() {} },
+      },
+    });
+    await runTool(pi, "scratch_write", { name: "a.md", content: "x" });
+    await runTool(pi, SCRATCH_LS_TOOL_NAME, {});
+    await runTool(pi, SCRATCH_READ_TOOL_NAME, { name: "a.md" });
+    await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "status" });
+    assert.equal(payloads.some((row) => row.tool === "scratch_write"), true);
+    assert.equal(payloads.some((row) => row.tool === SCRATCH_LS_TOOL_NAME), true);
+    assert.equal(payloads.some((row) => row.tool === SCRATCH_READ_TOOL_NAME), true);
+    assert.equal(payloads.some((row) => row.tool === SUBAGENT_TOOL_NAME), true);
   });
 
   it("rejects parallel/chain and unknown agents on the tool", async () => {
@@ -437,6 +606,8 @@ describe("in-session plan mode", () => {
     assert.match(pi.notifications.at(-1) ?? "", /Plan mode on/);
     assert.equal(pi.getActiveTools().includes("act"), false);
     assert.equal(pi.getActiveTools().includes("observe"), true);
+    assert.equal(pi.getActiveTools().includes("scratch_write"), false);
+    assert.equal(pi.getActiveTools().includes(SCRATCH_LS_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes("bash"), false);
     assert.equal(pi.getActiveTools().includes("write"), false);
     assert.equal(pi.getActiveTools().includes("edit"), false);
@@ -470,6 +641,35 @@ describe("in-session plan mode", () => {
       pi.customMessages.some((message) => message.content.includes("Execute the plan")) ||
         pi.userMessages.some((text) => text.includes("Execute the plan")),
     );
+  });
+
+  it("does not trigger a turn when the session moved during the Execute prompt", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "");
+    const extra: Array<{ type: string; message: unknown }> = [];
+    const inner = pi.ctx.sessionManager!;
+    const original = inner.getEntries.bind(inner);
+    inner.getEntries = () => [
+      ...original(),
+      ...extra,
+    ];
+    pi.ctx.ui.select = async () => {
+      extra.push({ type: "message", message: { role: "user", content: "What are you doing?" } });
+      return "Execute the plan (track progress)";
+    };
+    await pi.emit("agent_end", {
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Plan:\n1. Open the page first\n2. Collect listings next\n" }],
+        },
+      ],
+    });
+    assert.equal(pi.userMessages.some((text) => text.includes("Execute the plan")), false);
+    assert.ok(pi.customMessages.some((message) => message.content.includes("Execute the plan")));
+    assert.equal(sessionTurnCount([{ type: "message", message: { role: "user" } }]), 1);
   });
 
   it("/plan with text enables plan mode and sends the task", async () => {
