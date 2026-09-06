@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek } from "../core/peek.ts";
-import { describeCheck, optionalPredicate } from "../core/predicates.ts";
+import { allowedPredicateKinds, describeCheck, optionalPredicate, validatePredicate } from "../core/predicates.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
@@ -237,7 +237,9 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_PROBE,
       label: "Probe",
-      description: "Read-only query: page_meta, text, count, elements, form_inventory, table, or links. Cannot change the page or read credentials.",
+      description:
+        'Read-only query. Required: query.kind (page_meta | text | count | elements | form_inventory | table | links). ' +
+        'count, elements, and table also need query.select (a CSS selector). Cannot change the page or read credentials.',
       promptSnippet: "Read anything about the page without touching it.",
       parameters: Type.Object({ query: Type.Object({}, { additionalProperties: true })}),
       execute: async (_id: string, params: unknown) => {
@@ -296,6 +298,15 @@ export function buildTools(context: ToolContext): AgentTool[] {
       execute: async (_id: string, params: unknown) => {
         const raw = params as { expect?: unknown };
         try {
+          if (raw.expect != null) {
+            const errors = validatePredicate(raw.expect, "expect");
+            if (errors.length > 0) {
+              return reply({
+                error: `${errors.join("; ")}. Allowed kinds: ${allowedPredicateKinds()}`,
+                note: "There is no download predicate. Sessionful downloads stay on this agent; public URLs go to subagent coder.",
+              });
+            }
+          }
           countStep();
           const expect = optionalPredicate(raw.expect);
           const request = { ...(params as ActionRequest), tabId: tab(), expect };
@@ -370,7 +381,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
         return answer === undefined
           ? reply({
               answered: false,
-              note: "The operator did not answer. Stop. Do not invent defaults. Wait for them to reply.",
+              note: "The operator dismissed this. Do not invent an answer. Stop or ask again only if the task cannot continue.",
             })
           : reply({ answered: true, answer });
       },

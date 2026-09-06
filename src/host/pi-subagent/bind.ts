@@ -1,31 +1,40 @@
 /**
- * Parent-only: a `subagent` tool and `/plan`. Coding builtins stay off on this session.
+ * Parent-only: a `subagent` tool (Pi JSON child) and scratch_write.
+ * Coding builtins stay off on this session. /plan is in-session plan-mode, not a worker.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { writeScratchFile } from "../../core/scratch.ts";
 import { coreRoot, goalPaths } from "../../core/paths.ts";
-import type { ExtensionAPI, ExtensionContext, RegisteredTool } from "../../pi-api.ts";
+import type { ExtensionAPI, RegisteredTool } from "../../pi-api.ts";
 import { textResult } from "../../pi-api.ts";
-import { discoverPackagedAgents, findAgent } from "./discover.ts";
-import { runWorker, type WorkerResult } from "./spawn.ts";
+import { discoverPackagedAgents } from "./discover.ts";
+import { runWorker, type WorkerResult, type WorkerUpdate } from "./spawn.ts";
+
+export { PLAN_COMMAND } from "../pi-plan-mode.ts";
 
 export const SUBAGENT_TOOL_NAME = "subagent";
-export const PLAN_COMMAND = "plan";
+export const SCRATCH_WRITE_TOOL_NAME = "scratch_write";
 export const PLAN_FILE = "plan.md";
 export const PLANNER_AGENT_NAME = "planner";
 /** About 500 tokens; the parent must not ingest the child transcript. */
 export const DIGEST_MAX_CHARS = 2000;
 
 export const CHAT_WORKER_HINT =
-  "/plan spawns a separate planner worker (Opus), not you. You are the operate agent on this session's model. For work that spans many entities, or that needs a written brief, a tailored document, or code over files, use the subagent tool or /plan. Those workers share this goal's scratch directory, not the browser profile. You still have no shell. When a plan exists, follow it. Ask with ask_user and wait; never invent operator facts.";
+  "/plan toggles read-only plan mode in this session (same model; Ctrl+P to change). " +
+  "For code, files, unzip, or public curl, call subagent with agent=coder. " +
+  "That child is a real Pi coding agent in this goal's scratch directory.";
 
 export function plannerModel(): string {
-  return findAgent(PLANNER_AGENT_NAME)?.model ?? PLANNER_AGENT_NAME;
+  return discoverPackagedAgents().find((agent) => agent.name === PLANNER_AGENT_NAME)?.model
+    ?? PLANNER_AGENT_NAME;
 }
 
-/** Digest of scratch/plan.md for the operate agent's next turn. Empty if none. */
+/**
+ * If scratch/plan.md already exists, remind the operate agent. Not a spawned planner.
+ */
 export async function standingPlanPrompt(goalId: string, root?: string): Promise<string> {
   const file = path.join(goalPaths(coreRoot(root), goalId).scratchDir, PLAN_FILE);
   let body = "";
@@ -36,7 +45,7 @@ export async function standingPlanPrompt(goalId: string, root?: string): Promise
   }
   if (!body.trim()) return "";
   return [
-    `A planner worker (${plannerModel()}) already wrote scratch/${PLAN_FILE}. You are the operate agent. Follow this plan. Do not write a new one. Missing inputs: ask_user and wait; never invent defaults.`,
+    `scratch/${PLAN_FILE} already exists. Follow it. Missing inputs: ask_user and wait; never invent defaults.`,
     digestText(body),
   ].join("\n\n");
 }
@@ -53,6 +62,7 @@ export interface SubagentRuntime {
     task: string;
     scratchDir: string;
     signal?: AbortSignal;
+    onUpdate?: WorkerUpdate;
   }): Promise<WorkerResult>;
 }
 
@@ -81,26 +91,10 @@ function agentList(): string {
   return names.length > 0 ? names.join(", ") : "none";
 }
 
-async function savePlanIfNeeded(scratchDir: string, text: string): Promise<string> {
-  const file = path.join(scratchDir, PLAN_FILE);
-  let existing = "";
-  try {
-    existing = await readFile(file, "utf8");
-  } catch {
-    existing = "";
-  }
-  if (!existing.trim() && text.trim()) {
-    await writeFile(file, text.endsWith("\n") ? text : `${text}\n`, "utf8");
-  }
-  return file;
-}
-
 function formatWorkerReply(result: WorkerResult, scratchDir: string): string {
-  const body = result.text.trim() || result.stderr.trim() || "(no output)";
-  const model = findAgent(result.agent)?.model;
-  const who = model ? `${result.agent} (${model})` : result.agent;
+  const body = result.text.trim() || result.stderr.trim() || result.errorMessage?.trim() || "(no output)";
   const lines = [
-    `${who} finished (exit ${result.exitCode}${result.aborted ? ", aborted" : ""}).`,
+    `${result.agent} finished (exit ${result.exitCode}${result.aborted ? ", aborted" : ""}).`,
     `Scratch: ${scratchDir}`,
     "",
     digestText(body),
@@ -115,15 +109,16 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
     name: SUBAGENT_TOOL_NAME,
     label: "Subagent",
     description: [
-      "Delegate one task to a packaged worker with isolated context.",
+      "Delegate one task to a packaged coding worker with isolated context.",
+      "Prefer agent=coder for files, unzip, public curl, extracts, or conversion.",
       `Agents: ${available}. Single mode only (agent + task).`,
       "The worker's cwd is this goal's scratch directory. It does not share the browser profile.",
     ].join(" "),
     parameters: Type.Object({
-      agent: Type.String({ description: `Worker to invoke (${available})` }),
+      agent: Type.String({ description: `Worker to invoke (${available}). Use coder for code and files.` }),
       task: Type.String({ description: "Task for that worker" }),
     }),
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, onUpdate) {
       if (params.tasks != null || params.chain != null) {
         return textResult(
           "Phase 1 supports a single agent. Omit tasks/chain and pass agent + task.",
@@ -142,70 +137,58 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
         task,
         scratchDir,
         signal,
+        onUpdate: typeof onUpdate === "function"
+          ? (update) => {
+              (onUpdate as WorkerUpdate)(update);
+            }
+          : undefined,
       });
-      const isError = result.exitCode !== 0 || result.aborted;
+      const isError = result.exitCode !== 0 || result.aborted || Boolean(result.errorMessage);
       return textResult(formatWorkerReply(result, scratchDir), {
         agent,
         scratchDir,
         exitCode: result.exitCode,
         aborted: result.aborted,
+        errorMessage: result.errorMessage,
+        stopReason: result.stopReason,
       }, isError);
     },
   };
 }
 
-export function bindPlanCommand(pi: ExtensionAPI, options: SubagentHostOptions): void {
-  const runtime = options.runtime ?? defaultRuntime();
-  pi.registerCommand(PLAN_COMMAND, {
-    description: "Spawn the Opus planner worker and write scratch/plan.md",
-    async handler(args, ctx: ExtensionContext) {
-      const task = args.trim();
-      if (!task) {
-        ctx.ui.notify("Usage: /plan <what to plan>", "warning");
-        return;
+export function scratchWriteTool(options: SubagentHostOptions): RegisteredTool {
+  return {
+    name: SCRATCH_WRITE_TOOL_NAME,
+    label: "Write scratch",
+    description:
+      "Write a text file into this goal's scratch directory, where the coder subagent can read it. " +
+      "Use this instead of save_artifact when the next step is code. Paths stay inside scratch.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Relative path under scratch, e.g. notes.md or extracts/job-1.md" }),
+      content: Type.String({ description: "File contents" }),
+    }),
+    async execute(_id, params) {
+      const name = typeof params.name === "string" ? params.name : "";
+      const content = typeof params.content === "string" ? params.content : "";
+      if (!name.trim()) {
+        return textResult("scratch_write needs a file name.", { error: "bad_args" }, true);
       }
-      const model = plannerModel();
-      ctx.ui.notify(
-        `Starting planner worker (${model}). This is not the operate agent.`,
-        "info",
-      );
-      ctx.ui.setStatus?.("planner", `Planner (${model})…`);
       const scratchDir = await ensureScratch(options.goalId, options.root);
-      const result = await runtime.run({
-        agentName: PLANNER_AGENT_NAME,
-        task,
-        scratchDir,
+      const written = await writeScratchFile(scratchDir, name, content);
+      if ("error" in written) {
+        return textResult(written.error, { error: "path_rejected" }, true);
+      }
+      return textResult(`Wrote ${written.path}`, {
+        path: written.path,
+        bytes: Buffer.byteLength(content, "utf8"),
       });
-      ctx.ui.setStatus?.("planner", "");
-      const failed = result.exitCode !== 0 || result.aborted;
-      const planFile = await savePlanIfNeeded(scratchDir, result.text);
-      let body = "";
-      try {
-        body = await readFile(planFile, "utf8");
-      } catch {
-        body = "";
-      }
-      if (failed || !body.trim()) {
-        ctx.ui.notify(
-          `Planner (${model}) did not write a plan. The operate agent was not switched.\n${
-            result.stderr.trim() || result.text.trim() || "Planner produced no plan.md."
-          }`,
-          "error",
-        );
-        return;
-      }
-      const digest = digestText(result.text.trim() || body);
-      ctx.ui.notify(`Planner (${model}) wrote ${planFile}`, "info");
-      await ctx.ui.confirm(
-        `Planner (${model}) finished`,
-        `${digest}\n\nThis was a separate planner worker, not the operate agent. Send a message to execute with the model this session selected.`,
-      );
     },
-  });
+  };
 }
 
-export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): string {
+/** Registers parent-only tools. /plan is bindPlanMode, not a planner spawn. */
+export function bindSubagent(pi: ExtensionAPI, options: SubagentHostOptions): string[] {
   pi.registerTool(subagentTool(options));
-  bindPlanCommand(pi, options);
-  return SUBAGENT_TOOL_NAME;
+  pi.registerTool(scratchWriteTool(options));
+  return [SUBAGENT_TOOL_NAME, SCRATCH_WRITE_TOOL_NAME];
 }

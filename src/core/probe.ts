@@ -95,9 +95,16 @@ export function validateProbeQuery(value: unknown): string[] {
   const query = value as Record<string, unknown>;
   const errors: string[] = [];
 
-  if (typeof query.kind !== "string") return ["probe: missing \"kind\""];
+  if (typeof query.kind !== "string") {
+    return [
+      `probe: missing "kind" (one of: ${[...KINDS].join(", ")}). ` +
+        `"elements", "count", and "table" also need a string "select"`,
+    ];
+  }
   if (!KINDS.has(query.kind)) {
-    return [`probe: unknown query kind "${query.kind}"; probes read, they never act`];
+    return [
+      `probe: unknown query kind "${query.kind}" (one of: ${[...KINDS].join(", ")}); probes read, they never act`,
+    ];
   }
   for (const key of CODE_KEYS) {
     if (key in query) errors.push(`probe: "${key}" is not allowed; a probe is data, not code`);

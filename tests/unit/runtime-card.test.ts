@@ -23,7 +23,9 @@ describe("task card", () => {
   it("is not a coding agent", () => {
     const card = buildTaskCard(CARD);
     assert.match(card, /drive a real web browser/);
-    assert.match(card, /No shell, no repository/);
+    assert.match(card, /no shell here/);
+    assert.match(card, /no repository/);
+    assert.match(card, /agent=coder/);
     assert.doesNotMatch(card, /working directory/i);
   });
 

@@ -30,7 +30,7 @@ describe("ask_user", () => {
     const result = await askTool(async () => undefined).execute("t1", {
       question: "Which platform?",
     });
-    assert.match(textOf(result), /Do not invent defaults/);
+    assert.match(textOf(result), /Do not invent an answer/);
     assert.doesNotMatch(textOf(result), /Nobody available/);
   });
 

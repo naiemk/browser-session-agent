@@ -265,6 +265,7 @@ describe("Pi package and extension contract", () => {
       "appending is why the chat used to answer 'what can you do?' like a coding assistant",
     );
     assert.match(result.systemPrompt!, /You drive a real web browser/);
-    assert.match(result.systemPrompt!, /subagent tool or \/plan/);
+    assert.match(result.systemPrompt!, /subagent/);
+    assert.match(result.systemPrompt!, /\/plan/);
   });
 });

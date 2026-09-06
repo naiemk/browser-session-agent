@@ -52,14 +52,43 @@ export interface RegisteredCommand {
   handler: (args: string, ctx: ExtensionContext) => Promise<void> | void;
 }
 
+export interface CustomSessionMessage {
+  customType: string;
+  content: string;
+  display?: boolean;
+  details?: unknown;
+}
+
+export interface SendMessageOptions {
+  triggerTurn?: boolean;
+  deliverAs?: "steer" | "followUp" | "nextTurn";
+}
+
+export interface SendUserMessageOptions {
+  deliverAs?: "steer" | "followUp";
+}
+
 export interface ExtensionContext {
   cwd?: string;
+  /** True in TUI and hosted chat. Plan-mode Execute/Stay/Refine needs it. */
+  hasUI?: boolean;
+  /** Present on real Pi; used to restore plan-mode across resume. */
+  sessionManager?: {
+    getEntries(): Array<{
+      type?: string;
+      customType?: string;
+      data?: unknown;
+      message?: unknown;
+    }>;
+  };
   ui: {
     notify(message: string, level?: "info" | "warning" | "error"): void;
     input(title: string, placeholder?: string): Promise<string | undefined>;
     confirm(title: string, message: string): Promise<boolean>;
     select(title: string, options: string[]): Promise<string | undefined>;
-    setStatus?(id: string, text: string): void;
+    setStatus?(id: string, text: string | undefined): void;
+    setWidget?(key: string, content: string[] | undefined): void;
+    editor?(title: string, prefill?: string): Promise<string | undefined>;
   };
 }
 
@@ -70,6 +99,9 @@ export interface ExtensionAPI {
   getActiveTools(): string[];
   getAllTools(): Array<{ name: string }>;
   setActiveTools(names: string[]): void;
+  sendMessage?(message: CustomSessionMessage, options?: SendMessageOptions): void;
+  sendUserMessage?(content: string, options?: SendUserMessageOptions): void;
+  appendEntry?(customType: string, data?: unknown): void;
 }
 
 export function textResult(text: string, details: Record<string, unknown> = {}, isError = false): ToolResult {

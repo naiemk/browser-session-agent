@@ -148,6 +148,34 @@ describe("what the model sees", () => {
     assert.deepEqual(bad.consoleErrors, ["boom"]);
   });
 
+  it("does not throw when verification is missing", () => {
+    const wire = toWireActionResult({
+      ok: true,
+      kind: "navigate",
+      reversibility: "navigational",
+      reversibilityReason: "url change",
+      observation: observation(),
+    } as ActionResult);
+    assert.equal(wire.ok, false);
+    assert.deepEqual(wire.why, ["internal: verification missing"]);
+  });
+
+  it("does not throw on holey verification checks", () => {
+    const wire = toWireActionResult({
+      ok: false,
+      kind: "click",
+      reversibility: "reversible",
+      reversibilityReason: "view change",
+      observation: observation(),
+      verification: {
+        status: "failed",
+        checks: [undefined as never, { passed: false, detail: "nothing changed", predicate: "pageDelta" }],
+      },
+    });
+    assert.equal(wire.ok, false);
+    assert.deepEqual(wire.why, ["pageDelta: nothing changed"]);
+  });
+
   it("serialises without indentation, because indentation is billed", () => {
     const text = wireText(toWireObservation(observation()));
     assert.equal(text.includes("\n"), false);

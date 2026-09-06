@@ -44,7 +44,7 @@ function toolNamed(browser: BrowserPort, name: string) {
 }
 
 describe("act expect at the tool boundary", () => {
-  it("drops a malformed navigate expect rather than evaluating url includes \"undefined\"", async () => {
+  it("rejects a malformed navigate expect rather than evaluating url includes \"undefined\"", async () => {
     const tool = toolNamed(actBrowser("https://example.test/start"), TOOL_ACT);
     const result = await tool.execute("t1", {
       kind: "navigate",
@@ -53,27 +53,28 @@ describe("act expect at the tool boundary", () => {
     });
     const text = result.content.map((part) => part.text).join("");
     assert.doesNotMatch(text, /undefined/);
-    const details = result.details as { ok?: boolean; recovery?: string };
-    assert.equal(details.ok, true);
-    assert.doesNotMatch(details.recovery ?? "", /undefined/);
+    const details = result.details as { error?: string };
+    assert.match(details.error ?? "", /needs a string "text"/);
   });
 
-  it("does not throw on an unknown or empty expect", async () => {
+  it("rejects an unknown expect kind instead of crashing", async () => {
     const tool = toolNamed(actBrowser("https://example.test/start"), TOOL_ACT);
     const changed = await tool.execute("t1", {
       kind: "navigate",
       url: "https://example.test/jobs",
-      expect: { kind: "changed" },
+      expect: { kind: "download" },
     });
-    assert.equal((changed.details as { ok?: boolean }).ok, true);
+    const details = changed.details as { error?: string };
+    assert.match(details.error ?? "", /unknown predicate kind "download"/);
+    assert.match(details.error ?? "", /Allowed kinds:/);
+    assert.doesNotMatch(JSON.stringify(changed.details), /Cannot read properties of undefined/);
 
     const empty = await tool.execute("t2", {
       kind: "navigate",
       url: "https://example.test/jobs",
       expect: {},
     });
-    assert.equal((empty.details as { ok?: boolean }).ok, true);
-    assert.doesNotMatch(JSON.stringify(empty.details), /Cannot read properties of undefined/);
+    assert.match((empty.details as { error?: string }).error ?? "", /missing "kind"/);
   });
 });
 

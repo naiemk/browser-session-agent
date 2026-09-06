@@ -8,7 +8,7 @@
 
 import type { CheckResult, PageFacts, Predicate, Verification } from "./types.ts";
 
-const PREDICATE_KINDS = new Set([
+export const PREDICATE_KINDS = new Set([
   "url_includes",
   "title_includes",
   "text_visible",
@@ -24,6 +24,10 @@ const PREDICATE_KINDS = new Set([
   "any",
   "not",
 ]);
+
+export function allowedPredicateKinds(): string {
+  return [...PREDICATE_KINDS].join(", ");
+}
 
 function includesInsensitive(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.toLowerCase());
@@ -257,10 +261,10 @@ export function validatePredicate(value: unknown, path = "predicate"): string[] 
   }
   const pred = value as { kind?: unknown; of?: unknown; [key: string]: unknown };
   if (typeof pred.kind !== "string") {
-    return [`${path}: missing "kind"`];
+    return [`${path}: missing "kind" (allowed: ${allowedPredicateKinds()})`];
   }
   if (!PREDICATE_KINDS.has(pred.kind)) {
-    return [`${path}: unknown predicate kind "${pred.kind}"`];
+    return [`${path}: unknown predicate kind "${pred.kind}" (allowed: ${allowedPredicateKinds()})`];
   }
 
   const errors: string[] = [];
