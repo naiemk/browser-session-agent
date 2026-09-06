@@ -1,4 +1,4 @@
-import type { ExtensionAPI, RegisteredTool } from "./pi-api.ts";
+import type { ExtensionAPI, ExtensionContext, RegisteredTool } from "./pi-api.ts";
 import { bindBrowserCommands } from "./host/bind-extension.ts";
 import { fileEvidence, goalDir } from "./host/evidence.ts";
 import { compactPiContext } from "./host/pi-compaction.ts";
@@ -7,7 +7,7 @@ import { shapePiToolResults } from "./host/pi-shape.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
-import { bindSubagent, CHAT_WORKER_HINT } from "./host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt } from "./host/pi-subagent/bind.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
@@ -43,8 +43,8 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   // which turn they belong to. Without it every tool result is stamped turn 0.
   const clock = turnClock();
 
-  const confirm = {
-    ui: undefined as { confirm(title: string, message: string): Promise<boolean> } | undefined,
+  const sessionUi = {
+    current: undefined as ExtensionContext["ui"] | undefined,
   };
 
   const composed = composeAgent({
@@ -59,7 +59,17 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       // Lazy: the browser starts when the agent first needs a page, rather than only as
       // a side effect of starting a run.
       browser: WorkerBrowserPort.lazy(session.worker),
-      askUser: (question) => session.askUser(question),
+      askUser: async (question) => {
+        const typed = sessionUi.current
+          ? await sessionUi.current.input(question, "Your answer")
+          : undefined;
+        try {
+          await session.askUser(question, undefined, typed);
+        } catch {
+          // Chat may ask before /browser-start; the tool still records on the goal ledger.
+        }
+        return typed;
+      },
       evidence,
       turn: () => clock.current(),
       // Named on the environment because a chat has no flags. The default is the format
@@ -67,8 +77,8 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       view: viewByName(process.env.BSA_VIEW),
       policy: "ask",
       approve: async (request) => {
-        if (!confirm.ui) return false;
-        return confirm.ui.confirm(
+        if (!sessionUi.current) return false;
+        return sessionUi.current.confirm(
           "Approve irreversible action",
           `${request.request.kind} — ${request.reason}\n${request.url}`,
         );
@@ -85,7 +95,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     pi.registerTool({
       ...viewed,
       execute: async (id, params, signal, onUpdate, ctx) => {
-        confirm.ui = ctx.ui;
+        sessionUi.current = ctx.ui;
         return execute(id, params, signal, onUpdate, ctx);
       },
     });
@@ -124,9 +134,12 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
 
   // Replace the coding identity rather than appending to it. Appending is why the chat
   // used to answer "what can you do?" like a coding assistant.
-  pi.on("before_agent_start", () => ({
-    systemPrompt: `${composed.systemPrompt}\n\n${CHAT_WORKER_HINT}`,
-  }));
+  pi.on("before_agent_start", async () => {
+    const plan = await standingPlanPrompt(goalId);
+    return {
+      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan].filter(Boolean).join("\n\n"),
+    };
+  });
 
   pi.registerCommand("browser-evidence", {
     description: "Where this session's evidence, metrics and payloads are written",

@@ -29,7 +29,7 @@ const pairHintEl = document.getElementById("pair-hint");
 
 const COMMANDS = [
   ["browser-start", "Start a run"],
-  ["plan", "Write scratch/plan.md"],
+  ["plan", "Plan with Opus"],
   ["browser-status", "Status"],
   ["browser-runs", "Runs"],
   ["browser-pause", "Pause"],

@@ -3,7 +3,7 @@ import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
-import { bindSubagent, CHAT_WORKER_HINT, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -125,9 +125,13 @@ export class OperatorRuntime {
     // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
     bindSubagent(this.api, { goalId: this.evidenceGoalId });
-    this.api.on("before_agent_start", () =>
-      this.browserPrompt ? { systemPrompt: this.browserPrompt } : undefined,
-    );
+    this.api.on("before_agent_start", async () => {
+      if (!this.browserPrompt) return undefined;
+      const plan = await standingPlanPrompt(this.evidenceGoalId);
+      return {
+        systemPrompt: plan ? `${this.browserPrompt}\n\n${plan}` : this.browserPrompt,
+      };
+    });
     this.host.listeners = {
       onNotify: (message, level) => this.send({ type: "notify", message, level }),
       onUiRequest: (request) => this.send({ type: "ui_request", ...request }),
@@ -501,7 +505,7 @@ export class OperatorRuntime {
       },
       tools: {
         browser: new RpcBrowserPort({ call: (method, args) => this.hub.call(method, args) }),
-        askUser: async (question) => this.host.input(question),
+        askUser: async (question) => this.host.input(question, "Your answer"),
         // A chat session is the goal here, same as in the local CLI: the operator's
         // objective spans whatever runs they start inside the conversation.
         evidence: this.evidence,

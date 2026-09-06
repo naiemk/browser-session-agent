@@ -8,17 +8,38 @@ import { Type } from "typebox";
 import { coreRoot, goalPaths } from "../../core/paths.ts";
 import type { ExtensionAPI, ExtensionContext, RegisteredTool } from "../../pi-api.ts";
 import { textResult } from "../../pi-api.ts";
-import { discoverPackagedAgents } from "./discover.ts";
+import { discoverPackagedAgents, findAgent } from "./discover.ts";
 import { runWorker, type WorkerResult } from "./spawn.ts";
 
 export const SUBAGENT_TOOL_NAME = "subagent";
 export const PLAN_COMMAND = "plan";
 export const PLAN_FILE = "plan.md";
+export const PLANNER_AGENT_NAME = "planner";
 /** About 500 tokens; the parent must not ingest the child transcript. */
 export const DIGEST_MAX_CHARS = 2000;
 
 export const CHAT_WORKER_HINT =
-  "For work that spans many entities, or that needs a written brief, a tailored document, or code over files, use the subagent tool or /plan. Those workers share this goal's scratch directory, not the browser profile. You still have no shell.";
+  "/plan spawns a separate planner worker (Opus), not you. You are the operate agent on this session's model. For work that spans many entities, or that needs a written brief, a tailored document, or code over files, use the subagent tool or /plan. Those workers share this goal's scratch directory, not the browser profile. You still have no shell. When a plan exists, follow it. Ask with ask_user and wait; never invent operator facts.";
+
+export function plannerModel(): string {
+  return findAgent(PLANNER_AGENT_NAME)?.model ?? PLANNER_AGENT_NAME;
+}
+
+/** Digest of scratch/plan.md for the operate agent's next turn. Empty if none. */
+export async function standingPlanPrompt(goalId: string, root?: string): Promise<string> {
+  const file = path.join(goalPaths(coreRoot(root), goalId).scratchDir, PLAN_FILE);
+  let body = "";
+  try {
+    body = await readFile(file, "utf8");
+  } catch {
+    return "";
+  }
+  if (!body.trim()) return "";
+  return [
+    `A planner worker (${plannerModel()}) already wrote scratch/${PLAN_FILE}. You are the operate agent. Follow this plan. Do not write a new one. Missing inputs: ask_user and wait; never invent defaults.`,
+    digestText(body),
+  ].join("\n\n");
+}
 
 export interface SubagentHostOptions {
   goalId: string;
@@ -76,8 +97,10 @@ async function savePlanIfNeeded(scratchDir: string, text: string): Promise<strin
 
 function formatWorkerReply(result: WorkerResult, scratchDir: string): string {
   const body = result.text.trim() || result.stderr.trim() || "(no output)";
+  const model = findAgent(result.agent)?.model;
+  const who = model ? `${result.agent} (${model})` : result.agent;
   const lines = [
-    `${result.agent} finished (exit ${result.exitCode}${result.aborted ? ", aborted" : ""}).`,
+    `${who} finished (exit ${result.exitCode}${result.aborted ? ", aborted" : ""}).`,
     `Scratch: ${scratchDir}`,
     "",
     digestText(body),
@@ -134,19 +157,27 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
 export function bindPlanCommand(pi: ExtensionAPI, options: SubagentHostOptions): void {
   const runtime = options.runtime ?? defaultRuntime();
   pi.registerCommand(PLAN_COMMAND, {
-    description: "Spawn the planner worker and write scratch/plan.md",
+    description: "Spawn the Opus planner worker and write scratch/plan.md",
     async handler(args, ctx: ExtensionContext) {
       const task = args.trim();
       if (!task) {
         ctx.ui.notify("Usage: /plan <what to plan>", "warning");
         return;
       }
+      const model = plannerModel();
+      ctx.ui.notify(
+        `Starting planner worker (${model}). This is not the operate agent.`,
+        "info",
+      );
+      ctx.ui.setStatus?.("planner", `Planner (${model})…`);
       const scratchDir = await ensureScratch(options.goalId, options.root);
       const result = await runtime.run({
-        agentName: "planner",
+        agentName: PLANNER_AGENT_NAME,
         task,
         scratchDir,
       });
+      ctx.ui.setStatus?.("planner", "");
+      const failed = result.exitCode !== 0 || result.aborted;
       const planFile = await savePlanIfNeeded(scratchDir, result.text);
       let body = "";
       try {
@@ -154,15 +185,21 @@ export function bindPlanCommand(pi: ExtensionAPI, options: SubagentHostOptions):
       } catch {
         body = "";
       }
-      if (!body.trim()) {
+      if (failed || !body.trim()) {
         ctx.ui.notify(
-          result.stderr.trim() || "Planner produced no plan.md.",
+          `Planner (${model}) did not write a plan. The operate agent was not switched.\n${
+            result.stderr.trim() || result.text.trim() || "Planner produced no plan.md."
+          }`,
           "error",
         );
         return;
       }
       const digest = digestText(result.text.trim() || body);
-      ctx.ui.notify(`Plan written to ${planFile}\n\n${digest}`);
+      ctx.ui.notify(`Planner (${model}) wrote ${planFile}`, "info");
+      await ctx.ui.confirm(
+        `Planner (${model}) finished`,
+        `${digest}\n\nThis was a separate planner worker, not the operate agent. Send a message to execute with the model this session selected.`,
+      );
     },
   });
 }
