@@ -1,6 +1,10 @@
 /**
  * Isolated Pi JSON subprocess. Fresh argv: not the parent web server, not the TUI
  * flags that stripped coding tools and loaded the browser extension.
+ *
+ * Matches Pi's official subagent spawn: `--mode json -p --no-session` and `Task: …`.
+ * `--no-extensions` is the required exception so the child does not load the browser
+ * parent; `-e pi-model-auto` keeps Router floors. A floor is never a positional `@ultra`.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -31,7 +35,13 @@ export interface WorkerResult {
   exitCode: number;
   stderr: string;
   aborted: boolean;
+  errorMessage?: string;
+  stopReason?: string;
 }
+
+export type WorkerUpdate = (update: {
+  content: Array<{ type: "text"; text: string }>;
+}) => void;
 
 export type SpawnImpl = (
   command: string,
@@ -60,9 +70,8 @@ export function loadsModelAuto(paths: readonly string[]): boolean {
 }
 
 /**
- * `--model @ultra` is not a Pi model. With the router loaded, select `pi-router/auto`
- * and prefix the first (only) turn. Without it, omit `--model` rather than crashing.
- * Concrete `provider/id` still passes through.
+ * `--model @ultra` is not a Pi model. With the router loaded, select `pi-router/auto`.
+ * Without it, omit `--model` rather than crashing. Concrete `provider/id` still passes through.
  */
 export function childModelFlag(agentModel: string | undefined, extraExtensions: readonly string[]): string | undefined {
   const floor = capabilityFloor(agentModel);
@@ -71,11 +80,19 @@ export function childModelFlag(agentModel: string | undefined, extraExtensions: 
   return concrete || undefined;
 }
 
-export function childPrompt(task: string, agentModel: string | undefined, extraExtensions: readonly string[]): string {
-  const body = `Task: ${task}`;
-  const floor = capabilityFloor(agentModel);
-  if (floor && loadsModelAuto(extraExtensions)) return `@${floor} ${body}`;
-  return body;
+/** Positional user prompt. Never starts with `@` — Pi would treat that as a file include. */
+export function childPrompt(task: string): string {
+  return `Task: ${task}`;
+}
+
+/** Body of a Pi `@file` include so the child's first user message can carry a Router floor. */
+export function floorTaskFileBody(task: string, floor: string): string {
+  return `@${floor}\n${childPrompt(task)}\n`;
+}
+
+/** True when a spawn argv positional is a Router floor stuffed where Pi expects a path. */
+export function isFloorPositional(arg: string): boolean {
+  return /^@(low|medium|high|ultra)(\s|$)/i.test(arg);
 }
 
 /** Map `--model @ultra` in a Pi argv to `pi-router/auto`, or drop the flag. */
@@ -122,6 +139,8 @@ export function buildChildInvocation(input: {
   task: string;
   promptFile: string;
   extraExtensions?: string[];
+  /** When set, passed as `@/abs/path` (Pi file include). Otherwise `Task: …`. */
+  userFile?: string;
 }): ChildInvocation {
   const args = [
     input.piEntry,
@@ -140,38 +159,86 @@ export function buildChildInvocation(input: {
   if (input.agent.thinking) args.push("--thinking", input.agent.thinking);
   if (input.agent.tools.length > 0) args.push("--tools", input.agent.tools.join(","));
   args.push("--append-system-prompt", input.promptFile);
-  args.push(childPrompt(input.task, input.agent.model, extra));
+  if (input.userFile) {
+    args.push(`@${input.userFile}`);
+  } else {
+    args.push(childPrompt(input.task));
+  }
   return { command: process.execPath, args };
 }
 
-function textFromMessages(messages: Array<{ role?: string; content?: unknown }>): string {
+export interface JsonCapture {
+  messages: Array<{ role?: string; content?: unknown; errorMessage?: string; stopReason?: string }>;
+  errorMessage?: string;
+  stopReason?: string;
+  tools: string[];
+}
+
+function textFromMessages(messages: JsonCapture["messages"]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg?.role !== "assistant") continue;
     const content = msg.content;
     if (typeof content === "string" && content.trim()) return content;
-    if (!Array.isArray(content)) continue;
-    for (const part of content) {
-      if (part && typeof part === "object" && (part as { type?: string }).type === "text") {
-        const text = (part as { text?: string }).text;
-        if (text?.trim()) return text;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part && typeof part === "object" && (part as { type?: string }).type === "text") {
+          const text = (part as { text?: string }).text;
+          if (text?.trim()) return text;
+        }
       }
     }
+    if (msg.errorMessage?.trim()) return msg.errorMessage;
   }
   return "";
 }
 
-export function parsePiJsonLine(line: string, messages: Array<{ role?: string; content?: unknown }>): void {
+export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture["messages"]): void {
+  const sink: JsonCapture = Array.isArray(capture)
+    ? { messages: capture, tools: [] }
+    : capture;
+  sink.tools ??= [];
   const trimmed = line.trim();
   if (!trimmed) return;
-  let event: { type?: string; message?: { role?: string; content?: unknown } };
+  let event: {
+    type?: string;
+    toolName?: string;
+    tool_name?: string;
+    message?: { role?: string; content?: unknown; errorMessage?: string; stopReason?: string };
+    messages?: JsonCapture["messages"];
+    errorMessage?: string;
+    stopReason?: string;
+  };
   try {
     event = JSON.parse(trimmed) as typeof event;
   } catch {
     return;
   }
+
+  if (event.message?.errorMessage) sink.errorMessage = event.message.errorMessage;
+  if (event.message?.stopReason) sink.stopReason = event.message.stopReason;
+  if (typeof event.errorMessage === "string") sink.errorMessage = event.errorMessage;
+  if (typeof event.stopReason === "string") sink.stopReason = event.stopReason;
+
+  const toolName = event.toolName ?? event.tool_name;
+  if (
+    (event.type === "tool_execution_start" || event.type === "tool_start" || event.type === "tool_call") &&
+    typeof toolName === "string" &&
+    toolName.trim()
+  ) {
+    sink.tools.push(toolName.trim());
+  }
+
   if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
-    messages.push(event.message);
+    sink.messages.push(event.message);
+    return;
+  }
+  if (event.type === "agent_end") {
+    if (Array.isArray(event.messages)) {
+      for (const message of event.messages) sink.messages.push(message);
+    } else if (event.message) {
+      sink.messages.push(event.message);
+    }
   }
 }
 
@@ -185,6 +252,7 @@ export interface RunWorkerOptions {
   piEntry?: string;
   extraExtensions?: string[];
   agents?: AgentConfig[];
+  onUpdate?: WorkerUpdate;
 }
 
 export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult> {
@@ -208,21 +276,40 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
   const extra = options.extraExtensions ?? [modelAutoExtensionPath()].filter(
     (item): item is string => Boolean(item),
   );
+  const floor = capabilityFloor(agent.model);
+  let userFile: string | undefined;
+  if (floor && loadsModelAuto(extra)) {
+    userFile = path.join(tmp, "task.txt");
+    await writeFile(userFile, floorTaskFileBody(options.task, floor), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  }
+
   const invocation = buildChildInvocation({
     piEntry: options.piEntry ?? piCliPath(),
     agent,
     task: options.task,
     promptFile,
     extraExtensions: extra,
+    userFile,
   });
 
   const spawnImpl = options.spawnImpl ?? (spawn as SpawnImpl);
-  const messages: Array<{ role?: string; content?: unknown }> = [];
+  const capture: JsonCapture = { messages: [], tools: [] };
   let stderr = "";
   let aborted = false;
   const timeoutMs = options.timeoutMs ?? Number(process.env.BSA_SUBAGENT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 
+  const emitUpdate = () => {
+    if (!options.onUpdate) return;
+    const text = textFromMessages(capture.messages) || capture.errorMessage || "(running…)";
+    const tools = capture.tools.length > 0 ? `\n${capture.tools.slice(-12).join("\n")}` : "";
+    options.onUpdate({ content: [{ type: "text", text: `${text}${tools}` }] });
+  };
+
   try {
+    options.onUpdate?.({ content: [{ type: "text", text: "(running…)" }] });
     const exitCode = await new Promise<number>((resolve) => {
       const proc = spawnImpl(invocation.command, invocation.args, {
         cwd: options.scratchDir,
@@ -234,7 +321,7 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       const finish = (code: number) => {
         if (settled) return;
         settled = true;
-        if (buffer.trim()) parsePiJsonLine(buffer, messages);
+        if (buffer.trim()) parsePiJsonLine(buffer, capture);
         resolve(code);
       };
 
@@ -242,7 +329,10 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
         buffer += String(chunk);
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-        for (const line of lines) parsePiJsonLine(line, messages);
+        for (const line of lines) {
+          parsePiJsonLine(line, capture);
+          emitUpdate();
+        }
       });
       proc.stderr?.on("data", (chunk: Buffer | string) => {
         stderr += String(chunk);
@@ -270,12 +360,16 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       });
     });
 
+    const text =
+      textFromMessages(capture.messages) || capture.errorMessage?.trim() || stderr.trim();
     return {
       agent: agent.name,
-      text: textFromMessages(messages),
+      text,
       exitCode,
       stderr,
       aborted,
+      errorMessage: capture.errorMessage,
+      stopReason: capture.stopReason,
     };
   } finally {
     await rm(tmp, { recursive: true, force: true });

@@ -116,14 +116,38 @@ export interface WireActionResult {
 }
 
 export function toWireActionResult(result: ActionResult): WireActionResult {
-  const failed = result.verification.checks.filter((check) => !check.passed);
+  const checks = result.verification?.checks;
+  const failed = Array.isArray(checks)
+    ? checks.filter((check) => check && !check.passed)
+    : [];
+  const observation = result.observation
+    ? toWireObservation(result.observation)
+    : toWireObservation({
+        id: "missing",
+        tabId: "",
+        url: "",
+        title: "",
+        controls: [],
+        dialogs: [],
+        errors: [],
+        consoleErrors: [],
+        failedRequests: [],
+        changes: [],
+        capturedAt: "",
+      });
   const wire: WireActionResult = {
     ok: result.ok,
     reversibility: result.reversibility,
-    observation: toWireObservation(result.observation),
+    observation,
   };
+  if (!result.verification || !Array.isArray(checks)) {
+    wire.ok = false;
+    wire.why = ["internal: verification missing"];
+  }
 
-  const why = omitEmpty(failed.map((check) => `${check.predicate}: ${check.detail}`));
+  const why = omitEmpty(
+    failed.map((check) => `${check.predicate}: ${check.detail}`),
+  );
   const consoleErrors = omitEmpty(result.failure?.consoleErrors?.slice(-3));
   const failedRequests = omitEmpty(result.failure?.failedRequests?.slice(-3));
 

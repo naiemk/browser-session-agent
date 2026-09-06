@@ -1,4 +1,12 @@
-import type { ExtensionAPI, ExtensionContext, RegisteredCommand, RegisteredTool } from "../../src/pi-api.ts";
+import type {
+  CustomSessionMessage,
+  ExtensionAPI,
+  ExtensionContext,
+  RegisteredCommand,
+  RegisteredTool,
+  SendMessageOptions,
+  SendUserMessageOptions,
+} from "../../src/pi-api.ts";
 
 export interface FakePi extends ExtensionAPI {
   tools: Map<string, RegisteredTool>;
@@ -6,6 +14,11 @@ export interface FakePi extends ExtensionAPI {
   active: string[];
   answers: string[];
   notifications: string[];
+  userMessages: string[];
+  customMessages: CustomSessionMessage[];
+  entries: Array<{ customType: string; data?: unknown }>;
+  widgets: Map<string, string[] | undefined>;
+  statuses: Map<string, string | undefined>;
   ctx: ExtensionContext;
   /**
    * Event handlers, recorded rather than discarded, and many per event.
@@ -17,7 +30,7 @@ export interface FakePi extends ExtensionAPI {
    * A list per event, because Pi keeps a list: the extension registers two `session_start`
    * handlers, and a double that kept only the last would silently drop one.
    */
-  handlers: Map<string, Array<(event: unknown) => unknown>>;
+  handlers: Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>;
   /** End loading and emit `session_start`, the way a real session does. */
   startSession(): Promise<void>;
   /** Fire one event, returning what each handler returned. */
@@ -28,7 +41,12 @@ export function createFakePi(answers: string[] = []): FakePi {
   const tools = new Map<string, RegisteredTool>();
   const commands = new Map<string, RegisteredCommand>();
   const notifications: string[] = [];
-  const handlers = new Map<string, Array<(event: unknown) => unknown>>();
+  const userMessages: string[] = [];
+  const customMessages: CustomSessionMessage[] = [];
+  const entries: Array<{ customType: string; data?: unknown }> = [];
+  const widgets = new Map<string, string[] | undefined>();
+  const statuses = new Map<string, string | undefined>();
+  const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
   const pending = [...answers];
   let active = ["read", "bash", "write", "edit"];
   let loading = true;
@@ -61,7 +79,7 @@ export function createFakePi(answers: string[] = []): FakePi {
     const results: unknown[] = [];
     let current = payload;
     for (const handler of handlers.get(event) ?? []) {
-      const result = await handler(current);
+      const result = await handler(current, ctx);
       results.push(result);
       const messages = (result as { messages?: unknown } | undefined)?.messages;
       if (Array.isArray(messages) && current && typeof current === "object") {
@@ -73,6 +91,16 @@ export function createFakePi(answers: string[] = []): FakePi {
 
   const ctx: ExtensionContext = {
     cwd: process.cwd(),
+    hasUI: true,
+    sessionManager: {
+      getEntries() {
+        return entries.map((entry) => ({
+          type: "custom",
+          customType: entry.customType,
+          data: entry.data,
+        }));
+      },
+    },
     ui: {
       notify(message) {
         notifications.push(message);
@@ -86,10 +114,19 @@ export function createFakePi(answers: string[] = []): FakePi {
       async select(_title, options) {
         return options[0];
       },
+      setStatus(id, text) {
+        statuses.set(id, text);
+      },
+      setWidget(key, content) {
+        widgets.set(key, content);
+      },
+      async editor(_title, _prefill) {
+        return pending.shift();
+      },
     },
   };
 
-  return {
+  const api: FakePi = {
     tools,
     commands,
     get active() {
@@ -100,6 +137,11 @@ export function createFakePi(answers: string[] = []): FakePi {
     },
     answers: pending,
     notifications,
+    userMessages,
+    customMessages,
+    entries,
+    widgets,
+    statuses,
     handlers,
     ctx,
     emit,
@@ -115,7 +157,7 @@ export function createFakePi(answers: string[] = []): FakePi {
     },
     on(event, handler) {
       const list = handlers.get(event as string) ?? [];
-      list.push(handler as (value: unknown) => unknown);
+      list.push(handler as (value: unknown, context: ExtensionContext) => unknown);
       handlers.set(event as string, list);
     },
     getActiveTools() {
@@ -130,7 +172,19 @@ export function createFakePi(answers: string[] = []): FakePi {
       whileLoading("setActiveTools");
       active = [...names];
     },
+    sendMessage(message: CustomSessionMessage, options?: SendMessageOptions) {
+      customMessages.push(message);
+      if (options?.triggerTurn) userMessages.push(message.content);
+    },
+    sendUserMessage(content: string, _options?: SendUserMessageOptions) {
+      userMessages.push(content);
+    },
+    appendEntry(customType, data) {
+      entries.push({ customType, data });
+    },
   };
+
+  return api;
 }
 
 export async function runCommand(pi: FakePi, name: string, args = ""): Promise<void> {

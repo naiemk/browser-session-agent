@@ -7,6 +7,7 @@ import { shapePiToolResults } from "./host/pi-shape.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
+import { bindPlanMode } from "./host/pi-plan-mode.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt } from "./host/pi-subagent/bind.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
@@ -102,7 +103,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     names.push((tool as unknown as { name: string }).name);
   }
 
-  names.push(bindSubagent(pi, { goalId }));
+  names.push(...bindSubagent(pi, { goalId }));
 
   /*
    * Compaction, then shape, then metering.
@@ -140,6 +141,11 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan].filter(Boolean).join("\n\n"),
     };
   });
+
+  // After the session_start that restores browser tools, so a resumed plan-mode
+  // can filter act off rather than being overwritten. After the identity hook, so
+  // before_agent_start still yields the browser system prompt as the first result.
+  bindPlanMode(pi);
 
   pi.registerCommand("browser-evidence", {
     description: "Where this session's evidence, metrics and payloads are written",

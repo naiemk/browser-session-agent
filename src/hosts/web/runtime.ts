@@ -3,7 +3,8 @@ import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
-import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
+import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
+import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, SCRATCH_WRITE_TOOL_NAME, SUBAGENT_TOOL_NAME } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -63,9 +64,11 @@ export class OperatorRuntime {
   readonly api: ExtensionAPI & {
     tools: Map<string, import("../../pi-api.ts").RegisteredTool>;
     commands: Map<string, import("../../pi-api.ts").RegisteredCommand>;
+    emit: (event: string, payload?: unknown) => Promise<unknown[]>;
   };
   readonly handle: RpcSessionHandle;
   private pi: PiLike | null = null;
+  private planMode: PlanModeHandle | null = null;
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
   private send: (message: ChatServerMessage) => void;
@@ -125,17 +128,25 @@ export class OperatorRuntime {
     // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
     bindSubagent(this.api, { goalId: this.evidenceGoalId });
+    this.planMode = bindPlanMode(this.api);
     this.api.on("before_agent_start", async () => {
       if (!this.browserPrompt) return undefined;
       const plan = await standingPlanPrompt(this.evidenceGoalId);
+      const injection = this.planMode?.injection();
       return {
-        systemPrompt: plan ? `${this.browserPrompt}\n\n${plan}` : this.browserPrompt,
+        systemPrompt: [this.browserPrompt, plan, injection].filter(Boolean).join("\n\n"),
       };
     });
     this.host.listeners = {
       onNotify: (message, level) => this.send({ type: "notify", message, level }),
       onUiRequest: (request) => this.send({ type: "ui_request", ...request }),
-      onToolsChanged: () => this.send({ type: "stateSync", state: this.state() }),
+      onToolsChanged: () => {
+        this.syncSessionTools();
+        this.send({ type: "stateSync", state: this.state() });
+      },
+      onUserMessage: (text) => {
+        void this.prompt(text);
+      },
     };
   }
 
@@ -227,10 +238,10 @@ export class OperatorRuntime {
         });
         await applyHostedApiKeys(modelRuntime);
         this.modelRegistry = new ModelRegistry(modelRuntime);
-        const extras = await resolveCostExtensions();
+        const costExtensions = await resolveCostExtensions();
         const cwd = this.options.cwd ?? process.cwd();
         const agentDir = this.options.agentDir ?? getAgentDir();
-        const loader = new DefaultResourceLoader({ cwd, agentDir, additionalExtensionPaths: extras });
+        const loader = new DefaultResourceLoader({ cwd, agentDir, additionalExtensionPaths: costExtensions });
         await loader.reload();
 
         /*
@@ -246,8 +257,11 @@ export class OperatorRuntime {
          * task does not. What the agent is, and what drives it, are different questions.
          */
         const composedTools = this.composeBrowserAgent().map((tool) => this.toPiTool(tool as never));
-        const worker = this.api.tools.get(SUBAGENT_TOOL_NAME);
-        const customTools = worker ? [...composedTools, this.toPiTool(worker)] : composedTools;
+        const parentTools = [SUBAGENT_TOOL_NAME, SCRATCH_WRITE_TOOL_NAME]
+          .map((name) => this.api.tools.get(name))
+          .filter((tool): tool is import("../../pi-api.ts").RegisteredTool => Boolean(tool))
+          .map((tool) => this.toPiTool(tool));
+        const customTools = [...composedTools, ...parentTools];
         const result = await createAgentSession({
           cwd,
           agentDir,
@@ -271,7 +285,12 @@ export class OperatorRuntime {
           this.send({ type: "agentEvent", event: normalizeAgentEvent(event) });
           const err = assistantErrorFromEvent(event);
           if (err) this.send({ type: "error", message: err, code: "pi_turn_error" });
+          const type = (event as { type?: string }).type;
+          if (type === "agent_end" || type === "turn_end") {
+            void this.api.emit(type, event);
+          }
         });
+        this.syncSessionTools();
         const available = this.modelRegistry.getAvailable();
         this.models = [
           { id: "auto", label: "Pi Router (Auto)" },
@@ -405,7 +424,8 @@ export class OperatorRuntime {
     }
     try {
       this.capPiModel();
-      await this.pi.prompt(trimmed);
+      const extra = this.planMode?.injection();
+      await this.pi.prompt(extra ? `${extra}\n\n${trimmed}` : trimmed);
     } catch (err) {
       this.send({
         type: "error",
@@ -418,6 +438,11 @@ export class OperatorRuntime {
   private capPiModel(): void {
     capHostedModelOutput(this.pi?.model);
     capHostedModelOutput(this.pi?.agent?.state?.model);
+  }
+
+  private syncSessionTools(): void {
+    const names = this.host.getActiveTools();
+    this.pi?.setActiveToolsByName?.(names);
   }
 
   private async runCommand(name: string, args: string): Promise<void> {
@@ -530,7 +555,23 @@ export class OperatorRuntime {
         tool as unknown as { name: string; execute: (id: string, params: unknown) => Promise<unknown> },
       ]),
     );
+    this.activateSessionTools();
     return composed.tools;
+  }
+
+  private sessionToolNames(): string[] {
+    const names = [...this.browserTools.keys()];
+    for (const extra of [SUBAGENT_TOOL_NAME, SCRATCH_WRITE_TOOL_NAME]) {
+      if (!names.includes(extra)) names.push(extra);
+    }
+    return names;
+  }
+
+  /** Browser tools only. Plan mode filters mutations; coding builtins never appear. */
+  private activateSessionTools(): void {
+    const names = this.sessionToolNames();
+    if (this.planMode?.enabled()) this.planMode.adoptParentTools(names);
+    else this.host.setActiveTools(names);
   }
 
   /** The agent's tool names, for the chat UI and for tests that assert the surface. */
@@ -642,10 +683,12 @@ interface PiLike {
   dispose: () => void;
   setThinkingLevel: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
   setModel?: (model: unknown) => Promise<void> | void;
+  setActiveToolsByName?: (names: string[]) => void;
   subscribe?: (listener: (event: unknown) => void) => () => void;
   model?: { provider?: string; id?: string; maxTokens?: number };
   thinkingLevel?: string;
   agent?: { state?: { model?: { maxTokens?: number }; errorMessage?: string } };
+  messages?: unknown[];
 }
 
 function describeModel(model: { provider?: string; id?: string } | undefined): string | undefined {

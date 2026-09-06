@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +15,6 @@ import {
   DIGEST_MAX_CHARS,
   ensureScratch,
   PLAN_COMMAND,
-  PLANNER_AGENT_NAME,
   standingPlanPrompt,
   SUBAGENT_TOOL_NAME,
 } from "../../src/host/pi-subagent/bind.ts";
@@ -23,6 +23,7 @@ import {
   buildChildInvocation,
   childModelFlag,
   childPrompt,
+  floorTaskFileBody,
   modelAutoExtensionPath,
   parsePiJsonLine,
   piCliPath,
@@ -31,8 +32,11 @@ import {
   runWorker,
   type SpawnImpl,
 } from "../../src/host/pi-subagent/spawn.ts";
-import { createExtensionApi, extensionContext, MemoryOperatorHost } from "../../src/host/memory-host.ts";
 import { piEntryPath } from "../../src/hosts/local-cli/launch.ts";
+import { bindPlanMode, PARENT_NEVER_TOOLS, planModeTools } from "../../src/host/pi-plan-mode.ts";
+import { extensionContext } from "../../src/host/memory-host.ts";
+import { NodeHub } from "../../src/hosts/web/hub.ts";
+import { OperatorRuntime } from "../../src/hosts/web/runtime.ts";
 import { createFakePi, runCommand, runTool } from "../helpers/fake-pi.ts";
 import browserSessionAgent from "../../src/extension.ts";
 
@@ -95,7 +99,7 @@ describe("packaged worker agents", () => {
     assert.ok(!planner.tools.includes("bash"), "planner has no bash");
     assert.ok(!planner.tools.includes("write"), "planner has no write");
     assert.ok(planner.tools.includes("read"));
-    assert.equal(planner.model, "anthropic/claude-opus-5");
+    assert.equal(planner.model, "@ultra");
 
     const writer = findAgent("writer", agents)!;
     assert.ok(writer.tools.includes("write"));
@@ -149,18 +153,19 @@ describe("worker spawn isolation", () => {
     assert.equal(invocation.args[invocation.args.indexOf("--tools") + 1], "read,grep,find,ls");
     assert.equal(invocation.args[invocation.args.indexOf("--model") + 1], ROUTER_MODEL);
     assert.equal(invocation.args.includes("@ultra"), false);
-    assert.ok(invocation.args.includes("@ultra Task: apply to three jobs"));
+    assert.ok(invocation.args.includes("Task: apply to three jobs"));
+    assert.equal(
+      invocation.args.some((arg) => /^@(low|medium|high|ultra)(\s|$)/i.test(arg)),
+      false,
+      "a positional @ultra is a file include, not a Router floor",
+    );
   });
 
   it("does not pass @ultra as --model", () => {
     assert.equal(childModelFlag("@ultra", ["/opt/pi-model-auto/src/index.ts"]), ROUTER_MODEL);
     assert.equal(childModelFlag("@medium", []), undefined);
-    assert.equal(childModelFlag(findAgent("planner")!.model, []), "anthropic/claude-opus-5");
-    assert.equal(
-      childPrompt("three jobs", "@ultra", ["/opt/pi-model-auto/src/index.ts"]),
-      "@ultra Task: three jobs",
-    );
-    assert.equal(childPrompt("three jobs", "@ultra", []), "Task: three jobs");
+    assert.equal(childModelFlag("anthropic/claude-opus-4-8", []), "anthropic/claude-opus-4-8");
+    assert.equal(childPrompt("three jobs"), "Task: three jobs");
   });
 
   it("resolves pi-model-auto even when package.json is not exported", () => {
@@ -218,9 +223,50 @@ describe("worker spawn isolation", () => {
       calls[0]?.args.some((arg) => arg.endsWith(path.join("src", "extension.ts"))),
       false,
     );
-    assert.equal(calls[0]?.args[calls[0]!.args.indexOf("--model") + 1], "anthropic/claude-opus-5");
+    assert.equal(calls[0]?.args.includes("--model"), false);
     assert.ok(calls[0]?.args.includes("Task: three jobs"));
     assert.equal(calls[0]?.args.includes("@ultra"), false);
+  });
+
+  it("passes a Router floor as a @file include, never as a positional @ultra Task", async () => {
+    const root = await tempRoot();
+    const scratchDir = await ensureScratch("goal_floor", root);
+    const calls: Array<{ args: string[]; body?: string }> = [];
+    const spawnImpl: SpawnImpl = (_command, args) => {
+      const include = args.find((arg) => arg.startsWith("@") && !arg.startsWith("--"));
+      let body: string | undefined;
+      if (include) {
+        body = readFileSync(include.slice(1), "utf8");
+      }
+      calls.push({ args, body });
+      return fakeChild([
+        JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "done" }],
+          },
+        }),
+      ]);
+    };
+
+    const result = await runWorker({
+      agentName: "coder",
+      task: "unzip the download",
+      scratchDir,
+      spawnImpl,
+      piEntry: "/fake/cli.js",
+      extraExtensions: ["/opt/pi-model-auto/src/index.ts"],
+    });
+    assert.equal(result.exitCode, 0);
+    assert.match(result.text, /done/);
+    const include = calls[0]?.args.find((arg) => arg.startsWith("@") && !arg.startsWith("--"));
+    assert.ok(include?.startsWith("@"));
+    assert.equal(/^@(low|medium|high|ultra)(\s|$)/i.test(include ?? ""), false);
+    assert.equal(include?.includes("Task:"), false);
+    assert.equal(calls[0]?.args[calls[0].args.indexOf("--model") + 1], ROUTER_MODEL);
+    assert.match(calls[0]?.body ?? "", /^@medium\nTask: unzip the download/);
+    assert.equal(floorTaskFileBody("unzip the download", "medium"), calls[0]?.body);
   });
 
   it("parses Pi JSONL assistant text", () => {
@@ -235,89 +281,75 @@ describe("worker spawn isolation", () => {
     );
     assert.equal(messages.length, 1);
   });
+
+  it("streams onUpdate and falls back when the turn is thinking-only", async () => {
+    const root = await tempRoot();
+    const scratchDir = await ensureScratch("goal_update", root);
+    const updates: string[] = [];
+    const spawnImpl: SpawnImpl = () =>
+      fakeChild([
+        JSON.stringify({ type: "tool_execution_start", toolName: "bash" }),
+        JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "thinking", thinking: "..." }],
+            stopReason: "end_turn",
+          },
+        }),
+      ]);
+
+    const result = await runWorker({
+      agentName: "coder",
+      task: "list files",
+      scratchDir,
+      spawnImpl,
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+      onUpdate: (update) => {
+        updates.push(update.content.map((part) => part.text).join(""));
+      },
+    });
+    assert.match(updates[0] ?? "", /running/);
+    assert.equal(updates.some((text) => text.includes("bash")), true);
+    assert.equal(result.text.trim(), "");
+    assert.equal(result.stopReason, "end_turn");
+  });
 });
 
 describe("subagent bind", () => {
-  it("registers /plan, writes plan.md from the stub, and keeps bash off the parent", async () => {
-    const root = await tempRoot();
-    const host = new MemoryOperatorHost();
-    const api = createExtensionApi(host);
-    const notes: string[] = [];
-    const confirms: string[] = [];
-    host.listeners.onNotify = (message) => notes.push(message);
-    host.listeners.onUiRequest = (request) => {
-      if (request.kind === "confirm") {
-        confirms.push(request.title);
-        host.answer(request.requestId, true);
-      }
-    };
-
-    bindSubagent(api, {
-      goalId: "goal_plan",
-      root,
-      runtime: {
-        async run(input) {
-          assert.equal(input.agentName, PLANNER_AGENT_NAME);
-          assert.ok(input.scratchDir.endsWith(`${path.sep}scratch`));
-          return {
-            agent: PLANNER_AGENT_NAME,
-            text: "## Goal\nApply to three roles.\n\n## Digest\nThree roles, one CV.",
-            exitCode: 0,
-            stderr: "",
-            aborted: false,
-          };
-        },
-      },
-    });
-
-    assert.equal(api.tools.has(SUBAGENT_TOOL_NAME), true);
-    assert.equal(api.commands.has(PLAN_COMMAND), true);
-
-    await api.commands.get(PLAN_COMMAND)!.handler(
-      "apply to three roles",
-      extensionContext(host),
-    );
-    const planFile = path.join(root, "goals", "goal_plan", "scratch", "plan.md");
-    const body = await readFile(planFile, "utf8");
-    assert.match(body, /Apply to three roles/);
-    assert.match(notes[0] ?? "", /Starting planner worker \(anthropic\/claude-opus-5\)/);
-    assert.match(notes.at(-1) ?? "", /Planner \(anthropic\/claude-opus-5\) wrote /);
-    assert.match(confirms.at(-1) ?? "", /Planner \(anthropic\/claude-opus-5\) finished/);
-
+  it("registers subagent and scratch_write, keeps bash off the parent", async () => {
     const pi = createFakePi();
     browserSessionAgent(pi);
     await pi.startSession();
     assert.equal(pi.tools.has(SUBAGENT_TOOL_NAME), true);
+    assert.equal(pi.tools.has("scratch_write"), true);
     assert.equal(pi.getActiveTools().includes(SUBAGENT_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes("bash"), false);
-    assert.match(CHAT_WORKER_HINT, /no shell/);
-    assert.match(CHAT_WORKER_HINT, /Opus/);
+    assert.match(CHAT_WORKER_HINT, /coder/);
+    assert.doesNotMatch(CHAT_WORKER_HINT, /Opus/);
+    assert.match(CHAT_WORKER_HINT, /\/plan toggles/);
+    assert.doesNotMatch(CHAT_WORKER_HINT, /you still have no shell/i);
   });
 
-  it("names the planner when it fails, without writing a plan", async () => {
+  it("writes into scratch and refuses paths that escape it", async () => {
     const root = await tempRoot();
-    const host = new MemoryOperatorHost();
-    const api = createExtensionApi(host);
-    const notes: string[] = [];
-    host.listeners.onNotify = (message) => notes.push(message);
-    bindSubagent(api, {
-      goalId: "goal_fail",
-      root,
-      runtime: {
-        async run() {
-          return {
-            agent: PLANNER_AGENT_NAME,
-            text: "",
-            exitCode: 1,
-            stderr: "Model not found",
-            aborted: false,
-          };
-        },
-      },
+    const pi = createFakePi();
+    await pi.startSession();
+    bindSubagent(pi, { goalId: "goal_scratch", root });
+    const written = await runTool(pi, "scratch_write", {
+      name: "notes.md",
+      content: "hello",
     });
-    await api.commands.get(PLAN_COMMAND)!.handler("x", extensionContext(host));
-    assert.match(notes.at(-1) ?? "", /Planner \(anthropic\/claude-opus-5\) did not write a plan/);
-    assert.match(notes.at(-1) ?? "", /operate agent was not switched/);
+    assert.equal(written.isError, false);
+    const file = path.join(root, "goals", "goal_scratch", "scratch", "notes.md");
+    assert.equal(await readFile(file, "utf8"), "hello");
+
+    const escaped = await runTool(pi, "scratch_write", {
+      name: "../events.jsonl",
+      content: "nope",
+    });
+    assert.equal(escaped.isError, true);
   });
 
   it("rejects parallel/chain and unknown agents on the tool", async () => {
@@ -355,28 +387,12 @@ describe("subagent bind", () => {
     assert.match(digest, /\[truncated\]/);
   });
 
-  it("exposes /plan on the hosted chat command bar", async () => {
+  it("exposes /plan on the hosted chat command bar as a toggle", async () => {
     const source = await readFile(path.join(ROOT, "src/hosts/web/public/app.js"), "utf8");
-    assert.match(source, /\["plan", "Plan with Opus"\]/);
+    assert.match(source, /\["plan", "Toggle plan mode"\]/);
   });
 
-  it("usage-notifies when /plan has no argument", async () => {
-    const pi = createFakePi();
-    await pi.startSession();
-    bindSubagent(pi, {
-      goalId: "goal_empty",
-      root: await tempRoot(),
-      runtime: {
-        async run() {
-          throw new Error("should not spawn");
-        },
-      },
-    });
-    await runCommand(pi, PLAN_COMMAND, "  ");
-    assert.match(pi.notifications.at(-1) ?? "", /Usage: \/plan/);
-  });
-
-  it("injects scratch/plan.md into the operate prompt", async () => {
+  it("injects scratch/plan.md into the operate prompt when a file already exists", async () => {
     const root = await tempRoot();
     const scratchDir = await ensureScratch("goal_standing", root);
     await writeFile(
@@ -384,8 +400,7 @@ describe("subagent bind", () => {
       "## Goal\nFind ten people.\n\n## Digest\nInstagram first.\n",
     );
     const snippet = await standingPlanPrompt("goal_standing", root);
-    assert.match(snippet, /planner worker \(anthropic\/claude-opus-5\)/);
-    assert.match(snippet, /You are the operate agent/);
+    assert.match(snippet, /scratch\/plan.md already exists/);
     assert.match(snippet, /Instagram first/);
   });
 
@@ -398,5 +413,113 @@ describe("subagent bind", () => {
     assert.match(text, /"answered":true/);
     assert.match(text, /Instagram, about 20/);
     assert.doesNotMatch(text, /Nobody available/);
+  });
+
+  it("ask_user says the operator dismissed, not that nobody is available", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    const result = await runTool(pi, "ask_user", { question: "Which platform?" });
+    const text = result.content.map((part) => ("text" in part ? part.text : "")).join("");
+    assert.match(text, /Do not invent an answer/);
+    assert.doesNotMatch(text, /Nobody available/);
+  });
+});
+
+describe("in-session plan mode", () => {
+  it("/plan with no args toggles act off without a usage warning", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    assert.equal(pi.getActiveTools().includes("act"), true);
+    await runCommand(pi, PLAN_COMMAND, "  ");
+    assert.doesNotMatch(pi.notifications.join("\n"), /Usage: \/plan/);
+    assert.match(pi.notifications.at(-1) ?? "", /Plan mode on/);
+    assert.equal(pi.getActiveTools().includes("act"), false);
+    assert.equal(pi.getActiveTools().includes("observe"), true);
+    assert.equal(pi.getActiveTools().includes("bash"), false);
+    assert.equal(pi.getActiveTools().includes("write"), false);
+    assert.equal(pi.getActiveTools().includes("edit"), false);
+    assert.equal(pi.statuses.get("plan-mode"), "⏸ plan");
+    await runCommand(pi, PLAN_COMMAND, "");
+    assert.equal(pi.getActiveTools().includes("act"), true);
+    assert.equal(pi.getActiveTools().includes("write"), false);
+  });
+
+  it("Execute restores act after a numbered plan", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "");
+    assert.equal(pi.getActiveTools().includes("act"), false);
+    await pi.emit("agent_end", {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Plan:\n1. Open the jobs page first\n2. Collect every listing next\n",
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(pi.getActiveTools().includes("act"), true);
+    assert.ok(
+      pi.customMessages.some((message) => message.content.includes("Execute the plan")) ||
+        pi.userMessages.some((text) => text.includes("Execute the plan")),
+    );
+  });
+
+  it("/plan with text enables plan mode and sends the task", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "download public photos");
+    assert.equal(pi.getActiveTools().includes("act"), false);
+    assert.equal(pi.userMessages.includes("download public photos"), true);
+  });
+
+  it("never enables bash/write even if they were on the parent tool list", async () => {
+    const pi = createFakePi();
+    await pi.startSession();
+    pi.setActiveTools(["observe", "act", "bash", "write", "ask_user"]);
+    bindPlanMode(pi);
+    await runCommand(pi, PLAN_COMMAND, "");
+    assert.equal(pi.getActiveTools().includes("bash"), false);
+    assert.equal(pi.getActiveTools().includes("write"), false);
+    assert.equal(pi.getActiveTools().includes("act"), false);
+    assert.equal(pi.getActiveTools().includes("observe"), true);
+    for (const name of PARENT_NEVER_TOOLS) {
+      assert.equal(planModeTools(["observe", "act", ...PARENT_NEVER_TOOLS]).includes(name), false);
+    }
+  });
+
+  it("restores plan-mode tool gating after session_start", async () => {
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "");
+    assert.equal(pi.getActiveTools().includes("act"), false);
+    await pi.startSession();
+    assert.equal(pi.getActiveTools().includes("act"), false);
+    assert.equal(pi.getActiveTools().includes("bash"), false);
+    assert.equal(pi.statuses.get("plan-mode"), "⏸ plan");
+  });
+
+  it("hosted /plan toggles the real session tools, not a planner spawn", async () => {
+    const notes: string[] = [];
+    const runtime = new OperatorRuntime(new NodeHub(), (message) => {
+      if (message.type === "notify") notes.push(message.message);
+    });
+    runtime.host.setActiveTools(["observe", "act", "probe", "ask_user", "bash", "write"]);
+    await runtime.api.commands.get(PLAN_COMMAND)?.handler("", extensionContext(runtime.host));
+    assert.doesNotMatch(notes.join("\n"), /Usage: \/plan/);
+    assert.match(notes.join("\n"), /Plan mode on/);
+    assert.equal(runtime.host.getActiveTools().includes("act"), false);
+    assert.equal(runtime.host.getActiveTools().includes("bash"), false);
+    assert.equal(runtime.host.getActiveTools().includes("write"), false);
+    assert.equal(runtime.host.getActiveTools().includes("observe"), true);
   });
 });

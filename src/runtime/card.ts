@@ -70,7 +70,7 @@ export function buildTaskCard(input: TaskCardInput): string {
    * it has is a capability it argues itself out of using - the run where it was asked to
    * open a site and replied that it could not open a browser window started here.
    */
-  return `You drive a real web browser: pages, forms, dialogs, tabs, file uploads. No shell, no repository.
+  return `You drive a real web browser: pages, forms, dialogs, tabs, file uploads. This agent has no shell here and no repository. For files, unzip, public curl, or extracting downloads, call the subagent tool with agent=coder — a real Pi coding agent whose cwd is this goal's scratch directory.
 
 TASK
 ${input.objective}

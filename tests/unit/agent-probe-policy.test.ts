@@ -60,4 +60,12 @@ describe("AGENT-02-T02 probe policy", () => {
     const [message] = validateProbeQuery({ kind: "click", select: "button" });
     assert.match(message ?? "", /probes read, they never act/);
   });
+
+  it("lists valid kinds and that elements need select when kind is missing", () => {
+    const [message] = validateProbeQuery({ select: "input" });
+    assert.match(message ?? "", /missing "kind"/);
+    assert.match(message ?? "", /page_meta/);
+    assert.match(message ?? "", /elements/);
+    assert.match(message ?? "", /select/);
+  });
 });
