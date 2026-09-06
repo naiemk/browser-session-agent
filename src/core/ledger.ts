@@ -58,6 +58,8 @@ export interface LedgerEvent {
     url?: string;
     reversibility?: string;
     reversibilityReason?: string;
+    authorization?: string;
+    authorizationReason?: string;
   };
   after?: { url: string; title: string; changes: string[] };
   outcome?: { ok: boolean; detail?: string };

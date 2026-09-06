@@ -77,7 +77,9 @@ describe("runtime end to end with a mock model", () => {
     const events = await ledger.read();
     assert.ok(events.some((event) => event.action?.kind === "type"));
     assert.ok(
-      events.some((event) => event.type === "approval" && event.action?.reversibility === "committing"),
+      events.some(
+        (event) => event.type === "approval" && event.action?.authorization === "outbound",
+      ),
       "the submit went through the gate",
     );
   });

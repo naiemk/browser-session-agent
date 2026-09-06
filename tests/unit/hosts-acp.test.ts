@@ -42,19 +42,22 @@ describe("ACP harness", () => {
     assert.equal(result.outcome.goalId, "goal_test");
   });
 
-  it("routes a committing ask through request_permission", async () => {
+  it("routes an authorized ask through request_permission", async () => {
     let asked = 0;
     const server = new AcpServer({
       requestPermission: async (request) => {
         asked += 1;
-        assert.match(request.reason, /unmatched|sending/);
+        assert.match(request.reason, /sending or publishing/);
+        assert.equal(request.authorization, "outbound");
         return true;
       },
       runPrompt: async ({ approve }) => {
         const ok = await approve({
           request: { kind: "click", ref: "e1" },
-          reversibility: "committing",
-          reason: "no rule matched \"Import\", so its effect is unknown (unmatched)",
+          reversibility: "unknown",
+          reason: "the control name describes sending or publishing something (outbound-name)",
+          authorization: "outbound",
+          authorizationReason: "the control name describes sending or publishing something (outbound-name)",
           url: "https://example.test/",
         });
         return {
@@ -88,8 +91,10 @@ describe("ACP harness", () => {
       runPrompt: async ({ approve }) => {
         const ok = await approve({
           request: { kind: "click", ref: "e1" },
-          reversibility: "committing",
-          reason: "no rule matched \"Import\", so its effect is unknown (unmatched)",
+          reversibility: "unknown",
+          reason: "the control name describes sending or publishing something (outbound-name)",
+          authorization: "outbound",
+          authorizationReason: "the control name describes sending or publishing something (outbound-name)",
           url: "https://example.test/",
         });
         return {

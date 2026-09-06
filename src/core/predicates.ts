@@ -8,7 +8,7 @@
 
 import type { CheckResult, PageFacts, Predicate, Verification } from "./types.ts";
 
-export const PREDICATE_KINDS = new Set([
+export const PREDICATE_KIND_LIST = [
   "url_includes",
   "title_includes",
   "text_visible",
@@ -23,7 +23,9 @@ export const PREDICATE_KINDS = new Set([
   "all",
   "any",
   "not",
-]);
+] as const;
+
+export const PREDICATE_KINDS = new Set<string>(PREDICATE_KIND_LIST);
 
 export function allowedPredicateKinds(): string {
   return [...PREDICATE_KINDS].join(", ");

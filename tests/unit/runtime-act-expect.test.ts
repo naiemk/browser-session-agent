@@ -85,6 +85,33 @@ describe("act expect at the tool boundary", () => {
     });
     assert.match((empty.details as { error?: string }).error ?? "", /missing "kind"/);
   });
+
+  it("rejects probe's text kind on expect and names text_visible", async () => {
+    const tool = toolNamed(actBrowser("https://example.test/start"), TOOL_ACT);
+    const result = await tool.execute("t1", {
+      kind: "navigate",
+      url: "https://example.test/jobs",
+      expect: { kind: "text", text: "Hello" },
+    });
+    const error = (result.details as { error?: string }).error ?? "";
+    assert.match(error, /unknown predicate kind "text"/);
+    assert.match(error, /text_visible/);
+    assert.doesNotMatch(error, /undefined/);
+  });
+
+  it("closes expect.kind to predicate kinds, not an open string", async () => {
+    const tools = buildTools({
+      browser: actBrowser("https://example.test/start"),
+      tabId: "tab_1",
+      evidence: nullEvidence(),
+    });
+    const act = tools.find((tool) => (tool as { name: string }).name === TOOL_ACT) as {
+      parameters: { properties?: { expect?: { properties?: { kind?: { enum?: string[] } } } } };
+    };
+    const kinds = act.parameters.properties?.expect?.properties?.kind?.enum ?? [];
+    assert.ok(kinds.includes("text_visible"), `kinds: ${kinds.join(",")}`);
+    assert.equal(kinds.includes("text"), false);
+  });
 });
 
 describe("check at the tool boundary", () => {

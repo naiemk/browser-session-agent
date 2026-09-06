@@ -3,7 +3,7 @@
  *
  * Hosts that speak Agent Client Protocol spawn coding harnesses this way. We are that
  * kind of thing for a browser: the host sends a goal and gets a verdict, not click /
- * type / observe. Internal tools stay inside runTask. A committing action under "ask"
+ * type / observe. Internal tools stay inside runTask. An authorized commit under "ask"
  * becomes session/request_permission, which is the gate's approve callback.
  */
 
@@ -297,7 +297,7 @@ function contentLengthFrame(body: string): string {
 /**
  * JSON-RPC over stdio with LSP-style Content-Length framing, which is what ACP uses.
  *
- * Host requests are handled without blocking the reader. A committing act under "ask"
+ * Host requests are handled without blocking the reader. An authorized act under "ask"
  * sends `session/request_permission` back to the host and waits for the matching
  * response; awaiting `handle` inside the read loop would deadlock on that round-trip.
  */

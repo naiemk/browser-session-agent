@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { classifyAction } from "../../src/core/reversibility.ts";
-import type { ActionRequest, Control, Reversibility } from "../../src/core/types.ts";
+import type { ActionRequest, Authorization, Control, Reversibility } from "../../src/core/types.ts";
 
 function control(overrides: Partial<Control> = {}): Control {
   return { ref: "e1", role: "button", name: "Do it", tag: "button", ...overrides };
@@ -9,81 +9,114 @@ function control(overrides: Partial<Control> = {}): Control {
 
 const CLICK: ActionRequest = { kind: "click", ref: "e1" };
 
-/** name, control, expected class. All of these are the same verb: click. */
-const CLICKS: Array<[string, Control, Reversibility]> = [
-  ["Submit application", control({ name: "Submit application", submits: true }), "committing"],
-  ["Send invitation", control({ name: "Send invitation" }), "committing"],
-  ["Publish", control({ name: "Publish" }), "committing"],
-  ["Post", control({ name: "Post" }), "committing"],
-  ["Pay now", control({ name: "Pay now" }), "committing"],
-  ["Place order", control({ name: "Place order" }), "committing"],
-  ["Transfer funds", control({ name: "Transfer funds" }), "committing"],
-  ["Delete account", control({ name: "Delete account" }), "committing"],
-  ["Remove card", control({ name: "Remove card" }), "committing"],
-  ["Revoke access", control({ name: "Revoke access" }), "committing"],
-  ["Cancel subscription", control({ name: "Cancel subscription" }), "committing"],
-  ["Unsubscribe", control({ name: "Unsubscribe" }), "committing"],
-  ["Cancel", control({ name: "Cancel" }), "committing"],
-  ["Discard", control({ name: "Discard draft" }), "committing"],
+/** name, control, recoverability, authorization. All of these are the same verb: click. */
+const CLICKS: Array<[string, Control, Reversibility, Authorization]> = [
+  ["Submit application", control({ name: "Submit application", submits: true }), "unknown", "outbound"],
+  ["Send invitation", control({ name: "Send invitation" }), "unknown", "outbound"],
+  ["Publish", control({ name: "Publish" }), "unknown", "outbound"],
+  ["Post", control({ name: "Post" }), "unknown", "outbound"],
+  ["Pay now", control({ name: "Pay now" }), "unknown", "outbound"],
+  ["Place order", control({ name: "Place order" }), "unknown", "outbound"],
+  ["Transfer funds", control({ name: "Transfer funds" }), "unknown", "outbound"],
+  ["Delete account", control({ name: "Delete account" }), "unknown", "destructive"],
+  ["Remove card", control({ name: "Remove card" }), "unknown", "destructive"],
+  ["Revoke access", control({ name: "Revoke access" }), "unknown", "destructive"],
+  ["Cancel subscription", control({ name: "Cancel subscription" }), "unknown", "destructive"],
+  ["Unsubscribe", control({ name: "Unsubscribe" }), "unknown", "destructive"],
+  ["Cancel", control({ name: "Cancel" }), "unknown", "none"],
+  ["Discard", control({ name: "Discard draft" }), "unknown", "none"],
 
-  ["Show more", control({ name: "Show more" }), "reversible"],
-  ["Expand details", control({ name: "Expand details" }), "reversible"],
-  ["Next page", control({ name: "Next page" }), "reversible"],
-  ["Filter results", control({ name: "Filter results" }), "reversible"],
-  ["Sort by date", control({ name: "Sort by date" }), "reversible"],
-  ["Open menu", control({ name: "Open menu" }), "reversible"],
-  ["Toggle dark mode", control({ name: "Toggle dark mode" }), "reversible"],
-  ["Search", control({ name: "Search", submits: true }), "reversible"],
-  ["Dismiss", control({ name: "Dismiss" }), "reversible"],
-  ["Maybe later", control({ name: "Maybe later" }), "reversible"],
-  ["Not now", control({ name: "Not now" }), "reversible"],
-  ["Skip", control({ name: "Skip" }), "reversible"],
-  ["Tags", control({ name: "Tags" }), "reversible"],
-  ["profile pic", control({ name: "profile pic" }), "reversible"],
-  ["Following", control({ name: "Following" }), "reversible"],
+  ["Show more", control({ name: "Show more" }), "reversible", "none"],
+  ["Expand details", control({ name: "Expand details" }), "reversible", "none"],
+  ["Next page", control({ name: "Next page" }), "reversible", "none"],
+  ["Filter results", control({ name: "Filter results" }), "reversible", "none"],
+  ["Sort by date", control({ name: "Sort by date" }), "reversible", "none"],
+  ["Open menu", control({ name: "Open menu" }), "reversible", "none"],
+  ["Toggle dark mode", control({ name: "Toggle dark mode" }), "reversible", "none"],
+  ["Search", control({ name: "Search", submits: true }), "reversible", "none"],
+  ["Dismiss", control({ name: "Dismiss" }), "reversible", "none"],
+  ["Maybe later", control({ name: "Maybe later" }), "reversible", "none"],
+  ["Not now", control({ name: "Not now" }), "reversible", "none"],
+  ["Skip", control({ name: "Skip" }), "reversible", "none"],
+  ["Tags", control({ name: "Tags" }), "reversible", "none"],
+  ["profile pic", control({ name: "profile pic" }), "reversible", "none"],
+  ["Following", control({ name: "Following" }), "reversible", "none"],
 
-  ["Import", control({ name: "Import" }), "committing"],
+  ["Import", control({ name: "Import" }), "unknown", "none"],
 
-  ["a link", control({ name: "Careers", tag: "a", href: "https://example.test/jobs" }), "navigational"],
+  [
+    "a link",
+    control({ name: "Careers", tag: "a", href: "https://example.test/jobs" }),
+    "navigational",
+    "none",
+  ],
 ];
 
 describe("AGENT-05-T01 reversibility judgment", () => {
-  for (const [label, target, expected] of CLICKS) {
-    it(`classifies clicking "${label}" as ${expected}`, () => {
+  for (const [label, target, recoverability, authorization] of CLICKS) {
+    it(`classifies clicking "${label}" as ${recoverability} / ${authorization}`, () => {
       const result = classifyAction(CLICK, target);
-      assert.equal(result.reversibility, expected, result.reason);
+      assert.equal(result.reversibility, recoverability, result.reason);
+      assert.equal(result.authorization, authorization, result.authorizationReason);
       assert.ok(result.reason.length > 0, "every classification carries an audit reason");
+      assert.ok(result.authorizationReason.length > 0);
+      assert.ok(result.ruleId.length > 0);
+      assert.ok(result.authorizationRuleId.length > 0);
     });
   }
 
   it("gives the same verb different classes for different targets", () => {
     const submit = classifyAction(CLICK, control({ name: "Submit application", submits: true }));
     const expand = classifyAction(CLICK, control({ name: "Show more" }));
-    assert.equal(submit.reversibility, "committing");
+    assert.equal(submit.reversibility, "unknown");
+    assert.equal(submit.authorization, "outbound");
     assert.equal(expand.reversibility, "reversible");
+    assert.equal(expand.authorization, "none");
     assert.notEqual(submit.reason, expand.reason);
   });
 
-  it("treats an unnamed control as committing", () => {
+  it("does not treat unmatched Import as a human ask", () => {
+    const result = classifyAction(CLICK, control({ name: "Import" }));
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "none");
+    assert.equal(result.ruleId, "unmatched");
+    assert.equal(result.authorizationRuleId, "none");
+  });
+
+  it("splits a Users-like name from Send on the same click verb", () => {
+    const users = classifyAction(CLICK, control({ name: "Users" }));
+    const send = classifyAction(CLICK, control({ name: "Send" }));
+    assert.equal(users.reversibility, "unknown");
+    assert.equal(users.authorization, "none");
+    assert.equal(send.reversibility, "unknown");
+    assert.equal(send.authorization, "outbound");
+    assert.equal(send.authorizationRuleId, "outbound-name");
+  });
+
+  it("treats an unnamed control as unknown, not authorized", () => {
     const result = classifyAction(CLICK, control({ name: "" }));
-    assert.equal(result.reversibility, "committing");
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "none");
     assert.match(result.reason, /unnamed/);
   });
 
-  it("treats an undescribable target as committing", () => {
+  it("treats an undescribable target as unknown, not authorized", () => {
     const result = classifyAction(CLICK, undefined);
-    assert.equal(result.reversibility, "committing");
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "none");
     assert.match(result.reason, /unknown-target/);
   });
 
-  it("treats an unrecognised name as committing rather than guessing", () => {
+  it("treats an unrecognised name as unknown rather than guessing", () => {
     const result = classifyAction(CLICK, control({ name: "Frobnicate the widget" }));
-    assert.equal(result.reversibility, "committing");
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "none");
     assert.match(result.reason, /unmatched/);
   });
 
   it("classifies non-click kinds from the action itself", () => {
     assert.equal(classifyAction({ kind: "navigate", url: "x" }, undefined).reversibility, "navigational");
+    assert.equal(classifyAction({ kind: "restore" }, undefined).reversibility, "navigational");
     assert.equal(classifyAction({ kind: "wait" }, undefined).reversibility, "reversible");
     assert.equal(classifyAction({ kind: "scroll" }, undefined).reversibility, "reversible");
     assert.equal(classifyAction({ kind: "check" }, undefined).reversibility, "probe");
@@ -99,16 +132,18 @@ describe("AGENT-05-T01 reversibility judgment", () => {
       classifyAction({ kind: "upload", ref: "e1", files: [] }, control({ name: "Resume" })).reversibility,
       "reversible",
     );
+    assert.equal(classifyAction({ kind: "restore" }, undefined).authorization, "none");
   });
 
   it("prefers a destructive name over a benign one in the same label", () => {
-    // "Remove" wins over "selected": destructive reads come first on purpose.
     const result = classifyAction(CLICK, control({ name: "Remove selected items" }));
-    assert.equal(result.reversibility, "committing");
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "destructive");
   });
 
   it("does not let a submit button hide behind a benign word", () => {
     const result = classifyAction(CLICK, control({ name: "Save and submit", submits: true }));
-    assert.equal(result.reversibility, "committing");
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "outbound");
   });
 });

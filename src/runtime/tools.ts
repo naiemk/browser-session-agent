@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek, readOpenedTab } from "../core/peek.ts";
-import { describeCheck, optionalPredicate, validatePredicate } from "../core/predicates.ts";
+import { describeCheck, optionalPredicate, PREDICATE_KIND_LIST, validatePredicate } from "../core/predicates.ts";
 import { describeDataDocument } from "../core/document.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
@@ -174,7 +174,9 @@ function describeError(err: unknown): string {
 
 /** Closed predicate shape the model fills in. Nested `of` stays loosely typed. */
 const PredicateSchema = Type.Object({
-  kind: Type.String(),
+  kind: Type.Enum(PREDICATE_KIND_LIST, {
+    description: "text_visible, url_includes, … — not probe's text kind",
+  }),
   text: Type.Optional(Type.String()),
   name: Type.Optional(Type.String()),
   ref: Type.Optional(Type.String()),
@@ -282,10 +284,13 @@ export function buildTools(context: ToolContext): AgentTool[] {
     {
       name: TOOL_ACT,
       label: "Act",
-      description: "One verified action: navigate, click, type, select, scroll, wait, or upload. Address by ref.",
+      description:
+        "One verified action: navigate, click, type, select, scroll, wait, upload, or restore (reload the latest checkpoint). Address by ref.",
       promptSnippet: "One verified browser action.",
       parameters: Type.Object({
-        kind: Type.String({ description: "navigate | click | type | select | scroll | wait | upload" }),
+        kind: Type.String({
+          description: "navigate | click | type | select | scroll | wait | upload | restore",
+        }),
         ref: Type.Optional(Type.String()),
         url: Type.Optional(Type.String()),
         text: Type.Optional(Type.String()),
@@ -321,6 +326,14 @@ export function buildTools(context: ToolContext): AgentTool[] {
               screenshotDir: context.evidence.screenshotDir,
               precondition: expect,
               checkpoint: context.evidence.goal,
+              onAsk: (info) => {
+                context.evidence.metrics.record({
+                  kind: "gate_ask",
+                  authorization: info.authorization,
+                  recoverability: info.recoverability,
+                  ruleId: info.ruleId,
+                });
+              },
             },
           );
 
@@ -329,7 +342,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
             return reply({
               done: false,
               parked: outcome.parked.reason,
-              note: "Needs operator approval. It has not happened.",
+              note: "Needs operator approval because this would leave the session. It has not happened.",
             });
           }
           if (outcome.status === "refused") {

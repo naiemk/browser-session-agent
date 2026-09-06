@@ -91,12 +91,27 @@ export interface ObservationRecord {
   keyCollisions: number;
 }
 
+/**
+ * One time the operator was asked to authorize a commit.
+ *
+ * Exploration (authorization none) must not appear here. A live run that parked on
+ * Users / Got it / Try again would have been four unmatched asks; that series should
+ * become zero.
+ */
+export interface GateAskRecord {
+  kind: "gate_ask";
+  authorization: "none" | "outbound" | "destructive";
+  recoverability: string;
+  ruleId: string;
+}
+
 export type MetricRecord =
   | RunRecord
   | TurnRecord
   | ContextRecord
   | ToolResultRecord
-  | ObservationRecord;
+  | ObservationRecord
+  | GateAskRecord;
 
 /**
  * Where records go. The runtime holds one of these and never asks what it is, so

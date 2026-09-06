@@ -110,6 +110,9 @@ export async function act(
       // No mutation; the postcondition below is the entire point of the call.
       break;
     }
+    case "restore": {
+      throw new CoreError("bad_request", "restore is a gate action; call guardedAct");
+    }
   }
 
   const refused = request.kind === "navigate"
@@ -132,6 +135,8 @@ export async function act(
     kind: request.kind,
     reversibility: classification.reversibility,
     reversibilityReason: classification.reason,
+    authorization: classification.authorization,
+    authorizationReason: classification.authorizationReason,
     observation: facts.observation,
     verification,
   };
@@ -158,6 +163,8 @@ export async function act(
       url: request.url,
       reversibility: classification.reversibility,
       reversibilityReason: classification.reason,
+      authorization: classification.authorization,
+      authorizationReason: classification.authorizationReason,
     },
     after: {
       url: facts.observation.url,

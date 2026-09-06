@@ -24,20 +24,20 @@ describe("operator approvals", () => {
     const left = approvalKey({
       host: "instagram.com",
       kind: "click",
-      name: "Import",
-      ruleId: "unmatched",
+      name: "Send invitation",
+      ruleId: "outbound-name",
     });
     const same = approvalKey({
       host: "instagram.com",
       kind: "click",
-      name: "  IMPORT ",
-      ruleId: "unmatched",
+      name: "  SEND invitation ",
+      ruleId: "outbound-name",
     });
     const other = approvalKey({
       host: "instagram.com",
       kind: "click",
-      name: "Submit",
-      ruleId: "unmatched",
+      name: "Pay now",
+      ruleId: "outbound-name",
     });
     assert.equal(left, same);
     assert.notEqual(left, other);
@@ -50,8 +50,8 @@ describe("operator approvals", () => {
         payload: {
           host: "example.test",
           controlKind: "click",
-          controlName: "Import",
-          ruleId: "unmatched",
+          controlName: "Send invitation",
+          ruleId: "outbound-name",
         },
       }),
       event({
@@ -75,8 +75,8 @@ describe("operator approvals", () => {
         approvalKey({
           host: "example.test",
           kind: "click",
-          name: "Import",
-          ruleId: "unmatched",
+          name: "Send invitation",
+          ruleId: "outbound-name",
         }),
       ),
     );

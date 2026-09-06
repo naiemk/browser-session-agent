@@ -107,6 +107,8 @@ export function toWireObservation(observation: Observation): WireObservation {
 export interface WireActionResult {
   ok: boolean;
   reversibility: string;
+  authorization?: string;
+  restored?: true;
   /** Only the failing checks: a passing action needs no explanation. */
   why?: string[];
   recovery?: string;
@@ -140,6 +142,10 @@ export function toWireActionResult(result: ActionResult): WireActionResult {
     reversibility: result.reversibility,
     observation,
   };
+  if (result.authorization && result.authorization !== "none") {
+    wire.authorization = result.authorization;
+  }
+  if (result.restored) wire.restored = true;
   if (!result.verification || !Array.isArray(checks)) {
     wire.ok = false;
     wire.why = ["internal: verification missing"];

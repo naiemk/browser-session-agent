@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type { BrowserPort } from "../../src/core/browser.ts";
 import { loadCheckpoint, saveCheckpoint } from "../../src/core/checkpoint.ts";
+import { guardedAct } from "../../src/core/gate.ts";
 import type { Control, Observation, PageFacts } from "../../src/core/types.ts";
 
 let root = "";
@@ -96,5 +97,205 @@ describe("AGENT-05-T02 navigation checkpoints", () => {
 
   it("returns undefined when there is no checkpoint", async () => {
     assert.equal(await loadCheckpoint(root, "goal_none", "latest"), undefined);
+  });
+});
+
+function observationOf(state: {
+  url: string;
+  title: string;
+  text: string;
+  controls: Control[];
+  changes: string[];
+  id: string;
+}): Observation {
+  return {
+    id: state.id,
+    tabId: "tab_1",
+    url: state.url,
+    title: state.title,
+    controls: state.controls,
+    dialogs: [],
+    errors: [],
+    consoleErrors: [],
+    failedRequests: [],
+    changes: state.changes,
+    capturedAt: new Date().toISOString(),
+  };
+}
+
+/** A stub that can click away and navigate back, so restore is observable. */
+function mutatingBrowser(start: { url: string; title: string; text: string; controls: Control[] }): BrowserPort {
+  const home = {
+    url: start.url,
+    title: start.title,
+    text: start.text,
+    controls: start.controls.map((control) => ({ ...control })),
+  };
+  let url = home.url;
+  let title = home.title;
+  let text = home.text;
+  let controls = home.controls.map((control) => ({ ...control }));
+  let changes: string[] = [];
+  let seq = 1;
+
+  const snapshot = (): Observation =>
+    observationOf({ url, title, text, controls, changes, id: `obs_${seq}` });
+  const factsOf = (): PageFacts => ({ url, title, text, observation: snapshot() });
+
+  return {
+    observe: async () => {
+      const seen = snapshot();
+      changes = [];
+      return seen;
+    },
+    facts: async () => factsOf(),
+    lastObservation: () => snapshot(),
+    navigate: async (_tab, next) => {
+      url = next;
+      if (next === home.url) {
+        title = home.title;
+        text = home.text;
+        controls = home.controls.map((control) => ({ ...control }));
+      } else {
+        title = "Elsewhere";
+        text = "gone";
+        controls = [];
+      }
+      changes = ["navigated"];
+      seq += 1;
+    },
+    click: async () => {
+      url = `${home.url}/elsewhere`;
+      title = "Elsewhere";
+      text = "gone";
+      controls = [];
+      changes = ["clicked"];
+      seq += 1;
+    },
+    fill: async (_tab, ref, value) => {
+      const target = controls.find((control) => control.ref === ref);
+      if (target) target.value = value;
+      changes = ["filled"];
+      seq += 1;
+    },
+    selectOption: async (_tab, ref, value) => {
+      const target = controls.find((control) => control.ref === ref);
+      if (target) target.value = value;
+      changes = ["selected"];
+      seq += 1;
+    },
+    screenshot: async () => undefined,
+    waitFor: async () => undefined,
+    scroll: async () => undefined,
+    setInputFiles: async () => undefined,
+  } as BrowserPort;
+}
+
+describe("unknown exploration checkpoints", () => {
+  it("writes a checkpoint before an unmatched click", async () => {
+    const browser = mutatingBrowser({
+      url: "http://fixture.test/home",
+      title: "Home",
+      text: "Users",
+      controls: [{ ref: "e1", role: "button", name: "Users", tag: "button" }],
+    });
+    const outcome = await guardedAct(
+      browser,
+      { kind: "click", ref: "e1" },
+      { checkpoint: { root, goalId: "goal_unknown", tag: "latest" }, settleMs: 0, policy: "ask" },
+    );
+    assert.equal(outcome.status, "acted");
+    const saved = await loadCheckpoint(root, "goal_unknown", "latest");
+    assert.ok(saved, "an unknown click must leave a way back");
+    assert.equal(saved.url, "http://fixture.test/home");
+  });
+
+  it("restores when an unknown click's expect fails", async () => {
+    const browser = mutatingBrowser({
+      url: "http://fixture.test/home",
+      title: "Home",
+      text: "Users",
+      controls: [
+        { ref: "e1", role: "button", name: "Users", tag: "button" },
+        { ref: "e2", role: "text", name: "Query", tag: "input", value: "ada" },
+      ],
+    });
+    const outcome = await guardedAct(
+      browser,
+      { kind: "click", ref: "e1", expect: { kind: "text_visible", text: "this is not on the page" } },
+      {
+        checkpoint: { root, goalId: "goal_restore_expect", tag: "latest" },
+        settleMs: 0,
+        policy: "never",
+      },
+    );
+    assert.equal(outcome.status, "acted");
+    if (outcome.status === "acted") {
+      assert.equal(outcome.result.ok, false);
+      assert.equal(outcome.result.restored, true);
+      assert.equal(outcome.result.observation.url, "http://fixture.test/home");
+      assert.match(outcome.result.failure?.recovery ?? "", /Restored the previous page/);
+    }
+  });
+
+  it("does not ask the operator for unmatched exploration, even under ask/never", async () => {
+    const page = {
+      url: "http://fixture.test/home",
+      title: "Home",
+      text: "Users",
+      controls: [{ ref: "e1", role: "button", name: "Users", tag: "button" as const }],
+    };
+    let asked = 0;
+    const askedOutcome = await guardedAct(
+      mutatingBrowser(page),
+      { kind: "click", ref: "e1" },
+      {
+        policy: "ask",
+        settleMs: 0,
+        approve: async () => {
+          asked += 1;
+          return false;
+        },
+      },
+    );
+    assert.equal(askedOutcome.status, "acted");
+    assert.equal(asked, 0);
+    const refused = await guardedAct(
+      mutatingBrowser(page),
+      { kind: "click", ref: "e1" },
+      { policy: "never", settleMs: 0 },
+    );
+    assert.equal(refused.status, "acted");
+  });
+
+  it("reloads the latest checkpoint on act kind restore", async () => {
+    const browser = mutatingBrowser({
+      url: "http://fixture.test/home",
+      title: "Home",
+      text: "here",
+      controls: [
+        { ref: "e1", role: "button", name: "Users", tag: "button" },
+        { ref: "e2", role: "text", name: "Query", tag: "input", value: "ada" },
+      ],
+    });
+    await guardedAct(
+      browser,
+      { kind: "click", ref: "e1" },
+      { checkpoint: { root, goalId: "goal_restore_kind", tag: "latest" }, settleMs: 0 },
+    );
+    assert.equal((await browser.facts()).url, "http://fixture.test/home/elsewhere");
+
+    const outcome = await guardedAct(
+      browser,
+      { kind: "restore" },
+      { checkpoint: { root, goalId: "goal_restore_kind", tag: "latest" }, settleMs: 0 },
+    );
+    assert.equal(outcome.status, "acted");
+    if (outcome.status === "acted") {
+      assert.equal(outcome.result.ok, true);
+      assert.equal(outcome.result.kind, "restore");
+      assert.equal(outcome.result.restored, true);
+      assert.equal(outcome.result.observation.url, "http://fixture.test/home");
+    }
   });
 });
