@@ -413,7 +413,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
           if (result.dataDocument) {
             return reply({
               error: describeDataDocument(result.dataDocument),
-              note: "This is a payload, not a page. Ask coder for a digest of scratch files; do not peek file://.",
+              note: "This is a payload, not a page. Use scratch_ls / scratch_read; do not peek file://.",
             });
           }
           return reply({

@@ -18,7 +18,13 @@ import type { AgentConfig } from "./discover.ts";
 import { discoverPackagedAgents, findAgent } from "./discover.ts";
 
 const PI_CLI = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
-const DEFAULT_TIMEOUT_MS = 180_000;
+/** First wall-clock slice before the host asks to extend. */
+export const DEFAULT_TIMEOUT_MS = 180_000;
+/** How long to wait for the operator before treating extend as no. */
+export const CONFIRM_WAIT_MS = 60_000;
+/** Hard cap across slices so a runaway child cannot run forever. */
+export const MAX_TOTAL_TIMEOUT_MS = 15 * 60_000;
+export const MAX_EXTENSIONS = 3;
 const FLOORS = new Set(["low", "medium", "high", "ultra"]);
 
 /** The model pi-model-auto registers. `@ultra` is a first-turn prefix, not this id. */
@@ -242,17 +248,59 @@ export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture
   }
 }
 
+function waitMs(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export interface ExtendRequest {
+  elapsedMs: number;
+  sliceMs: number;
+  extensionsUsed: number;
+}
+
 export interface RunWorkerOptions {
   agentName: string;
   task: string;
   scratchDir: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  confirmExtend?: (request: ExtendRequest) => Promise<boolean>;
+  confirmWaitMs?: number;
+  maxTotalMs?: number;
+  maxExtensions?: number;
   spawnImpl?: SpawnImpl;
   piEntry?: string;
   extraExtensions?: string[];
   agents?: AgentConfig[];
   onUpdate?: WorkerUpdate;
+}
+
+export function resolveTimeoutMs(
+  requested?: number,
+  env = process.env.BSA_SUBAGENT_TIMEOUT_MS,
+): number {
+  const raw = requested ?? Number(env ?? DEFAULT_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
+}
+
+export function formatDurationMs(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  const minutes = ms / 60_000;
+  return Number.isInteger(minutes) ? `${minutes} min` : `${minutes.toFixed(1)} min`;
 }
 
 export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult> {
@@ -299,7 +347,10 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
   const capture: JsonCapture = { messages: [], tools: [] };
   let stderr = "";
   let aborted = false;
-  const timeoutMs = options.timeoutMs ?? Number(process.env.BSA_SUBAGENT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const confirmWaitMs = options.confirmWaitMs ?? CONFIRM_WAIT_MS;
+  const maxTotalMs = options.maxTotalMs ?? MAX_TOTAL_TIMEOUT_MS;
+  const maxExtensions = options.maxExtensions ?? MAX_EXTENSIONS;
 
   const emitUpdate = () => {
     if (!options.onUpdate) return;
@@ -318,9 +369,17 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       });
       let buffer = "";
       let settled = false;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      const clock = new AbortController();
+      const onAbort = () => {
+        killProc();
+      };
       const finish = (code: number) => {
         if (settled) return;
         settled = true;
+        if (killTimer) clearTimeout(killTimer);
+        if (!clock.signal.aborted) clock.abort();
+        options.signal?.removeEventListener("abort", onAbort);
         if (buffer.trim()) parsePiJsonLine(buffer, capture);
         resolve(code);
       };
@@ -340,24 +399,58 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       proc.on("close", (code) => finish(code ?? 0));
       proc.on("error", () => finish(1));
 
-      const killProc = () => {
+      function killProc() {
         aborted = true;
-        proc.kill("SIGTERM");
-        setTimeout(() => {
-          if (!proc.killed) proc.kill("SIGKILL");
+        if (killTimer) clearTimeout(killTimer);
+        killTimer = setTimeout(() => {
+          if (!settled) proc.kill("SIGKILL");
         }, 5_000);
-      };
-      const timer = setTimeout(killProc, timeoutMs);
-      const onAbort = () => {
-        clearTimeout(timer);
-        killProc();
-      };
+        proc.kill("SIGTERM");
+      }
+
       if (options.signal?.aborted) onAbort();
       else options.signal?.addEventListener("abort", onAbort, { once: true });
-      proc.on("close", () => {
-        clearTimeout(timer);
-        options.signal?.removeEventListener("abort", onAbort);
-      });
+
+      void (async () => {
+        let sliceMs = timeoutMs;
+        let extensions = 0;
+        const started = Date.now();
+        while (!settled) {
+          await waitMs(sliceMs, clock.signal);
+          if (settled) return;
+          const elapsed = Date.now() - started;
+          const budget = maxTotalMs - elapsed;
+          const canAsk =
+            Boolean(options.confirmExtend) && extensions < maxExtensions && budget > 0;
+          if (!canAsk) {
+            killProc();
+            return;
+          }
+          options.onUpdate?.({ content: [{ type: "text", text: "(waiting to extend…)" }] });
+          const confirmClock = new AbortController();
+          const stopConfirm = () => {
+            if (!confirmClock.signal.aborted) confirmClock.abort();
+          };
+          clock.signal.addEventListener("abort", stopConfirm, { once: true });
+          let ok = false;
+          const asked = options.confirmExtend!({
+            elapsedMs: elapsed,
+            sliceMs,
+            extensionsUsed: extensions,
+          }).then((value) => {
+            ok = Boolean(value);
+          });
+          await Promise.race([asked, waitMs(confirmWaitMs, confirmClock.signal)]);
+          stopConfirm();
+          if (settled) return;
+          if (!ok) {
+            killProc();
+            return;
+          }
+          extensions += 1;
+          sliceMs = Math.min(timeoutMs, Math.max(1, budget));
+        }
+      })();
     });
 
     const text =
