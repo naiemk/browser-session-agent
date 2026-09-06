@@ -152,10 +152,19 @@ export type ActionKind =
   | "scroll"
   | "wait"
   | "upload"
-  | "check";
+  | "check"
+  | "restore";
 
-/** How recoverable an action is. Judged per action, never per verb (D23). */
-export type Reversibility = "probe" | "reversible" | "navigational" | "committing";
+/**
+ * How recoverable an action is for the loop (checkpoint / try / restore).
+ * Judged per action, never per verb (D23). Unknown is not a human ask.
+ */
+export type Reversibility = "probe" | "reversible" | "navigational" | "unknown";
+
+/**
+ * Whether a human must authorize this action. Positive match only: unmatched is none.
+ */
+export type Authorization = "none" | "outbound" | "destructive";
 
 export interface WaitSpec {
   kind: "load" | "url" | "text" | "ref" | "timeout";
@@ -194,9 +203,13 @@ export interface ActionResult {
   kind: ActionKind;
   reversibility: Reversibility;
   reversibilityReason: string;
+  authorization?: Authorization;
+  authorizationReason?: string;
   observation: Observation;
   verification: Verification;
   failure?: FailureBundle;
+  /** Set when an unknown exploration click failed its expect and the prior page was restored. */
+  restored?: true;
 }
 
 export type WakeSource = "timer" | "third_party" | "human";

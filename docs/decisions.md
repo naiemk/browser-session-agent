@@ -103,9 +103,15 @@ Amends D2. The useful half of a programmable browser is inspection, and inspecti
 
 Read-only is not harmless. A probe runs inside the user's real authenticated browser, so it may not touch cookies, `localStorage`, `sessionStorage`, or auth headers; output is hard-capped and truncated; and results are redacted before entering model context, because context becomes transcripts, traces, and logs. The risk being managed is exfiltration, not mutation.
 
-## D23. Reversibility is judged per action, and unknown means committing
+## D23. Recoverability and authorization are judged per action
 
-"Show more" and "Submit" are the same verb, so reversibility cannot be a static property of a tool. It is judged per action from the affordance (accessible name, form context, destination) and is therefore fallible. Unknown defaults to `committing`. Over-asking is recoverable; an accidental submit is not. Committing actions require the task's given criteria to pass, evidence before and after, and an approval policy of auto, ask, or never.
+Amended. "Show more" and "Submit" are the same verb, so neither recoverability nor authorization can be a static property of a tool. Both are judged per action from the affordance (accessible name, form context, destination) and are therefore fallible.
+
+Recoverability (the loop): `probe`, `reversible`, `navigational`, or `unknown`. Unknown means we do not assume the click is Show more. It is the default for unmatched, unnamed, or missing-ref targets. The cost of ignorance is a checkpoint, a try, and a restore — not a parked TUI.
+
+Authorization (the human): `none`, `outbound`, or `destructive`. Positive match on send / pay / delete names and on a submitting control that is not a search or view change. Default is `none`. Unmatched is not authorized.
+
+Policy default stays `ask`. `ask` means ask on Send, not on Users. Before-and-after evidence stays on authorized commits only. Remembered knowledge still may not authorize (D25).
 
 ## D24. Bounded read-only scouting is allowed; site mapping ahead of need is not
 

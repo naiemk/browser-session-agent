@@ -57,10 +57,10 @@ export function buildTaskCard(input: TaskCardInput): string {
 
   const commit =
     input.policy === "never"
-      ? "Irreversible actions are forbidden here; report what you would have done."
+      ? "Actions that leave this session (send, pay, delete) are forbidden here; report what you would have done."
       : input.policy === "auto"
-        ? "Irreversible actions run once their precondition holds."
-        : "Irreversible actions need approval and may pause the task.";
+        ? "Actions that leave this session (send, pay, delete) run once their precondition holds."
+        : "Explore and restore freely. Ask only when something leaves this session (send, pay, delete).";
 
   /*
    * What it can do, said once and said accurately.

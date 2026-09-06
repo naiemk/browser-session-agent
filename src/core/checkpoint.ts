@@ -1,14 +1,15 @@
 /**
- * Checkpoints before navigation.
+ * Checkpoints before navigation and unknown exploration.
  *
- * Navigating away throws out everything typed into the page. Without a checkpoint a
- * retry restarts from an empty form, which on a long application is the difference
- * between a recoverable hiccup and losing the work.
+ * Navigating away throws out everything typed into the page. An unmatched click can
+ * do the same. Without a checkpoint a retry restarts from an empty form, which on a
+ * long application is the difference between a recoverable hiccup and losing the work.
+ * Restore is a first-class act (`kind: "restore"`), not a test-only helper.
  */
 
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { act } from "./act.ts";
+import { act, type ActOptions } from "./act.ts";
 import type { BrowserPort } from "./browser.ts";
 import { ensureGoalDirs, goalPaths } from "./paths.ts";
 import { redactDeep } from "./redact.ts";
@@ -72,28 +73,33 @@ export async function loadCheckpoint(
 export async function restoreCheckpoint(
   browser: BrowserPort,
   checkpoint: Checkpoint,
-  options: { tabId?: string } = {},
+  options: { tabId?: string } & ActOptions = {},
 ): Promise<{ restored: string[]; missing: string[] }> {
-  await act(browser, { kind: "navigate", tabId: options.tabId, url: checkpoint.url });
+  const { tabId, ...actOptions } = options;
+  await act(browser, { kind: "navigate", tabId, url: checkpoint.url }, actOptions);
 
   const restored: string[] = [];
   const missing: string[] = [];
   for (const [name, value] of Object.entries(checkpoint.values)) {
-    const observation = await browser.observe(options.tabId);
+    const observation = await browser.observe(tabId);
     const control = observation.controls.find((candidate) => candidate.name === name);
     if (!control) {
       missing.push(name);
       continue;
     }
     const kind = control.tag === "select" ? "select" : "type";
-    const result = await act(browser, {
-      kind,
-      tabId: options.tabId,
-      ref: control.ref,
-      text: value,
-      value,
-      intent: `restore "${name}" from checkpoint`,
-    });
+    const result = await act(
+      browser,
+      {
+        kind,
+        tabId,
+        ref: control.ref,
+        text: value,
+        value,
+        intent: `restore "${name}" from checkpoint`,
+      },
+      actOptions,
+    );
     if (result.ok) restored.push(name);
     else missing.push(name);
   }

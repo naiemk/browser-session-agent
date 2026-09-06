@@ -50,7 +50,7 @@ describe("task card", () => {
 
   it("tells the agent what it may commit", () => {
     assert.match(buildTaskCard({ ...CARD, policy: "never" }), /forbidden here/);
-    assert.match(buildTaskCard({ ...CARD, policy: "ask" }), /need approval/);
+    assert.match(buildTaskCard({ ...CARD, policy: "ask" }), /Explore and restore freely/);
     assert.match(buildTaskCard({ ...CARD, policy: "auto" }), /once their precondition holds/);
   });
 

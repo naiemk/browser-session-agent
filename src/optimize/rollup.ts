@@ -13,6 +13,7 @@
 import type { LedgerEvent } from "../core/ledger.ts";
 import type {
   ContextRecord,
+  GateAskRecord,
   MetricRecord,
   ObservationRecord,
   RunRecord,
@@ -74,6 +75,11 @@ export interface Rollup {
    */
   cache: { turnsWithRewrite: number; meanRewrittenFrom: number };
   observations: { count: number; meanBytes: number; withCollisions: number; maxCollisions: number };
+  /**
+   * Operator asks at the commit gate. `none` must stay 0: that is unmatched exploration,
+   * which is not a world-commit. Outbound/destructive are Send / Pay / Delete.
+   */
+  gateAsks: { none: number; outbound: number; destructive: number };
 }
 
 function share(part: number, whole: number): number {
@@ -170,7 +176,46 @@ export function rollup(input: RollupInput): Rollup {
       withCollisions: observations.filter((o) => o.keyCollisions > 0).length,
       maxCollisions: Math.max(0, ...observations.map((o) => o.keyCollisions)),
     },
+    gateAsks: countGateAsks(input.records, input.events ?? []),
   };
+}
+
+export function emptyGateAsks(): { none: number; outbound: number; destructive: number } {
+  return { none: 0, outbound: 0, destructive: 0 };
+}
+
+function bumpAsk(
+  counts: { none: number; outbound: number; destructive: number },
+  authorization: unknown,
+): void {
+  if (authorization === "none" || authorization === "outbound" || authorization === "destructive") {
+    counts[authorization] += 1;
+  }
+}
+
+/**
+ * Operator asks at the commit gate. Metrics are preferred; the ledger is the fallback
+ * so a run that recorded approvals but not `gate_ask` rows still counts.
+ */
+export function countGateAsks(
+  records: readonly MetricRecord[],
+  events: readonly LedgerEvent[] = [],
+): { none: number; outbound: number; destructive: number } {
+  const fromMetrics = records.filter((record): record is GateAskRecord => record.kind === "gate_ask");
+  if (fromMetrics.length > 0) {
+    const counts = emptyGateAsks();
+    for (const record of fromMetrics) bumpAsk(counts, record.authorization);
+    return counts;
+  }
+  const counts = emptyGateAsks();
+  for (const event of events) {
+    const asked =
+      event.type === "parked" ||
+      (event.type === "approval" && event.payload?.asked === true);
+    if (!asked) continue;
+    bumpAsk(counts, event.payload?.authorization);
+  }
+  return counts;
 }
 
 function duplicateWork(
@@ -371,6 +416,12 @@ export function formatRollup(value: Rollup): string {
   lines.push(`  ${value.duplicates.zeroChangeObservations} reads that returned the same page`);
   lines.push(`  ${value.duplicates.repeatNavigations} repeat navigations`);
   lines.push(`  ${value.duplicates.repeatProbes} repeated probe queries`);
+
+  lines.push("");
+  lines.push(
+    `gate asks: ${value.gateAsks.none} exploration (authorization none), ` +
+      `${value.gateAsks.outbound} outbound, ${value.gateAsks.destructive} destructive`,
+  );
 
   lines.push("");
   lines.push(

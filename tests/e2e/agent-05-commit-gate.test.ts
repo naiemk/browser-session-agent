@@ -186,7 +186,8 @@ describe("AGENT-05-T02 commit gate", () => {
     assert.equal(outcome.status, "acted");
     if (outcome.status === "acted") {
       assert.equal(outcome.result.ok, true, JSON.stringify(outcome.result.verification));
-      assert.equal(outcome.result.reversibility, "committing");
+      assert.equal(outcome.result.reversibility, "unknown");
+      assert.equal(outcome.result.authorization, "outbound");
       assert.equal(outcome.preconditionMet, true);
     }
 
@@ -214,6 +215,32 @@ describe("AGENT-05-T02 commit gate", () => {
     );
     assert.equal(outcome.status, "acted");
     assert.equal(asked, 0, "paging is not a decision worth a human's attention");
+  });
+
+  it("does not park a nameless exploration click under ask", async () => {
+    const tab = await browser.openTab(`${origin}/list`);
+    let asked = 0;
+    const outcome = await guardedAct(
+      browser,
+      { kind: "click", tabId: tab, ref: await refFor(tab, "Item 1") },
+      { policy: "ask", approve: async () => (asked += 1) > 0 },
+    );
+    assert.equal(outcome.status, "acted");
+    assert.equal(asked, 0, "unmatched exploration is not a world-commit");
+    if (outcome.status === "acted") {
+      assert.equal(outcome.result.authorization, "none");
+      assert.equal(outcome.result.reversibility, "unknown");
+    }
+  });
+
+  it("lets unmatched exploration through under never", async () => {
+    const tab = await browser.openTab(`${origin}/list`);
+    const outcome = await guardedAct(
+      browser,
+      { kind: "click", tabId: tab, ref: await refFor(tab, "Item 1") },
+      { policy: "never" },
+    );
+    assert.equal(outcome.status, "acted");
   });
 
   it("does not re-ask after the operator approved the same named action", async () => {
@@ -342,5 +369,65 @@ describe("AGENT-05-T02 commit gate", () => {
       tabId: tab,
     });
     assert.equal(saved.values["Full name"], "Grace Hopper");
+  });
+
+  it("checkpoints an unknown click and restores after a failed expect", async () => {
+    const tab = await browser.openTab(`${origin}/list`);
+    const outcome = await guardedAct(
+      browser,
+      {
+        kind: "click",
+        tabId: tab,
+        ref: await refFor(tab, "Item 1"),
+        expect: { kind: "text_visible", text: "this text is not on the catalogue" },
+      },
+      {
+        policy: "ask",
+        approve: async () => {
+          throw new Error("exploration must not ask");
+        },
+        checkpoint: { root, goalId: "goal_unknown_click", tag: "latest" },
+        settleMs: 0,
+      },
+    );
+    assert.equal(outcome.status, "acted");
+    const checkpoint = await loadCheckpoint(root, "goal_unknown_click", "latest");
+    assert.ok(checkpoint, "unknown click writes a checkpoint");
+    assert.equal(checkpoint.url, `${origin}/list`);
+    if (outcome.status === "acted") {
+      assert.equal(outcome.result.ok, false);
+      assert.equal(outcome.result.restored, true);
+      assert.equal(outcome.result.observation.url, `${origin}/list`);
+      assert.equal(
+        (await browser.facts(tab)).text.includes("Opened: Item 1"),
+        false,
+        "reload undoes the in-page facet",
+      );
+    }
+  });
+
+  it("restores the latest checkpoint on act kind restore", async () => {
+    const tab = await browser.openTab(`${origin}/apply`);
+    await guardedAct(browser, {
+      kind: "type",
+      tabId: tab,
+      ref: await refFor(tab, "Full name"),
+      text: "Ada Lovelace",
+    });
+    await guardedAct(
+      browser,
+      { kind: "navigate", tabId: tab, url: `${origin}/list` },
+      { checkpoint: { root, goalId: "goal_act_restore", tag: "latest" } },
+    );
+    const outcome = await guardedAct(
+      browser,
+      { kind: "restore", tabId: tab },
+      { checkpoint: { root, goalId: "goal_act_restore", tag: "latest" } },
+    );
+    assert.equal(outcome.status, "acted");
+    const facts = await browser.facts(tab);
+    assert.equal(facts.url, `${origin}/apply`);
+    const nameControl = facts.observation.controls.find((c) => c.name.includes("Full name"));
+    assert.equal(nameControl?.value, "Ada Lovelace");
   });
 });

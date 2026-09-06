@@ -17,7 +17,7 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 - Building mechanisms with no scoreboard. AGENT-01 lands first for this reason; no mechanism task merges before a baseline exists (D19).
 - Letting the executor author the criteria that judge it. Criteria are external and immutable (D20).
 - Treating read-only as harmless. A probe runs in the user's authenticated browser; the risk is exfiltration into context and traces (D22).
-- Classifying reversibility by verb. "Show more" and "Submit" are both clicks; judgment is per action and unknown means committing (D23).
+- Classifying reversibility by verb. "Show more" and "Submit" are both clicks; judgment is per action, unknown recoverability is not a human ask, and authorization defaults to none (D23).
 - Mechanism tax. Probe, checks, and a gate each add turns; a change that raises success while tripling cost is a regression (D29).
 - Building the graph too early. A graph over an unreliable executor multiplies failures (D28).
 - Suite overfitting. Fixtures are easier than the real web; keep a small flagged real-page set and expect the gap.
@@ -84,7 +84,7 @@ Order: AGENT-01 first and alone. Then AGENT-02, AGENT-03, AGENT-04 in any order.
 All 13 tasks done, and:
 
 - The suite runs on one command with a baseline plus a row per merged mechanism in the results log.
-- No `committing` action can fire without live criteria and the goal's approval policy.
+- No authorized commit can fire without live criteria and the goal's approval policy.
 - A fresh process resumes a partway task from disk without repeating a committed action.
 - D27 and the memory half of D28 are no longer `hypothesis`.
 - Every open question in `docs/autonomous-agent.md` is either answered with a results-log row or explicitly deferred with an entry condition.

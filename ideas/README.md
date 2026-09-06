@@ -26,3 +26,4 @@ An idea that fails the argument is marked `shelved` with the reason. Shelved is 
 | [site-skills.md](./site-skills.md) | discussing | Published capability maps (not a global DB), org policy, extract / record-sandwich authoring |
 | [typed-workers.md](./typed-workers.md) | discussing | Scratch + typed Pi workers (plan/write/review/code); parent stays a browser operator |
 | [parent-child-harness.md](./parent-child-harness.md) | ready | Visible-width TUI clip, parent scratch read, host-owned child clock, no stolen Execute turn, parent-tool evidence |
+| [exploration-vs-commit.md](./exploration-vs-commit.md) | ready | Recoverability vs authorization: explore/restore freely; ask only on Send/Pay/Delete |

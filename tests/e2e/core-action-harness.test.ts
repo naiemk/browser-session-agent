@@ -193,7 +193,8 @@ describe("AGENT-00-T01 action harness", () => {
       ref: submitRef,
       expect: { kind: "text_visible", text: "Ada" },
     });
-    assert.equal(result.reversibility, "committing");
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "outbound");
     // Which rule fired is covered by the classifier's own tests; here the class is the point.
     assert.match(result.reversibilityReason, /submits a form|sending or publishing/);
     assert.equal(result.ok, true, JSON.stringify(result.verification));

@@ -151,12 +151,56 @@ describe("the rollup", () => {
     assert.deepEqual(value.duplicates.repeatedResults, 0);
   });
 
-  it("prints the numbers a decision needs", () => {
+  it("prints the numbers a decision needs", async () => {
     const text = formatRollup(rollup({ records: records(), events, goalId: "g" }));
     assert.match(text, /where the bytes went/);
     assert.match(text, /toolSchemas/);
     assert.match(text, /duplicate work/);
     assert.match(text, /prompt cache/);
+    assert.match(text, /gate asks/);
+  });
+
+  it("counts operator asks on outbound, not unmatched exploration", () => {
+    const value = rollup({
+      records: [
+        ...records(),
+        {
+          kind: "gate_ask",
+          authorization: "outbound",
+          recoverability: "unknown",
+          ruleId: "outbound-name",
+        },
+      ],
+    });
+    assert.equal(value.gateAsks.none, 0);
+    assert.equal(value.gateAsks.outbound, 1);
+    assert.equal(value.gateAsks.destructive, 0);
+  });
+
+  it("falls back to ledger rows marked asked when metrics omitted the gate", () => {
+    const value = rollup({
+      records: records(),
+      events: [
+        ...events,
+        {
+          id: "ev-ask",
+          goalId: "g",
+          ts: new Date().toISOString(),
+          type: "parked",
+          payload: { asked: true, authorization: "outbound" },
+        },
+        {
+          id: "ev-unmatched",
+          goalId: "g",
+          ts: new Date().toISOString(),
+          type: "approval",
+          payload: { authorization: "none" },
+          outcome: { ok: true, detail: "auto-approved" },
+        },
+      ],
+    });
+    assert.equal(value.gateAsks.outbound, 1);
+    assert.equal(value.gateAsks.none, 0);
   });
 
   it("prints thinking on the headline, and a switch as a sequence", () => {
