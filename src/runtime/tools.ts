@@ -17,7 +17,7 @@ import { describeCheck, optionalPredicate } from "../core/predicates.ts";
 import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
-import { CoreError, type ActionRequest, type ParkedOutcome, type Predicate } from "../core/types.ts";
+import { CoreError, type ActionRequest, type ParkedOutcome } from "../core/types.ts";
 import {
   TOOL_ACT,
   TOOL_ASK,
@@ -262,7 +262,7 @@ export function buildTools(context: ToolContext): AgentTool[] {
       label: "Check",
       description: "Evaluate a predicate on the live page (text_visible, url_includes, all, …).",
       promptSnippet: "Verify a claim instead of assuming it.",
-      parameters: Type.Object({ predicate: Type.Object({}, { additionalProperties: true })}),
+      parameters: Type.Object({ predicate: Type.Optional(PredicateSchema) }),
       execute: async (_id: string, params: unknown) => {
         try {
           const verification = await stepCheck(
@@ -290,23 +290,25 @@ export function buildTools(context: ToolContext): AgentTool[] {
         dy: Type.Optional(Type.Number()),
         files: Type.Optional(Type.Array(Type.String())),
         wait: Type.Optional(Type.Object({}, { additionalProperties: true })),
-        expect: Type.Optional(Type.Object({}, { additionalProperties: true })),
+        expect: Type.Optional(PredicateSchema),
         intent: Type.Optional(Type.String({ description: "Why, in a few words" })),
       }),
       execute: async (_id: string, params: unknown) => {
-        const request = params as unknown as ActionRequest;
+        const raw = params as { expect?: unknown };
         try {
           countStep();
+          const expect = optionalPredicate(raw.expect);
+          const request = { ...(params as ActionRequest), tabId: tab(), expect };
           const outcome = await guardedAct(
             context.browser,
-            { ...request, tabId: tab() },
+            request,
             {
               policy: context.policy,
               approve: context.approve,
               ledger: context.evidence.ledger,
               entityId: context.evidence.entityId,
               screenshotDir: context.evidence.screenshotDir,
-              precondition: request.expect as Predicate | undefined,
+              precondition: expect,
               checkpoint: context.evidence.goal,
             },
           );

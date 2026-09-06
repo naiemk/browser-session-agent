@@ -2,52 +2,12 @@
   "perceiver": "lean",
   "path": "/modal-list",
   "totalControls": 99,
-  "offered": 48,
+  "offered": 40,
   "dropped": {
     "containment": 0,
     "occlusion": 51
   },
   "controls": [
-    {
-      "ref": "e50",
-      "role": "a",
-      "name": "About"
-    },
-    {
-      "ref": "e51",
-      "role": "a",
-      "name": "Blog"
-    },
-    {
-      "ref": "e52",
-      "role": "a",
-      "name": "Jobs"
-    },
-    {
-      "ref": "e53",
-      "role": "a",
-      "name": "Help"
-    },
-    {
-      "ref": "e54",
-      "role": "a",
-      "name": "API"
-    },
-    {
-      "ref": "e55",
-      "role": "a",
-      "name": "Privacy"
-    },
-    {
-      "ref": "e56",
-      "role": "a",
-      "name": "Terms"
-    },
-    {
-      "ref": "e57",
-      "role": "a",
-      "name": "Contact"
-    },
     {
       "ref": "e58",
       "role": "button",

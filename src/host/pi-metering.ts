@@ -63,23 +63,42 @@ function modelOf(message: unknown): string {
   return typeof nested === "string" ? nested : "unknown";
 }
 
+/**
+ * Thinking as the message named it, or nothing.
+ *
+ * Absent is omitted, never defaulted: a guessed `"medium"` would look like a fact
+ * in the rollup, which is how several thinking settings became incomparable.
+ */
+export function thinkingOf(message: unknown): string | undefined {
+  const value = message as { thinkingLevel?: unknown; thinking?: unknown } | undefined;
+  if (typeof value?.thinkingLevel === "string" && value.thinkingLevel) return value.thinkingLevel;
+  if (typeof value?.thinking === "string" && value.thinking) return value.thinking;
+  return undefined;
+}
+
 export function meterPiSession(
   pi: ExtensionAPI,
   evidence: Evidence,
   overhead: SessionOverhead,
   clock: TurnClock,
+  /**
+   * When Pi omits thinking on the message, ask the host. A getter rather than a
+   * string, so a mid-session `@high` → `@low` switch is what the next turn records.
+   */
+  thinkingLevel?: () => string | undefined,
 ): void {
   let recordedRun = false;
   // Last turn's messages, so a rewrite is visible as a changed prefix.
   let previous: PrunableMessage[] = [];
 
-  const recordRun = (model: string) => {
+  const recordRun = (model: string, level: string | undefined) => {
     if (recordedRun) return;
     recordedRun = true;
     evidence.metrics.record({
       kind: "run",
       at: new Date().toISOString(),
       model,
+      ...(level ? { thinkingLevel: level } : {}),
       cardBytes: overhead.cardBytes,
       toolSchemaBytes: overhead.toolSchemaBytes,
       toolCount: overhead.toolCount,
@@ -108,7 +127,8 @@ export function meterPiSession(
 
   pi.on("turn_end", (event: unknown) => {
     const message = (event as { message?: unknown })?.message;
-    recordRun(modelOf(message));
+    const level = thinkingOf(message) ?? thinkingLevel?.();
+    recordRun(modelOf(message), level);
 
     const usage = usageOf(message);
     if (!usage) return;
@@ -121,6 +141,7 @@ export function meterPiSession(
       cacheReadTokens: num(usage.cacheRead),
       cacheWriteTokens: num(usage.cacheWrite),
       costUsd: num(cost?.total),
+      ...(level ? { thinkingLevel: level } : {}),
     });
   });
 

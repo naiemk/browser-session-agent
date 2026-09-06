@@ -136,6 +136,9 @@ const COLLECT = `(() => {
    */
   const LANDMARK = "nav, footer, header, [role='navigation'], [role='contentinfo'], [role='banner']";
   const inLandmark = (el) => Boolean(el.closest && el.closest(LANDMARK));
+  const dialogNodes = [...document.querySelectorAll("dialog[open], [role='dialog'], [role='alertdialog']")]
+    .filter(visible);
+  const inDialog = (el) => dialogNodes.some((dialog) => dialog.contains(el));
 
   // The name of a control that has no text of its own: an image link, a bare icon.
   // Without this a photo grid arrives as a dozen controls all called "a".
@@ -210,6 +213,7 @@ const COLLECT = `(() => {
       name,
       tag,
       chrome: inLandmark(el) || undefined,
+      dialog: inDialog(el) || undefined,
       value,
       disabled: el.disabled || undefined,
       checked: el.checked || undefined,
@@ -229,8 +233,7 @@ const COLLECT = `(() => {
    * reasoned from a fragment. The rows inside a dialog are ordinary controls and are
    * enumerated above, each now carrying its own row text, so this can stay a summary.
    */
-  const dialogs = [...document.querySelectorAll("dialog[open], [role='dialog'], [role='alertdialog']")]
-    .filter(visible)
+  const dialogs = dialogNodes
     .map((el) => clean(el.textContent).slice(0, 160))
     .filter(Boolean);
 
@@ -242,10 +245,12 @@ const COLLECT = `(() => {
   const headingEl = [...document.querySelectorAll("h1")].find(visible);
   const heading = headingEl ? clean(headingEl.innerText).slice(0, 80) : "";
   const stats = [];
+  const isCounter = (label) => /^(followers|following|posts)$/i.test(clean(label));
+  const isCount = (value) => /^\\d[\\d,]*$/.test(clean(value));
   const pushStat = (label, value) => {
     const l = clean(label).slice(0, 40);
     const v = clean(value).slice(0, 40);
-    if (!l || !v) return;
+    if (!l || !v || !isCounter(l) || !isCount(v)) return;
     if (stats.some((s) => s.label === l && s.value === v)) return;
     if (stats.length < 6) stats.push({ label: l, value: v });
   };
@@ -256,7 +261,7 @@ const COLLECT = `(() => {
   }
   const host = headingEl && headingEl.parentElement ? headingEl.parentElement : document.body;
   const blob = clean((host && host.innerText) || "").slice(0, 800);
-  const re = /(\\d[\\d,]*)\\s+([A-Za-z][A-Za-z\\s]{0,24})/g;
+  const re = /(\\d[\\d,]*)\\s+(followers|following|posts)\\b/gi;
   let m;
   while (stats.length < 6 && (m = re.exec(blob))) {
     pushStat(m[2], m[1]);
@@ -333,10 +338,28 @@ function dedupe(values: string[]): string[] {
 
 function pageIdentity(collected: Collected): Observation["identity"] | undefined {
   const heading = collected.heading?.trim();
-  const stats = (collected.stats ?? []).filter((stat) => stat.label && stat.value).slice(0, 6);
+  const stats = filterIdentityStats(collected.stats ?? []);
   if (!heading && stats.length === 0) return undefined;
   return {
     ...(heading ? { heading } : {}),
     ...(stats.length ? { stats } : {}),
   };
+}
+
+const IDENTITY_COUNTER = /^(followers|following|posts)$/i;
+const IDENTITY_COUNT = /^\d[\d,]*$/;
+
+/**
+ * Counts the page already shows, and only those.
+ *
+ * A looser "digits then words" sweep turned a handle (`naiem6632`) and a copyright
+ * year into stats, which is why the model still probed the same page for numbers that
+ * were already on it.
+ */
+export function filterIdentityStats(
+  stats: ReadonlyArray<{ label: string; value: string }>,
+): Array<{ label: string; value: string }> {
+  return stats
+    .filter((stat) => IDENTITY_COUNTER.test(stat.label.trim()) && IDENTITY_COUNT.test(stat.value.trim()))
+    .slice(0, 6);
 }

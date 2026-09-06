@@ -12,8 +12,8 @@ function context(messages: unknown[]) {
   return { type: "context", messages };
 }
 
-function assistant(usage: Record<string, unknown>) {
-  return { type: "turn_end", message: { model: "acme/1", usage } };
+function assistant(usage: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return { type: "turn_end", message: { model: "acme/1", usage, ...extra } };
 }
 
 describe("metering a session someone else drives", () => {
@@ -75,5 +75,51 @@ describe("metering a session someone else drives", () => {
     const runs = evidence.metrics.records.filter((record) => record.kind === "run");
     assert.equal(runs.length, 1);
     assert.equal((runs[0] as { cardBytes: number }).cardBytes, 100);
+    assert.equal("thinkingLevel" in runs[0]!, false, "a missing thinking field is omitted, not guessed");
+  });
+
+  it("writes the thinking level on every turn, including a mid-session switch", async () => {
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    let current: string | undefined;
+    meterPiSession(pi, evidence, overhead, turnClock(), () => current);
+
+    await pi.emit(
+      "turn_end",
+      assistant({ input: 1, cost: { total: 0.01 } }, { thinkingLevel: "high" }),
+    );
+    await pi.emit("turn_end", assistant({ input: 1, cost: { total: 0.01 } }, { thinking: "low" }));
+
+    const turns = evidence.metrics.records.filter((record) => record.kind === "turn") as Array<{
+      thinkingLevel?: string;
+    }>;
+    assert.deepEqual(
+      turns.map((record) => record.thinkingLevel),
+      ["high", "low"],
+    );
+
+    const run = evidence.metrics.records.find((record) => record.kind === "run") as { thinkingLevel?: string };
+    assert.equal(run.thinkingLevel, "high", "the run keeps the first observed level");
+  });
+
+  it("asks the host when the message omits thinking, and still omits when neither knows", async () => {
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    let current: string | undefined = "high";
+    meterPiSession(pi, evidence, overhead, turnClock(), () => current);
+
+    await pi.emit("turn_end", assistant({ input: 1, cost: { total: 0.01 } }));
+    current = undefined;
+    const other = createFakePi();
+    const empty = memoryEvidence();
+    meterPiSession(other, empty, overhead, turnClock());
+    await other.emit("turn_end", assistant({ input: 1, cost: { total: 0.01 } }));
+
+    const fromHost = evidence.metrics.records.find((record) => record.kind === "turn") as {
+      thinkingLevel?: string;
+    };
+    assert.equal(fromHost.thinkingLevel, "high");
+    const omitted = empty.metrics.records.find((record) => record.kind === "turn") as { thinkingLevel?: string };
+    assert.equal("thinkingLevel" in omitted, false);
   });
 });

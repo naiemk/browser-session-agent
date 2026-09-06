@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Following</title>
+    <style>
+      /*
+        A centred card over a photo grid, not a full-viewport overlay. Photos around
+        the card remain hit-testable, so occlusion cannot drop them. The slots have
+        to come from containment in the dialog node.
+      */
+      body { margin: 0; font-family: sans-serif; }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        padding: 16px;
+      }
+      #grid a { display: block; }
+      #card {
+        position: fixed;
+        top: 8vh;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 360px;
+        height: 64vh;
+        overflow-y: auto;
+        background: #ffffff;
+        border: 1px solid #ccc;
+        z-index: 20;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Naiem</h1>
+      <div id="grid"></div>
+    </main>
+    <div id="card" role="dialog" aria-label="Following">
+      <button id="close" type="button">Close</button>
+      <input id="search" type="text" placeholder="Search" />
+      <ul id="rows"></ul>
+    </div>
+    <script>
+      const grid = document.getElementById("grid");
+      for (let index = 1; index <= 50; index += 1) {
+        const link = document.createElement("a");
+        link.href = "/p/photo" + index;
+        const image = document.createElement("img");
+        image.alt = "Photo by Naiem in Snowbird " + index;
+        image.width = 80;
+        image.height = 80;
+        image.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+        link.appendChild(image);
+        grid.appendChild(link);
+      }
+      const rows = document.getElementById("rows");
+      for (let index = 1; index <= 40; index += 1) {
+        const row = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = "/u/person" + index;
+        link.textContent = "person" + index;
+        row.appendChild(link);
+        rows.appendChild(row);
+      }
+    </script>
+  </body>
+</html>
