@@ -78,7 +78,7 @@ describe("runtime end to end with a mock model", () => {
     assert.ok(events.some((event) => event.action?.kind === "type"));
     assert.ok(
       events.some(
-        (event) => event.type === "approval" && event.payload?.authorization === "outbound",
+        (event) => event.type === "approval" && event.action?.authorization === "outbound",
       ),
       "the submit went through the gate",
     );

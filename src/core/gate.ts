@@ -73,7 +73,8 @@ function gatePayload(
 ): Record<string, unknown> {
   return {
     recoverability: classification.reversibility,
-    authorization: classification.authorization,
+    // Not `authorization`: redactDeep masks that key as a credential header.
+    gateAuthorization: classification.authorization,
     ...extra,
   };
 }

@@ -213,7 +213,7 @@ export function countGateAsks(
       event.type === "parked" ||
       (event.type === "approval" && event.payload?.asked === true);
     if (!asked) continue;
-    bumpAsk(counts, event.payload?.authorization);
+    bumpAsk(counts, event.payload?.gateAuthorization ?? event.action?.authorization);
   }
   return counts;
 }
