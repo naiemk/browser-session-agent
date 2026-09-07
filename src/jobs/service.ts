@@ -58,7 +58,14 @@ export class JobService {
 
   async proposePlan(jobId: string): Promise<SpecRecord> {
     const store = await this.resolve(jobId);
+    const job = await store.readJob();
+    if (job.status !== "planning" && job.status !== "awaiting_plan_approval") {
+      throw new CoreError("not_planning", "propose is only allowed while planning");
+    }
     const draft = await store.draftSpec();
+    if (draft.status === "proposed" && draft.hash && job.status === "awaiting_plan_approval") {
+      return draft;
+    }
     const normalized = normalizeSpec({
       ...draft,
       status: "draft",

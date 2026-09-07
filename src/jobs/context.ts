@@ -61,9 +61,13 @@ export async function standingJobPrompt(input: {
         `Failed approaches: ${input.sprint.failedApproaches.map((item) => item.approach).join(", ") || "(none)"}`,
       ]
     : ["No current sprint."];
+  const audience =
+    input.status === "planning" || input.status === "awaiting_plan_approval"
+      ? "The person in chat is not a developer. Speak plainly. Never tell them to type slash commands, job ids, or hashes. They confirm the plan in a Yes/No dialog."
+      : "";
   return `[JOB ${input.jobId} — ${input.title} — ${input.status}]
 Human inbox: ${input.humanCount}
-
+${audience ? `${audience}\n` : ""}
 ${specLines.join("\n")}
 
 ${sprintLines.join("\n")}

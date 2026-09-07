@@ -61,7 +61,12 @@ describe("job registry and plan sign-off", () => {
     );
     const proposed = await runTool(pi, "job_propose_plan", {});
     assert.equal(proposed.isError, false);
+    assert.match(toolText(proposed), /confirmed|running/i);
+    assert.doesNotMatch(toolText(proposed), /\/job-approve-plan/);
+    const afterPropose = await (await service.resolve(outreach.jobId)).readJob();
+    assert.equal(afterPropose.status, "active");
     await runCommand(pi, "job-approve-plan");
+    assert.match(pi.notifications.join("\n"), /already running/i);
     const job = await (await service.resolve(outreach.jobId)).readJob();
     assert.equal(job.status, "active");
     assert.ok(job.approvedSpecHash);
@@ -111,6 +116,43 @@ describe("job registry and plan sign-off", () => {
 
     const proposed = await runTool(pi, "job_propose_plan", {});
     assert.equal(proposed.isError, false, toolText(proposed));
-    assert.match(toolText(proposed), /Proposed hash/);
+    assert.match(toolText(proposed), /confirmed|running/i);
+    assert.doesNotMatch(toolText(proposed), /\/job-approve-plan/);
+  });
+
+  it("resumes an open job so the user can keep talking", async () => {
+    root = await tempRoot();
+    const service = new JobService({ root });
+    const store = await service.create("Apply for all the relevant YC company jobs", "YC applications");
+    const pi = createFakePi();
+    const jobsBind = bindJobCommands(pi, { root, service, headless: true });
+    await pi.startSession();
+    assert.equal(jobsBind.activeJobId(), store.jobId);
+    assert.ok(pi.active.includes("job_propose_plan"));
+    assert.match(pi.notifications.join("\n"), /Continuing "YC applications"/);
+    assert.match(pi.notifications.join("\n"), /Keep talking here/);
+    assert.doesNotMatch(pi.notifications.join("\n"), /\/job-use|\/job-plan|\/job-approve-plan/);
+  });
+
+  it("asks the user to confirm a waiting plan on a fresh session", async () => {
+    root = await tempRoot();
+    const service = new JobService({ root });
+    const store = await service.create("Apply for YC jobs", "YC applications");
+    await service.updateDraft(
+      store.jobId,
+      readyPatch({
+        objective: "Apply for YC jobs",
+        completionText: "operator said stop",
+        templates: [{ id: "apply", objective: "Apply", criteria: APPLY_CRITERIA }],
+      }),
+    );
+    await service.proposePlan(store.jobId);
+    const pi = createFakePi();
+    bindJobCommands(pi, { root, service, headless: true });
+    await pi.startSession();
+    const job = await store.readJob();
+    assert.equal(job.status, "active");
+    assert.match(pi.notifications.join("\n"), /Started "YC applications"|confirm the summary/);
+    assert.doesNotMatch(pi.notifications.join("\n"), /\/job-approve-plan|Hash /);
   });
 });

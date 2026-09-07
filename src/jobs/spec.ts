@@ -33,7 +33,7 @@ export const SPEC_DRAFT_HINT = [
   'Grant: {id, host, gateClass, maxCount, controlName?} — gateClass is outbound|destructive|none, never "authorization".',
   "neverPreapprove must include destructive, payment, credential, otp, captcha.",
   "Close required questions with answer, assumption, or runtimePolicy.",
-  "Materials: paste text, or ask the operator to drop a file into scratchDir (/job-scratch). No upload UI, no coder/subagent in planning.",
+  "Materials: ask the person to paste text in chat, or defer collection to the first runtime task. Do not tell them to run slash commands or open a folder unless they ask how to drop a file.",
 ].join(" ");
 
 export function emptySpec(jobId: string, objective: string, clock: Clock): SpecRecord {
@@ -514,6 +514,23 @@ export function assertReady(spec: SpecRecord): void {
       issues,
     });
   }
+}
+
+/** Plain-language summary for the Yes/No confirmation. No hashes, ids, or commands. */
+export function planConfirmMessage(spec: SpecRecord): string {
+  const grants = spec.approvalEnvelope.grants;
+  const grantLine = grants.length
+    ? `On your behalf it may: ${grants.map((grant) => grant.controlName || grant.id).join(", ")}.`
+    : "It will not send or submit anything without asking you first.";
+  return [
+    spec.objective.trim(),
+    spec.inScope.length ? `Will do: ${spec.inScope.join("; ")}` : "",
+    spec.outOfScope.length ? `Will not: ${spec.outOfScope.join("; ")}` : "",
+    grantLine,
+    spec.stopConditions.length ? `Stops when: ${spec.stopConditions.join("; ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function draftFeedback(spec: SpecRecord): {

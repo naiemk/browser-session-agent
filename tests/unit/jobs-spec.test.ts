@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { emptySpec, mergeSpec, normalizeSpec, readinessIssues, specHash } from "../../src/jobs/spec.ts";
+import { emptySpec, mergeSpec, normalizeSpec, planConfirmMessage, readinessIssues, specHash } from "../../src/jobs/spec.ts";
 import { FakeClock } from "../../src/core/clock.ts";
 import type { SpecRecord } from "../../src/jobs/types.ts";
 
@@ -127,6 +127,29 @@ describe("job spec readiness", () => {
       clock,
     );
     assert.deepEqual(normalizeSpec(ready), ready);
+  });
+
+  it("summarizes a plan for a yes/no confirm without hashes or commands", () => {
+    const clock = new FakeClock();
+    const ready = mergeSpec(
+      emptySpec("job_6", "Apply for YC jobs", clock),
+      {
+        inScope: ["YC listings"],
+        outOfScope: ["non-YC"],
+        completionCriteria: [{ kind: "text_visible", text: "stop" }],
+        templates: [{ id: "apply", objective: "Apply", criteria: [{ kind: "text_visible", text: "Thanks" }] }],
+        stopConditions: ["you say stop"],
+        approvalEnvelope: {
+          neverPreapprove: ["destructive", "payment", "credential", "otp", "captcha"],
+          grants: [{ id: "submit-once", host: "*", gateClass: "outbound", maxCount: 1, controlName: "Submit" }],
+        },
+      },
+      clock,
+    );
+    const summary = planConfirmMessage(ready);
+    assert.match(summary, /Apply for YC jobs/);
+    assert.match(summary, /Submit/);
+    assert.doesNotMatch(summary, /hash|job_|\/job-/i);
   });
 
   it("keeps grant classes through redacted spec writes", async () => {

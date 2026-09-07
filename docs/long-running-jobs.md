@@ -57,7 +57,7 @@ CLI: `browser-agent jobs` and `browser-agent job create|show|title|approve-plan|
 
 Lifecycle skills are pinned by job phase (`job-planner`, `job-sprint`, `job-human`). The local CLI still launches with `--no-skills`; the extension injects the exact skill body. Semantic catalogue retrieval is not used for required lifecycle behaviour.
 
-Planning tools report real readiness issues. `job_update_draft` returns `{ ready, issues[] }`, not the status string `"draft"`. Spec templates use `criteria` (Predicate objects). Operator files such as a CV go in the job scratch directory (`/job-scratch`); planning has no upload UI and no coder/subagent.
+Planning tools report real readiness issues. `job_update_draft` returns `{ ready, issues[] }`, not the status string `"draft"`. Spec templates use `criteria` (Predicate objects). The person in chat confirms a Yes/No summary; they are not expected to type job ids, hashes, or slash commands. CVs are pasted in chat or collected at runtime.
 
 ## Testing
 
