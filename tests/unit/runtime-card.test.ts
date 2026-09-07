@@ -78,6 +78,8 @@ describe("task card", () => {
     assert.match(card, /navigating away loses your place/);
     assert.match(card, /Do not peek file:\/\//);
     assert.match(card, /scratch_ls \/ scratch_read/);
+    assert.match(card, /scratch_read is capped/);
+    assert.doesNotMatch(card, /do not start the harvest over/);
   });
 
   it("teaches a method for establishing standing, and asserts no situation", () => {

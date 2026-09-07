@@ -65,11 +65,21 @@ export async function listScratchFiles(scratchDir: string): Promise<ScratchListi
   return listings;
 }
 
+export interface ScratchRead {
+  text: string;
+  bytes: number;
+  totalChars: number;
+  offset: number;
+  nextOffset: number;
+  truncated: boolean;
+}
+
 export async function readScratchFile(
   scratchDir: string,
   relative: string,
   maxChars: number,
-): Promise<{ text: string; bytes: number; truncated: boolean } | { error: string }> {
+  offset = 0,
+): Promise<ScratchRead | { error: string }> {
   const file = confinedPath(scratchDir, relative);
   if (!file) {
     return { error: "scratch_read path must stay inside this goal's scratch directory" };
@@ -84,21 +94,43 @@ export async function readScratchFile(
     return { error: `binary file (${buf.length} bytes); not shown` };
   }
   const text = buf.toString("utf8");
-  if (text.length <= maxChars) {
-    return { text, bytes: buf.length, truncated: false };
-  }
+  const from = Math.max(0, Math.min(Math.floor(offset) || 0, text.length));
+  const slice = text.slice(from, from + maxChars);
+  const nextOffset = from + slice.length;
   return {
-    text: `${text.slice(0, maxChars).trimEnd()}\n\n[truncated]`,
+    text: slice,
     bytes: buf.length,
-    truncated: true,
+    totalChars: text.length,
+    offset: from,
+    nextOffset,
+    truncated: nextOffset < text.length,
   };
 }
 
-export function formatScratchInventory(listings: ScratchListing[], maxLines = 20): string {
+export function formatScratchRead(name: string, read: ScratchRead): string {
+  if (read.offset >= read.totalChars && read.totalChars > 0) {
+    return `(already at end of ${name}; ${read.totalChars} chars)`;
+  }
+  if (!read.truncated) return read.text;
+  return (
+    `${read.text.trimEnd()}\n\n` +
+    `[truncated at ${read.nextOffset} of ${read.totalChars} chars; ` +
+    `scratch_read name=${name} offset=${read.nextOffset} to continue]`
+  );
+}
+
+export function formatScratchInventory(
+  listings: ScratchListing[],
+  options: { maxLines?: number; newestFirst?: boolean } = {},
+): string {
   if (listings.length === 0) return "Scratch files: (none)";
-  const shown = listings.slice(0, maxLines);
+  const maxLines = options.maxLines ?? 20;
+  const ordered = options.newestFirst
+    ? [...listings].sort((a, b) => b.mtime.localeCompare(a.mtime) || a.name.localeCompare(b.name))
+    : listings;
+  const shown = ordered.slice(0, maxLines);
+  const extra = ordered.length - shown.length;
   const lines = shown.map((item) => `- ${item.name} ${item.bytes}b`);
-  const extra = listings.length - shown.length;
   if (extra > 0) lines.push(`- … ${extra} more`);
   return `Scratch files (${listings.length}):\n${lines.join("\n")}`;
 }

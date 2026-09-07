@@ -175,7 +175,11 @@ function describeTool(tool: string, details: unknown): string {
     case "scratch_ls":
       return `${get(details, "count") ?? 0} scratch files`;
     case "scratch_read":
-      return `read ${str(get(details, "path")) ?? "scratch"}${get(details, "truncated") === true ? " (truncated)" : ""}`;
+      return `read ${str(get(details, "path")) ?? "scratch"}${get(details, "truncated") === true ? " (truncated)" : ""}${
+        typeof get(details, "offset") === "number" && (get(details, "offset") as number) > 0
+          ? ` @${get(details, "offset")}`
+          : ""
+      }`;
     default:
       return "";
   }

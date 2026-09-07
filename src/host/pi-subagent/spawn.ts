@@ -3,6 +3,8 @@
  * flags that stripped coding tools and loaded the browser extension.
  *
  * Matches Pi's official subagent spawn: `--mode json -p --no-session` and `Task: …`.
+ * Persistent `--session-id coder` is a follow-up (ideas/resume-from-scratch.md), not
+ * load-bearing here: `--no-session` still wins if both flags are passed.
  * `--no-extensions` is the required exception so the child does not load the browser
  * parent; `-e pi-model-auto` keeps Router floors. A floor is never a positional `@ultra`.
  */
