@@ -146,4 +146,23 @@ describe("AGENT-05-T01 reversibility judgment", () => {
     assert.equal(result.reversibility, "unknown");
     assert.equal(result.authorization, "outbound");
   });
+
+  // Live TUI `goal_mtqh3r61001`: LinkedIn people-search. Shipping main parked on the
+  // filter chip because unmatched used to mean committing. Invite is the commit.
+  it("does not authorize a people-search filter chip (goal_mtqh3r61001)", () => {
+    for (const name of ["Current companies", "All filters", "Actively hiring"]) {
+      const result = classifyAction(CLICK, control({ name }));
+      assert.equal(result.authorization, "none", name);
+      assert.equal(result.authorizationRuleId, "none", name);
+      assert.equal(result.reversibility, "unknown", name);
+      assert.equal(result.ruleId, "unmatched", name);
+    }
+  });
+
+  it("still authorizes Invite-to-connect as outbound (goal_mtqh3r61001)", () => {
+    const result = classifyAction(CLICK, control({ name: "Invite Ali to connect" }));
+    assert.equal(result.reversibility, "unknown");
+    assert.equal(result.authorization, "outbound");
+    assert.equal(result.authorizationRuleId, "outbound-name");
+  });
 });

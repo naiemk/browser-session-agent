@@ -268,6 +268,52 @@ describe("unknown exploration checkpoints", () => {
     assert.equal(refused.status, "acted");
   });
 
+  it("runs Current companies under ask and still parks Invite to connect", async () => {
+    const page = {
+      url: "https://www.linkedin.com/search/results/people/",
+      title: "Search | LinkedIn",
+      text: "People",
+      controls: [
+        { ref: "e106", role: "button", name: "Current companies", tag: "button" as const },
+        { ref: "e90", role: "link", name: "Invite Ali to connect", tag: "a" as const },
+      ],
+    };
+    let asked = 0;
+    const filter = await guardedAct(
+      mutatingBrowser(page),
+      { kind: "click", ref: "e106" },
+      {
+        policy: "ask",
+        settleMs: 0,
+        approve: async () => {
+          asked += 1;
+          return false;
+        },
+      },
+    );
+    assert.equal(filter.status, "acted", "filter chips are exploration");
+    assert.equal(asked, 0);
+
+    const invite = await guardedAct(
+      mutatingBrowser(page),
+      { kind: "click", ref: "e90" },
+      {
+        policy: "ask",
+        settleMs: 0,
+        approve: async () => {
+          asked += 1;
+          return false;
+        },
+      },
+    );
+    assert.equal(invite.status, "parked", "sending an invite is a world-commit");
+    assert.equal(asked, 1);
+    if (invite.status === "parked") {
+      assert.match(invite.parked.reason, /outbound/i);
+      assert.doesNotMatch(invite.parked.reason, /no rule matched/);
+    }
+  });
+
   it("reloads the latest checkpoint on act kind restore", async () => {
     const browser = mutatingBrowser({
       url: "http://fixture.test/home",
