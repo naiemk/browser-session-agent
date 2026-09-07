@@ -8,8 +8,10 @@ import path from "node:path";
 import { Type } from "typebox";
 import {
   formatScratchInventory,
+  formatScratchRead,
   listScratchFiles,
   readScratchFile,
+  type ScratchListing,
   writeScratchFile,
 } from "../../core/scratch.ts";
 import { coreRoot, goalPaths } from "../../core/paths.ts";
@@ -55,6 +57,7 @@ export const CHAT_WORKER_HINT =
   `Default wall ${formatDurationMs(DEFAULT_TIMEOUT_MS)} (cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
   `${MAX_EXTENSIONS} extensions); the host asks before extending. ` +
   "Files in scratch are the artifact — scratch_ls / scratch_read, not peek file://. " +
+  "After an abort, read those files (offset if truncated) before spawning coder again; do not rebuild. " +
   "Abort and provider quota kill the child; partial files may still be there.";
 
 export function plannerModel(): string {
@@ -78,6 +81,28 @@ export async function standingPlanPrompt(goalId: string, root?: string): Promise
     `scratch/${PLAN_FILE} already exists. Follow it. Missing inputs: ask_user and wait; never invent defaults.`,
     digestText(body),
   ].join("\n\n");
+}
+
+/** Newest-first names and sizes so a later turn resumes instead of rebuilding. */
+export async function standingScratchPrompt(goalId: string, root?: string): Promise<string> {
+  const scratchDir = goalPaths(coreRoot(root), goalId).scratchDir;
+  const listings = await listScratchFiles(scratchDir);
+  if (listings.length === 0) return "";
+  return [
+    "This goal's scratch already has files. Continue from them; do not rebuild. " +
+      "After an abort, scratch_read before spawning coder again. If a read is truncated, pass offset.",
+    formatScratchInventory(listings, { maxLines: 15, newestFirst: true }),
+  ].join("\n");
+}
+
+export function withScratchResume(task: string, listings: ScratchListing[]): string {
+  if (listings.length === 0) return task;
+  return [
+    "Scratch already has files. Continue from them; do not rebuild or re-fetch what is on disk.",
+    formatScratchInventory(listings, { maxLines: 20, newestFirst: true }),
+    "",
+    task,
+  ].join("\n");
 }
 
 export interface SubagentEvidence {
@@ -154,13 +179,17 @@ function recordParentTool(options: SubagentHostOptions, tool: string, text: stri
 async function formatWorkerReply(result: WorkerResult, scratchDir: string): Promise<string> {
   const body = result.text.trim() || result.stderr.trim() || result.errorMessage?.trim() || "(no output)";
   const listings = await listScratchFiles(scratchDir);
+  const resume = workerIsError(result)
+    ? "Partial files remain. Do not repeat the same harvest. scratch_read the artifacts (offset if truncated). The next coder task must name only the gap."
+    : "";
   const lines = [
     `${result.agent} finished (exit ${result.exitCode}${result.aborted ? ", aborted" : ""}).`,
     `Scratch: ${scratchDir}`,
-    formatScratchInventory(listings),
+    formatScratchInventory(listings, { newestFirst: true }),
+    resume,
     "",
     digestText(body),
-  ];
+  ].filter((line) => line !== "");
   return lines.join("\n");
 }
 
@@ -210,6 +239,7 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       `Default wall ${slice}; the host asks before extending (cap ${cap}, ${MAX_EXTENSIONS} extensions).`,
       `timeoutMs is a request, not a grant: above the default needs operator confirm, never unbounded.`,
       "The digest is short; files in scratch are the artifact. Use scratch_ls / scratch_read. Public curl only.",
+      "The worker is told what is already in scratch. Give it the gap, not a restart.",
       "Abort and provider quota kill the child. Chunk work that may exceed one slice.",
     ].join(" "),
     parameters: Type.Object({
@@ -242,9 +272,10 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
         ? await confirmLongerRun(ctx, requested, defaultMs)
         : defaultMs;
       const scratchDir = await ensureScratch(options.goalId, options.root);
+      const listings = await listScratchFiles(scratchDir);
       const result = await runtime.run({
         agentName: agent,
-        task,
+        task: withScratchResume(task, listings),
         scratchDir,
         signal,
         timeoutMs,
@@ -342,12 +373,16 @@ export function scratchReadTool(options: SubagentHostOptions): RegisteredTool {
     name: SCRATCH_READ_TOOL_NAME,
     label: "Read scratch",
     description:
-      "Read a text file from this goal's scratch directory. Capped. Binary is refused. Not a browser peek.",
+      "Read a text file from this goal's scratch directory. Capped. Pass offset to continue a truncated read. Binary is refused. Not a browser peek.",
     parameters: Type.Object({
       name: Type.String({ description: "Relative path under scratch" }),
+      offset: Type.Optional(Type.Number({
+        description: "Character offset to start from after a truncated read (default 0)",
+      })),
     }),
     async execute(_id, params) {
       const name = typeof params.name === "string" ? params.name : "";
+      const offset = typeof params.offset === "number" ? params.offset : 0;
       if (!name.trim()) {
         return finish(
           options,
@@ -356,7 +391,7 @@ export function scratchReadTool(options: SubagentHostOptions): RegisteredTool {
         );
       }
       const scratchDir = await ensureScratch(options.goalId, options.root);
-      const read = await readScratchFile(scratchDir, name, DIGEST_MAX_CHARS);
+      const read = await readScratchFile(scratchDir, name, DIGEST_MAX_CHARS, offset);
       if ("error" in read) {
         return finish(
           options,
@@ -367,9 +402,12 @@ export function scratchReadTool(options: SubagentHostOptions): RegisteredTool {
       return finish(
         options,
         SCRATCH_READ_TOOL_NAME,
-        textResult(read.text, {
+        textResult(formatScratchRead(name, read), {
           path: name,
           bytes: read.bytes,
+          totalChars: read.totalChars,
+          offset: read.offset,
+          nextOffset: read.nextOffset,
           truncated: read.truncated,
         }),
       );

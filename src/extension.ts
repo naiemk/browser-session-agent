@@ -8,7 +8,7 @@ import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
 import { bindPlanMode } from "./host/pi-plan-mode.ts";
-import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt } from "./host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
@@ -144,8 +144,9 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   // used to answer "what can you do?" like a coding assistant.
   pi.on("before_agent_start", async () => {
     const plan = await standingPlanPrompt(goalId);
+    const scratch = await standingScratchPrompt(goalId);
     return {
-      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan].filter(Boolean).join("\n\n"),
+      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan, scratch].filter(Boolean).join("\n\n"),
     };
   });
 

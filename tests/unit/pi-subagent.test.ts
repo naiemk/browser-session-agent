@@ -18,7 +18,9 @@ import {
   SCRATCH_LS_TOOL_NAME,
   SCRATCH_READ_TOOL_NAME,
   standingPlanPrompt,
+  standingScratchPrompt,
   SUBAGENT_TOOL_NAME,
+  withScratchResume,
 } from "../../src/host/pi-subagent/bind.ts";
 import { discoverPackagedAgents, findAgent } from "../../src/host/pi-subagent/discover.ts";
 import {
@@ -420,6 +422,7 @@ describe("subagent bind", () => {
     assert.match(CHAT_WORKER_HINT, /coder/);
     assert.doesNotMatch(CHAT_WORKER_HINT, /Opus/);
     assert.match(CHAT_WORKER_HINT, /\/plan toggles/);
+    assert.match(CHAT_WORKER_HINT, /do not rebuild/);
     assert.doesNotMatch(CHAT_WORKER_HINT, /you still have no shell/i);
   });
 
@@ -465,7 +468,14 @@ describe("subagent bind", () => {
     await writeFile(path.join(scratchDir, "long.md"), "z".repeat(DIGEST_MAX_CHARS + 80));
     const truncated = await runTool(pi, SCRATCH_READ_TOOL_NAME, { name: "long.md" });
     assert.equal(truncated.isError, false);
-    assert.match(truncated.content[0]?.text ?? "", /\[truncated\]/);
+    assert.match(truncated.content[0]?.text ?? "", /offset=\d+ to continue/);
+    const continued = await runTool(pi, SCRATCH_READ_TOOL_NAME, {
+      name: "long.md",
+      offset: DIGEST_MAX_CHARS,
+    });
+    assert.equal(continued.isError, false);
+    assert.doesNotMatch(continued.content[0]?.text ?? "", /offset=\d+ to continue/);
+    assert.match(continued.content[0]?.text ?? "", /z{10,}/);
   });
 
   it("marks abort and provider errors as isError and includes a scratch inventory", async () => {
@@ -494,6 +504,7 @@ describe("subagent bind", () => {
     assert.equal(result.isError, true);
     assert.match(result.content[0]?.text ?? "", /aborted/);
     assert.match(result.content[0]?.text ?? "", /partial.json/);
+    assert.match(result.content[0]?.text ?? "", /Do not repeat the same harvest/);
   });
 
   it("records parent-only tools on the payload log", async () => {
@@ -579,6 +590,47 @@ describe("subagent bind", () => {
     const snippet = await standingPlanPrompt("goal_standing", root);
     assert.match(snippet, /scratch\/plan.md already exists/);
     assert.match(snippet, /Instagram first/);
+  });
+
+  it("injects a standing scratch inventory so the parent resumes instead of rebuilding", async () => {
+    const root = await tempRoot();
+    const scratchDir = await ensureScratch("goal_resume", root);
+    await writeFile(path.join(scratchDir, "candidates.json"), "[]\n");
+    const snippet = await standingScratchPrompt("goal_resume", root);
+    assert.match(snippet, /do not rebuild/i);
+    assert.match(snippet, /candidates.json/);
+  });
+
+  it("tells the child about files already in scratch", () => {
+    const wrapped = withScratchResume("harvest again", [
+      { name: "candidates.json", bytes: 21, mtime: "2026-09-07T00:00:00.000Z" },
+    ]);
+    assert.match(wrapped, /do not rebuild/i);
+    assert.match(wrapped, /candidates.json/);
+    assert.match(wrapped, /harvest again/);
+  });
+
+  it("passes existing scratch into the child task on spawn", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    let seen = "";
+    bindSubagent(pi, {
+      goalId: "goal_spawn_resume",
+      root,
+      runtime: {
+        async run(input) {
+          seen = input.task;
+          return { agent: "coder", text: "ok", exitCode: 0, stderr: "", aborted: false };
+        },
+      },
+    });
+    await runTool(pi, "scratch_write", { name: "partial.json", content: "[]" });
+    const result = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "finish the harvest" });
+    assert.equal(result.isError, false);
+    assert.match(seen, /partial.json/);
+    assert.match(seen, /do not rebuild/i);
+    assert.match(seen, /finish the harvest/);
   });
 
   it("ask_user blocks on Pi input instead of returning nobody available", async () => {

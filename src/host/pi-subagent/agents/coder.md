@@ -14,4 +14,6 @@ Public `curl` of URLs that do not need a login is allowed. Sessionful downloads 
 
 Wall clock is about 3 minutes per slice (the parent may extend if the operator confirms; there is a hard cap). Write files incrementally so a kill still leaves usable scratch. Do not sleep between dozens of sequential requests in one invocation.
 
+Look at files already in this directory first. Continue from them. Do not re-download or rebuild what is already on disk.
+
 When finished, list files changed and the commands that mattered. Keep the parent-facing reply short; the files are the artifact.
