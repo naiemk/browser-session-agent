@@ -20,6 +20,8 @@ export const TOOL_SIDE_OPEN = "side_tab_open";
 export const TOOL_SIDE_CLOSE = "side_tab_close";
 /** Record that a word in the goal matched more than one thing, and what was done. */
 export const TOOL_FORK = "note_fork";
+export const TOOL_PARK = "park";
+export const TOOL_DISCOVER = "discover_work";
 
 export const ALL_TOOLS = [
   TOOL_OBSERVE,
@@ -35,6 +37,8 @@ export const ALL_TOOLS = [
   TOOL_SIDE_OPEN,
   TOOL_SIDE_CLOSE,
   TOOL_FORK,
+  TOOL_PARK,
+  TOOL_DISCOVER,
   TOOL_DONE,
 ] as const;
 

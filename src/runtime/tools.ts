@@ -26,6 +26,8 @@ import {
   TOOL_DONE,
   TOOL_FORK,
   TOOL_OBSERVE,
+  TOOL_PARK,
+  TOOL_DISCOVER,
   TOOL_PEEK,
   TOOL_PROBE,
   TOOL_REMEMBER,
@@ -79,6 +81,15 @@ export interface ToolContext {
   /** The current turn, so a result can be joined to the turn that paid for it. */
   turn?: () => number;
   /** How the page is described to the model. Defaults to the flat control list. */
+  grants?: import("../core/gate.ts").GateGrant[];
+  specHash?: string;
+  neverPreapprove?: import("../core/gate.ts").NondelegableAction[];
+  claim?: (key: string) => Promise<boolean>;
+  onGrantUsed?: (grantId: string) => Promise<void>;
+  onDiscover?: (input: {
+    templateId: string;
+    entities: Array<{ label: string; facts?: Record<string, unknown> }>;
+  }) => Promise<{ created: number; error?: string }>;
   view?: ViewStrategy;
 }
 
@@ -326,6 +337,11 @@ export function buildTools(context: ToolContext): AgentTool[] {
               screenshotDir: context.evidence.screenshotDir,
               precondition: expect,
               checkpoint: context.evidence.goal,
+              specHash: context.specHash,
+              grants: context.grants,
+              neverPreapprove: context.neverPreapprove,
+              claim: context.claim,
+              onGrantUsed: context.onGrantUsed,
               onAsk: (info) => {
                 context.evidence.metrics.record({
                   kind: "gate_ask",
@@ -674,6 +690,88 @@ export function buildTools(context: ToolContext): AgentTool[] {
           [`fork:${term}`]: { candidates, resolution, why, evidence: event?.id },
         });
         return reply({ recorded: term, candidates: candidates.length, resolution });
+      },
+    },
+    {
+      name: TOOL_PARK,
+      label: "Park",
+      description:
+        "Stop this attempt without failing the job. Use for CAPTCHA, rate limits, waiting on a person, or a missing fact. Terminates the turn.",
+      promptSnippet: "Yield with a wake condition rather than looping.",
+      parameters: Type.Object({
+        reason: Type.String(),
+        wake: Type.String({ description: "timer | third_party | human" }),
+        perishable: Type.Boolean(),
+        recommendedRetryMs: Type.Optional(Type.Number()),
+        handoff: Type.Optional(Type.String()),
+        kind: Type.Optional(Type.String({ description: "decision | approval | challenge | identity" })),
+        resource: Type.Optional(Type.String()),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        const raw = params as {
+          reason?: unknown;
+          wake?: unknown;
+          perishable?: unknown;
+          recommendedRetryMs?: unknown;
+          handoff?: unknown;
+          kind?: unknown;
+          resource?: unknown;
+        };
+        const wake = ["timer", "third_party", "human"].includes(String(raw.wake))
+          ? (String(raw.wake) as ParkedOutcome["wake"])
+          : "human";
+        const parked: ParkedOutcome = {
+          status: "parked",
+          reason: String(raw.reason ?? "parked"),
+          wake,
+          perishable: Boolean(raw.perishable),
+          recommendedRetryMs:
+            typeof raw.recommendedRetryMs === "number" ? raw.recommendedRetryMs : undefined,
+          handoff: raw.handoff ? String(raw.handoff) : undefined,
+          payload: {
+            kind: raw.kind ? String(raw.kind) : wake === "human" ? "decision" : "challenge",
+            resource: raw.resource ? String(raw.resource) : undefined,
+          },
+        };
+        context.onParked?.(parked);
+        await closeSideTab();
+        return { ...reply(parked, parked), terminate: true };
+      },
+    },
+    {
+      name: TOOL_DISCOVER,
+      label: "Discover work",
+      description:
+        "Append entities from an approved task template. Cannot invent weaker criteria.",
+      promptSnippet: "Instantiate an approved template for newly found entities.",
+      parameters: Type.Object({
+        templateId: Type.String(),
+        entities: Type.Array(
+          Type.Object({
+            label: Type.String(),
+            facts: Type.Optional(Type.Object({}, { additionalProperties: true })),
+          }),
+        ),
+      }),
+      execute: async (_id: string, params: unknown) => {
+        if (!context.onDiscover) {
+          return reply({
+            error: "discovery is not enabled on this task",
+            note: "Only approved templates on a job run can create more work.",
+          });
+        }
+        const raw = params as {
+          templateId?: unknown;
+          entities?: Array<{ label?: unknown; facts?: Record<string, unknown> }>;
+        };
+        const result = await context.onDiscover({
+          templateId: String(raw.templateId ?? ""),
+          entities: (raw.entities ?? []).map((entry) => ({
+            label: String(entry.label ?? ""),
+            facts: entry.facts,
+          })),
+        });
+        return reply(result);
       },
     },
     {

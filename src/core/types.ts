@@ -220,6 +220,10 @@ export interface ParkedOutcome {
   reason: string;
   wake: WakeSource;
   perishable: boolean;
+  /** Agent-suggested delay before retry; the scheduler clamps it. */
+  recommendedRetryMs?: number;
+  /** Semantic handoff for the next attempt. Not a DOM dump. */
+  handoff?: string;
   /** What a human would need to act on this, when wake is "human". */
   payload?: Record<string, unknown>;
 }

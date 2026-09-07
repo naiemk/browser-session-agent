@@ -39,6 +39,7 @@ const ROUTES: Record<string, string> = {
   "/list": "list.html",
   "/ambiguous": "ambiguous.html",
   "/noisy": "noisy.html",
+  "/challenge": "challenge.html",
   "/once": "once.html",
   "/draft": "draft.html",
   "/tmpl-a": "tmpl-a.html",
@@ -99,6 +100,8 @@ async function templatePost(
 export class FixtureServer {
   private server: Server | null = null;
   port = 0;
+  challengeSolved = false;
+  rateHits = 0;
 
   get origin(): string {
     return `http://127.0.0.1:${this.port}`;
@@ -213,6 +216,35 @@ export class FixtureServer {
           const requested = Number(url.searchParams.get("delay"));
           const delay = Number.isFinite(requested) && requested > 0 ? requested : 350;
           send(res, 200, await page("late-paint.html", { delay: String(delay) }));
+          return;
+        }
+        if (url.pathname === "/challenge") {
+          if (req.method === "POST") {
+            this.challengeSolved = true;
+            send(res, 200, await page("challenge.html", { status: "Challenge cleared", form: "" }));
+            return;
+          }
+          if (url.searchParams.get("gone") === "1" || this.challengeSolved) {
+            send(res, 200, await page("challenge.html", { status: "Challenge cleared", form: "" }));
+            return;
+          }
+          send(
+            res,
+            200,
+            await page("challenge.html", {
+              status: "CAPTCHA required",
+              form: '<form method="post"><button type="submit">I am human</button></form>',
+            }),
+          );
+          return;
+        }
+        if (url.pathname === "/rate-limit") {
+          this.rateHits += 1;
+          if (this.rateHits > 2) {
+            send(res, 429, "<h1>Too many requests</h1><p>Retry-After: 3600</p>");
+            return;
+          }
+          send(res, 200, "<h1>OK</h1><p>Allowed</p>");
           return;
         }
         if (url.pathname === "/find") {

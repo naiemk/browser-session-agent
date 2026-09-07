@@ -10,8 +10,9 @@
  * recovery signal — never a substitute for the given criteria.
  */
 
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { writeJsonAtomic } from "./atomic.ts";
 import type { BrowserPort } from "./browser.ts";
 import { shortId } from "./ids.ts";
 import type { LedgerSink } from "./ledger.ts";
@@ -21,6 +22,7 @@ import { redactDeep } from "./redact.ts";
 import { describeVerification, settleVerification } from "./settle.ts";
 import {
   CoreError,
+  type ParkedOutcome,
   type Predicate,
   type TaskOutcome,
   type Verification,
@@ -61,7 +63,7 @@ async function readTask(paths: GoalPaths, taskId: string): Promise<TaskRecord | 
 }
 
 async function writeTask(paths: GoalPaths, record: TaskRecord): Promise<void> {
-  await writeFile(taskFile(paths, record.taskId), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await writeJsonAtomic(taskFile(paths, record.taskId), redactDeep(record));
 }
 
 export class TaskStore {
@@ -142,6 +144,7 @@ export interface ResolveOptions {
   tabId?: string;
   /** Set when the turn cap stopped the task rather than the task finishing. */
   capped?: boolean;
+  parked?: ParkedOutcome;
   /** How long the criteria are given to come true. Defaults to the settle budget. */
   settleMs?: number;
 }
@@ -177,11 +180,15 @@ export async function resolveTaskOutcome(
   const outcome: TaskOutcome =
     verification.status === "passed"
       ? { status: "success", detail: summarize(verification) }
-      : options.capped
-        ? { status: "capped", turns: record.maxTurns ?? 0 }
-        : { status: "failed", reason: summarize(verification) };
+      : options.parked
+        ? options.parked
+        : options.capped
+          ? { status: "capped", turns: record.maxTurns ?? 0 }
+          : { status: "failed", reason: summarize(verification) };
 
-  await store.setStatus(taskId, outcome.status === "success" ? "done" : "failed");
+  const nextStatus =
+    outcome.status === "success" ? "done" : outcome.status === "parked" ? "parked" : outcome.status === "capped" ? "pending" : "failed";
+  await store.setStatus(taskId, nextStatus);
 
   await options.ledger?.append({
     type: "task_finished",

@@ -1,6 +1,6 @@
 # V2 — Campaign engine
 
-Status: **target state, out of scope for current work.** This exists so today's agent-layer decisions do not foreclose it. Current work is `docs/autonomous-agent.md` and the plan behind it. Decisions live in `docs/decisions.md`.
+Status: **partially implemented as local-first long-running jobs.** The first slice is `docs/long-running-jobs.md`: explicit job identity, versioned specs, sprints, tick-driven execution, and a batched human inbox. A resident daemon, hosted campaign UI, notifications, CRM integrations, and multi-profile fan-out remain out of scope. Decisions live in `docs/decisions.md` (D56).
 
 ## Shape
 

@@ -20,6 +20,8 @@ import {
   TOOL_SIDE_OPEN,
   TOOL_STRANGER,
   TOOL_SURVEY,
+  TOOL_PARK,
+  TOOL_DISCOVER,
 } from "../runtime/names.ts";
 import type { CustomSessionMessage, ExtensionAPI, ExtensionContext } from "../pi-api.ts";
 import {
@@ -53,6 +55,8 @@ export const PLAN_MODE_DISABLED_TOOLS = new Set<string>([
   TOOL_DONE,
   "subagent",
   "scratch_write",
+  TOOL_PARK,
+  TOOL_DISCOVER,
 ]);
 
 const PLAN_MODE_CONTEXT = `[PLAN MODE ACTIVE]

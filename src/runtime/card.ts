@@ -15,6 +15,7 @@ import {
   TOOL_DONE,
   TOOL_FORK,
   TOOL_OBSERVE,
+  TOOL_PARK,
   TOOL_PEEK,
   TOOL_PROBE,
   TOOL_REMEMBER,
@@ -85,6 +86,7 @@ ${input.format ? `- ${input.format}\n` : ""}- Refs stay valid while the element 
 - ${TOOL_CHECK} before you claim to be done, asking everything at once with all: one call beats five.
 - ${TOOL_ASK} for personal facts. Never invent them.
 - ${TOOL_DONE} to finish. A truthful failure beats a false success.
+- ${TOOL_PARK} when you must wait on a person, a timer, or a perishable challenge. Do not hammer a blocked page.
 - On failure, read the recovery note and errors, then change approach. Do not repeat the same click.
 - ${commit}
 

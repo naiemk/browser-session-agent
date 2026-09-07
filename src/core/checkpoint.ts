@@ -7,9 +7,10 @@
  * Restore is a first-class act (`kind: "restore"`), not a test-only helper.
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { act, type ActOptions } from "./act.ts";
+import { writeJsonAtomic } from "./atomic.ts";
 import type { BrowserPort } from "./browser.ts";
 import { ensureGoalDirs, goalPaths } from "./paths.ts";
 import { redactDeep } from "./redact.ts";
@@ -47,11 +48,7 @@ export async function saveCheckpoint(
   };
 
   await ensureGoalDirs(goalPaths(options.root, options.goalId));
-  await writeFile(
-    checkpointFile(options.root, options.goalId, options.tag),
-    `${JSON.stringify(redactDeep(checkpoint), null, 2)}\n`,
-    "utf8",
-  );
+  await writeJsonAtomic(checkpointFile(options.root, options.goalId, options.tag), redactDeep(checkpoint));
   return checkpoint;
 }
 

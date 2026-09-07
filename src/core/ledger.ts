@@ -10,6 +10,7 @@ import { appendFile, readFile } from "node:fs/promises";
 import { shortId } from "./ids.ts";
 import { ensureGoalDirs, goalPaths, type GoalPaths } from "./paths.ts";
 import { redactDeep } from "./redact.ts";
+import { CoreError } from "./types.ts";
 
 export const MAX_PAYLOAD_CHARS = 4000;
 
@@ -140,9 +141,19 @@ export class Ledger implements LedgerSink {
   static async readFrom(root: string, goalId: string): Promise<LedgerEvent[]> {
     const paths = goalPaths(root, goalId);
     const raw = await readFile(paths.eventsFile, "utf8").catch(() => "");
-    return raw
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as LedgerEvent);
+    const lines = raw.split("\n");
+    const events: LedgerEvent[] = [];
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index]!;
+      if (!line.trim()) continue;
+      try {
+        events.push(JSON.parse(line) as LedgerEvent);
+      } catch {
+        const restEmpty = lines.slice(index + 1).every((entry) => !entry.trim());
+        if (restEmpty) break;
+        throw new CoreError("corrupt_ledger", `Malformed ledger line ${index + 1} in ${goalId}`);
+      }
+    }
+    return events;
   }
 }

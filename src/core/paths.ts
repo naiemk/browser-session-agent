@@ -11,6 +11,7 @@ export interface GoalPaths {
   root: string;
   dir: string;
   goalFile: string;
+  jobFile: string;
   eventsFile: string;
   /**
    * Cost and duplicate-work metering, deliberately not the ledger.
@@ -38,6 +39,11 @@ export interface GoalPaths {
    * Safe to delete; screenshots and events are not stored here.
    */
   scratchDir: string;
+  specsDir: string;
+  sprintsDir: string;
+  humanDir: string;
+  schedulerFile: string;
+  locksDir: string;
 }
 
 export function goalPaths(root: string, goalId: string): GoalPaths {
@@ -46,6 +52,7 @@ export function goalPaths(root: string, goalId: string): GoalPaths {
     root,
     dir,
     goalFile: path.join(dir, "goal.json"),
+    jobFile: path.join(dir, "job.json"),
     eventsFile: path.join(dir, "events.jsonl"),
     metricsFile: path.join(dir, "metrics.jsonl"),
     payloadsFile: path.join(dir, "payloads.jsonl"),
@@ -53,7 +60,16 @@ export function goalPaths(root: string, goalId: string): GoalPaths {
     tasksDir: path.join(dir, "tasks"),
     artifactsDir: path.join(dir, "artifacts"),
     scratchDir: path.join(dir, "scratch"),
+    specsDir: path.join(dir, "specs"),
+    sprintsDir: path.join(dir, "sprints"),
+    humanDir: path.join(dir, "human"),
+    schedulerFile: path.join(dir, "scheduler.json"),
+    locksDir: path.join(dir, ".locks"),
   };
+}
+
+export function browserLockDir(root: string): string {
+  return path.join(root, ".locks", "browser");
 }
 
 export async function ensureGoalDirs(paths: GoalPaths): Promise<void> {
@@ -61,4 +77,8 @@ export async function ensureGoalDirs(paths: GoalPaths): Promise<void> {
   await mkdir(paths.tasksDir, { recursive: true });
   await mkdir(paths.artifactsDir, { recursive: true });
   await mkdir(paths.scratchDir, { recursive: true });
+  await mkdir(paths.specsDir, { recursive: true });
+  await mkdir(paths.sprintsDir, { recursive: true });
+  await mkdir(paths.humanDir, { recursive: true });
+  await mkdir(paths.locksDir, { recursive: true });
 }

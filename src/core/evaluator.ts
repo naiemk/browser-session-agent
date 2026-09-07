@@ -14,7 +14,7 @@
 import type { BrowserPort } from "./browser.ts";
 import type { Ledger, LedgerEvent } from "./ledger.ts";
 import { resolveTaskOutcome, type TaskStore } from "./task.ts";
-import type { Verification } from "./types.ts";
+import type { ParkedOutcome, Verification } from "./types.ts";
 
 export interface Fact {
   key: string;
@@ -39,6 +39,7 @@ export interface EvaluateInput {
   /** What the executor said. Recorded for comparison, never used to decide. */
   claim?: string;
   capped?: boolean;
+  parked?: ParkedOutcome;
   /** A session or provider failure, which is nobody's fault but ours. */
   sessionError?: string;
   /**
@@ -58,6 +59,7 @@ export async function evaluateTask(input: EvaluateInput): Promise<Evaluation> {
     claim: input.claim,
     ledger: input.ledger,
     capped: input.capped,
+    parked: input.parked,
   });
 
   const events = await input.ledger.read();

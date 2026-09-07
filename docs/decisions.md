@@ -523,6 +523,16 @@ and criteria in; status, claim, checks, and an evidence id out. Committing actio
 A later named `port` mode may expose primitives over MCP. That is not the default, and it
 is not this product. D1 still forbids wrapping the runtime as an MCP click server.
 
+## D56. Long-running jobs are explicit, disk-backed, and tick-driven
+
+Status: accepted. Multi-week work is a job the operator starts with `/job-new` or `browser-agent job create`, never an ordinary chat that quietly persists. `goalId` is the storage namespace; `job.json` is the marker that a directory is a job. One-shot goals and legacy `RunState` runs are not jobs and are not migrated.
+
+JSON on disk is authoritative. Markdown specs and sprints are generated projections. Pi transcripts, child `--session-id` reuse, open tabs, and archived sprints are not required to resume.
+
+Execution is a bounded `tick`: at most one agent attempt, serialized by a global browser lease and a per-job lease. Calendar time is `job tick --due` invoked by the operator or an external cron/launchd unit. This package does not install a daemon.
+
+Planning skills load because the job is in a planning phase, not because the model retrieved them. Spec approval is a human confirmation of a canonical hash. Grants are bounded and spec-scoped; CAPTCHA, OTP, credentials, payments, and destructive actions stay runtime gates. Perishable human work stores intent and re-drives when the human is present (D32).
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

@@ -14,7 +14,7 @@
  */
 
 import { act, type ActOptions } from "./act.ts";
-import { approvalKey, approvalsFromEvents, hostOf, type ApprovalIdentity } from "./approvals.ts";
+import { approvalKey, approvalsFromEvents, hostOf, normalizeControlName, type ApprovalIdentity } from "./approvals.ts";
 import type { BrowserPort } from "./browser.ts";
 import { loadCheckpoint, restoreCheckpoint, saveCheckpoint } from "./checkpoint.ts";
 import type { LedgerSink } from "./ledger.ts";
@@ -48,6 +48,19 @@ export interface GateAskInfo {
   ruleId: string;
 }
 
+export type NondelegableAction = "destructive" | "payment" | "credential" | "otp" | "captcha";
+
+export interface GateGrant {
+  id: string;
+  specHash: string;
+  host: string;
+  authorization: Authorization;
+  controlKind?: string;
+  controlName?: string;
+  remaining: number;
+  expiresAt?: string;
+}
+
 export interface GateOptions extends ActOptions {
   policy?: ApprovalMode;
   /** What must be true on the live page before an authorized commit may fire. */
@@ -60,6 +73,13 @@ export interface GateOptions extends ActOptions {
   entityId?: string;
   /** Enables navigation and unknown-action checkpoints. */
   checkpoint?: { root: string; goalId: string; tag?: string };
+  specHash?: string;
+  grants?: GateGrant[];
+  neverPreapprove?: NondelegableAction[];
+  nowMs?: number;
+  onGrantUsed?: (grantId: string) => Promise<void>;
+  /** Claim an idempotency key before a commit. False means skip the act. */
+  claim?: (key: string) => Promise<boolean>;
 }
 
 export type GateResult =
@@ -77,6 +97,41 @@ function gatePayload(
     gateAuthorization: classification.authorization,
     ...extra,
   };
+}
+
+function forbiddenByEnvelope(
+  classification: Classification,
+  controlName: string | undefined,
+  never: NondelegableAction[] | undefined,
+): boolean {
+  if (!never?.length) return false;
+  if (classification.authorization === "destructive" && never.includes("destructive")) return true;
+  const name = controlName ?? "";
+  if (never.includes("payment") && /\b(pay|purchase|buy|checkout|order|transfer|withdraw)\b/i.test(name)) {
+    return true;
+  }
+  return false;
+}
+
+function matchingGrant(
+  grants: GateGrant[] | undefined,
+  identity: ApprovalIdentity | undefined,
+  authorization: Authorization,
+  nowMs: number,
+): GateGrant | undefined {
+  if (!grants?.length || !identity) return undefined;
+  return grants.find((grant) => {
+    if (grant.remaining <= 0) return false;
+    if (grant.expiresAt && Date.parse(grant.expiresAt) <= nowMs) return false;
+    if (grant.specHash && identity.specHash && grant.specHash !== identity.specHash) return false;
+    if (grant.host !== "*" && grant.host !== identity.host) return false;
+    if (grant.authorization !== authorization) return false;
+    if (grant.controlKind && grant.controlKind !== identity.kind) return false;
+    if (grant.controlName && normalizeControlName(grant.controlName) !== normalizeControlName(identity.name)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function needsCheckpoint(request: ActionRequest, classification: Classification): boolean {
@@ -277,10 +332,31 @@ export async function guardedAct(
         kind: request.kind,
         name: control.name,
         ruleId: classification.authorizationRuleId,
+        specHash: options.specHash,
       }
     : undefined;
 
-  if (policy === "ask") {
+  const grant = forbiddenByEnvelope(classification, control?.name, options.neverPreapprove)
+    ? undefined
+    : matchingGrant(options.grants, identity, classification.authorization, options.nowMs ?? Date.now());
+
+  if (grant) {
+    await options.onGrantUsed?.(grant.id);
+    await options.ledger?.append({
+      type: "approval",
+      entityId: options.entityId,
+      intent: request.intent ?? `${request.kind} ${control?.name ?? request.ref ?? ""}`.trim(),
+      outcome: { ok: true, detail: `approved by grant ${grant.id}` },
+      payload: {
+        ...gatePayload(classification, { policy, grantId: grant.id }),
+        host: identity?.host,
+        controlKind: identity?.kind,
+        controlName: identity?.name,
+        ruleId: identity?.ruleId,
+        specHash: identity?.specHash,
+      },
+    });
+  } else if (policy === "ask") {
     const remembered =
       Boolean(identity) &&
       options.ledger?.read &&
@@ -346,8 +422,31 @@ export async function guardedAct(
           controlKind: identity.kind,
           controlName: identity.name,
           ruleId: identity.ruleId,
+          specHash: identity.specHash,
         },
       });
+    }
+  }
+
+  const idempotencyKey = identity
+    ? `commit:${options.entityId ?? "goal"}:${approvalKey(identity)}`
+    : `commit:${options.entityId ?? "goal"}:${request.kind}:${control?.name ?? request.ref ?? ""}`;
+  if (options.claim) {
+    const claimed = await options.claim(idempotencyKey);
+    if (!claimed) {
+      await options.ledger?.append({
+        type: "approval",
+        entityId: options.entityId,
+        intent: request.intent,
+        outcome: { ok: false, detail: "duplicate_action" },
+        payload: gatePayload(classification, { policy, idempotencyKey }),
+      });
+      return {
+        status: "refused",
+        code: "duplicate_action",
+        reason: "this consequential action was already claimed",
+        precondition,
+      };
     }
   }
 

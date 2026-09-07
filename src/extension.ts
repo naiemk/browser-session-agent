@@ -8,6 +8,7 @@ import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { shortId } from "./core/ids.ts";
 import { bindPlanMode } from "./host/pi-plan-mode.ts";
+import { bindJobCommands } from "./host/pi-jobs.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
@@ -140,20 +141,21 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     pi.setActiveTools(names);
   });
 
-  // Replace the coding identity rather than appending to it. Appending is why the chat
-  // used to answer "what can you do?" like a coding assistant.
+  // Identity first so `before_agent_start` yields the browser system prompt as result[0].
+  // Plan-mode and job session_start handlers follow, so they can filter the active set
+  // after the browser tools are restored.
+  let jobs: ReturnType<typeof bindJobCommands> | undefined;
   pi.on("before_agent_start", async () => {
     const plan = await standingPlanPrompt(goalId);
     const scratch = await standingScratchPrompt(goalId);
+    const job = await jobs?.injection();
     return {
-      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan, scratch].filter(Boolean).join("\n\n"),
+      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan, scratch, job].filter(Boolean).join("\n\n"),
     };
   });
 
-  // After the session_start that restores browser tools, so a resumed plan-mode
-  // can filter act off rather than being overwritten. After the identity hook, so
-  // before_agent_start still yields the browser system prompt as the first result.
   bindPlanMode(pi);
+  jobs = bindJobCommands(pi, { headless: process.env.BSA_HEADLESS === "1" });
 
   pi.registerCommand("browser-evidence", {
     description: "Where this session's evidence, metrics and payloads are written",
