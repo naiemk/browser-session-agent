@@ -8,6 +8,8 @@ Depends on: AGENT-05 (commit gate), AGENT-06 (checkpoints)
 
 Live TUI run `goal_mtq2nd62001`: Users / Got it / Try again parked because unmatched clicks classified as `committing` and chat policy was `ask`. That asked the wrong question. Exploring a site is the job. Approval is for world-commits (Send / Pay / Delete), not for classifier ignorance.
 
+Same failure on shipping `main` in `goal_mtqh3r61001`: LinkedIn people-search parked on **Current companies** (`no rule matched "Current companies"`). That is a filter chip. **Invite Ali to connect** is the outbound commit and should still ask. Do not add Current companies to `BENIGN`.
+
 One axis (`reversibility`) was answering two questions. Unknown name → `committing` → human `confirm`. The cost of an unknown click belongs in the **loop** (checkpoint, try, restore), not in a parked TUI. Irreversible ≠ ask. Planning still prefers reversible-first; the gate no longer treats ignorance as a world-commit.
 
 This does **not** add names (`Got it`, `Users`, `Try again`) to `BENIGN`. It does **not** wrap OpenRouter HTML; Pi owns provider errors. It does **not** add another snapshot-prune pass.
@@ -61,7 +63,7 @@ Ledger/metrics: counts of asks on `authorization=none` (should be 0) vs asks on 
 
 ### T6 — Expect kinds in the schema
 
-Runtime already rejects unknown predicates (`validatePredicate`). The model still sent `expect.kind: "text"` because `PredicateSchema.kind` is an open `Type.String()` and probe’s query kind *is* `text`. Close the enum to `PREDICATE_KINDS` (`text_visible`, not `text`).
+Runtime already rejects unknown predicates (`validatePredicate`). The model still sent `expect.kind: "text"` because `PredicateSchema.kind` is an open `Type.String()` and probe’s query kind *is* `text`. Same later live run (`goal_mtqh3r61001`) sent `expect.kind: "role"`. Close the enum to `PREDICATE_KINDS` (`text_visible`, `dialog_open`; not `text` or `role`).
 
 ## Out of scope
 
