@@ -7,12 +7,24 @@
  * all state lives on disk so a fresh process can continue with no session context.
  */
 
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { writeJsonAtomic } from "./atomic.ts";
 import { shortId } from "./ids.ts";
 import { ensureGoalDirs, goalPaths, type GoalPaths } from "./paths.ts";
 import { redactDeep } from "./redact.ts";
 import { CoreError, type ParkedOutcome, type TaskOutcome } from "./types.ts";
+
+export interface ActionJournal {
+  actionId: string;
+  idempotencyKey: string;
+  kind: string;
+  intent?: string;
+  status: "prepared" | "fired" | "verified" | "abandoned";
+  preparedAt: string;
+  firedAt?: string;
+  verifiedAt?: string;
+}
 
 export interface EntityRecord {
   entityId: string;
@@ -23,6 +35,10 @@ export interface EntityRecord {
   facts: Record<string, unknown>;
   outcome?: TaskOutcome;
   parked?: ParkedOutcome;
+  wakeAt?: string;
+  cooldownUntil?: string;
+  journal?: ActionJournal;
+  lastHandoff?: string;
   /** Idempotency keys already consumed by this entity. */
   consumed: string[];
   createdAt: string;
@@ -46,7 +62,7 @@ function entityFile(paths: GoalPaths, entityId: string): string {
 }
 
 async function writeJson(file: string, value: unknown): Promise<void> {
-  await writeFile(file, `${JSON.stringify(redactDeep(value), null, 2)}\n`, "utf8");
+  await writeJsonAtomic(file, redactDeep(value));
 }
 
 async function readJson<T>(file: string): Promise<T | undefined> {
@@ -176,12 +192,17 @@ export class GoalStore {
   }
 
   /** Parking is per entity: unrelated entities keep working (D32). */
-  async park(entityId: string, parked: Omit<ParkedOutcome, "status">): Promise<EntityRecord> {
+  async park(
+    entityId: string,
+    parked: Omit<ParkedOutcome, "status"> & { wakeAt?: string; cooldownUntil?: string },
+  ): Promise<EntityRecord> {
     return this.update(entityId, (record) => ({
       ...record,
-      stage: record.stage,
       parked: { status: "parked", ...parked },
       outcome: { status: "parked", ...parked },
+      wakeAt: parked.wakeAt,
+      cooldownUntil: parked.cooldownUntil ?? record.cooldownUntil,
+      lastHandoff: parked.handoff ?? record.lastHandoff,
     }));
   }
 
@@ -191,6 +212,10 @@ export class GoalStore {
       parked: undefined,
       outcome: undefined,
     }));
+  }
+
+  async setJournal(entityId: string, journal: ActionJournal | undefined): Promise<EntityRecord> {
+    return this.update(entityId, (record) => ({ ...record, journal }));
   }
 
   async finish(entityId: string, outcome: TaskOutcome): Promise<EntityRecord> {

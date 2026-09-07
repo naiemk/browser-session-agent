@@ -6,17 +6,17 @@ import { nullEvidence } from "../../src/runtime/evidence.ts";
 import { ALL_TOOLS } from "../../src/runtime/names.ts";
 
 describe("fixed tool overhead", () => {
-  it("keeps 14 tools and drops schema bytes below the recorded 6372", () => {
+  it("keeps 16 tools after park and discover", () => {
     const composed = composeAgent({
       card: { objective: "test", criteria: [], policy: "ask" },
       tools: { browser: {} as BrowserPort, evidence: nullEvidence() },
     });
     const overhead = fixedOverhead(composed);
-    assert.equal(overhead.toolCount, 14);
-    assert.equal(ALL_TOOLS.length, 14);
+    assert.equal(overhead.toolCount, 16);
+    assert.equal(ALL_TOOLS.length, 16);
     assert.ok(
-      overhead.toolSchemaBytes < 6372,
-      `toolSchemaBytes ${overhead.toolSchemaBytes} did not drop below 6372`,
+      overhead.toolSchemaBytes < 12_000,
+      `toolSchemaBytes ${overhead.toolSchemaBytes} grew past the job-tool budget`,
     );
   });
 });

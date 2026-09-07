@@ -24,6 +24,7 @@ import { evidenceForGoal } from "../host/evidence.ts";
 import { FilePayloadLog, FileRecorder } from "../optimize/recorder.ts";
 import { createLiveModel } from "../runtime/model.ts";
 import { runTaskWithDeclineRetry } from "../runtime/runtime.ts";
+import { JobService } from "../jobs/service.ts";
 
 export interface ParsedArgs {
   command: string;
@@ -100,6 +101,19 @@ Usage:
   browser-agent acp                   speak ACP on stdio (goal in, verdict out)
   browser-agent perceive diff <url> [--a reference] [--b lean]
   browser-agent perceive golden <dir> [--perceiver lean]
+  browser-agent jobs [--root <dir>] [--json]
+  browser-agent job create "<objective>" [--title NAME] [--root <dir>] [--json]
+  browser-agent job show <id> [--root <dir>] [--json]
+  browser-agent job title <id> <title> [--root <dir>]
+  browser-agent job approve-plan <id> --hash <hash> [--root <dir>]
+  browser-agent job pause <id> [--root <dir>]
+  browser-agent job resume <id> [--root <dir>]
+  browser-agent job tick <id>|--due [--root <dir>] [--json] [--max-turns <n>]
+  browser-agent job run <id> [--root <dir>] [--json] [--max-ticks <n>]
+
+job tick --due is safe for cron/launchd. This package does not install a scheduler.
+Example: * /20 * * * * browser-agent job tick --due --root ~/.browser-agent-core
+
 
 run options:
   --url <url>              page to start from (required)
@@ -609,6 +623,120 @@ async function commandAcp(): Promise<number> {
   return 0;
 }
 
+async function commandJob(args: ParsedArgs): Promise<number> {
+  const root = flagString(args.flags, "root") ?? coreRoot();
+  const json = Boolean(args.flags.json);
+  const service = new JobService({ root });
+  const verb = args.positional[0] ?? "help";
+  const rest = args.positional.slice(1);
+
+  const print = (value: unknown) => {
+    if (json) process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+    else if (typeof value === "string") process.stdout.write(`${value}\n`);
+    else process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  };
+
+  try {
+    if (verb === "create") {
+      const objective = rest.join(" ").trim();
+      const store = await service.create(objective, flagString(args.flags, "title"));
+      const job = await store.readJob();
+      print(json ? job : `${job.jobId}  ${job.title}  ${job.status}`);
+      return 0;
+    }
+    if (verb === "show") {
+      const store = await service.resolve(rest[0] ?? "");
+      print(await store.summary());
+      return 0;
+    }
+    if (verb === "title") {
+      const job = await service.rename(rest[0] ?? "", rest.slice(1).join(" "));
+      print(`${job.jobId}  ${job.title}`);
+      return 0;
+    }
+    if (verb === "approve-plan") {
+      const hash = flagString(args.flags, "hash");
+      if (!hash) {
+        process.stderr.write("approve-plan needs --hash\n");
+        return 2;
+      }
+      const spec = await service.approvePlan(rest[0] ?? "", hash);
+      print({ jobId: spec.jobId, hash: spec.hash, version: spec.version });
+      return 0;
+    }
+    if (verb === "pause") {
+      print(await service.pause(rest[0] ?? ""));
+      return 0;
+    }
+    if (verb === "resume") {
+      print(await service.resume(rest[0] ?? ""));
+      return 0;
+    }
+    if (verb === "tick") {
+      const due = Boolean(args.flags.due);
+      if (due) {
+        const results = await service.tickDue();
+        print(results);
+        return results.some((result) => result.status === "busy") ? 3 : 0;
+      }
+      const result = await service.tick({ jobId: rest[0] ?? "" });
+      print(result);
+      if (result.status === "busy") return 3;
+      if (result.status === "failed") return 1;
+      return 0;
+    }
+    if (verb === "run") {
+      let live;
+      try {
+        live = await createLiveModel({ model: flagString(args.flags, "model") });
+      } catch (err) {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+        return 2;
+      }
+      const browser = await LocalBrowser.launch({ headless: !args.flags.headed });
+      try {
+        const results = await service.run({
+          jobId: rest[0] ?? "",
+          stream: live.stream,
+          browser,
+          maxTicks: Number(flagString(args.flags, "max-ticks") ?? 20),
+        });
+        print(results);
+        return 0;
+      } finally {
+        await browser.close();
+      }
+    }
+    process.stderr.write(`unknown job verb "${verb}"\n`);
+    return 2;
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+}
+
+async function commandJobs(args: ParsedArgs): Promise<number> {
+  const root = flagString(args.flags, "root") ?? coreRoot();
+  const service = new JobService({ root });
+  const jobs = await service.list();
+  if (jobs.length === 0) {
+    process.stderr.write(`no jobs under ${path.join(root, "goals")}\n`);
+    return 1;
+  }
+  if (args.flags.json) {
+    process.stdout.write(`${JSON.stringify(jobs, null, 2)}\n`);
+    return 0;
+  }
+  for (const job of jobs) {
+    process.stdout.write(
+      `${job.jobId}  ${job.title}  ${job.display}  humans:${job.humanCount}` +
+        (job.nextWakeAt ? `  wake ${job.nextWakeAt}` : "") +
+        `\n`,
+    );
+  }
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   switch (args.command) {
@@ -628,6 +756,10 @@ export async function main(argv: string[]): Promise<number> {
       return commandPerceive(args);
     case "acp":
       return commandAcp();
+    case "jobs":
+      return commandJobs(args);
+    case "job":
+      return commandJob(args);
     case "help":
     case "--help":
     case "-h":

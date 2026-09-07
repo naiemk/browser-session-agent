@@ -243,11 +243,16 @@ describe("Pi package and extension contract", () => {
     assert.deepEqual(pi.active, ["read", "bash", "write", "edit"], "untouched during load");
 
     await pi.startSession();
+    const jobTools = ["job_read", "job_update_draft", "job_propose_plan"];
     assert.deepEqual(
       pi.active.slice().sort(),
-      [...pi.tools.keys()].sort(),
+      [...pi.tools.keys()].filter((name) => !jobTools.includes(name)).sort(),
       "the browser tools, and only those: the coding tools are never active",
     );
+    for (const name of jobTools) {
+      assert.equal(pi.tools.has(name), true, `${name} is registered but idle until a job is planning`);
+      assert.equal(pi.active.includes(name), false);
+    }
   });
 
   it("replaces the coding identity rather than appending to it", async () => {

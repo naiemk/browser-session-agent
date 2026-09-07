@@ -15,6 +15,7 @@ export interface ApprovalIdentity {
   kind: string;
   name: string;
   ruleId: string;
+  specHash?: string;
 }
 
 export function hostOf(url: string): string {
@@ -30,9 +31,13 @@ export function normalizeControlName(name: string): string {
 }
 
 export function approvalKey(identity: ApprovalIdentity): string {
-  return [identity.host, identity.kind, normalizeControlName(identity.name), identity.ruleId].join(
-    "\u001f",
-  );
+  return [
+    identity.host,
+    identity.kind,
+    normalizeControlName(identity.name),
+    identity.ruleId,
+    identity.specHash ?? "",
+  ].join("\u001f");
 }
 
 function payloadIdentity(payload: Record<string, unknown> | undefined): ApprovalIdentity | undefined {
@@ -41,8 +46,9 @@ function payloadIdentity(payload: Record<string, unknown> | undefined): Approval
   const kind = typeof payload.controlKind === "string" ? payload.controlKind : "";
   const name = typeof payload.controlName === "string" ? payload.controlName : "";
   const ruleId = typeof payload.ruleId === "string" ? payload.ruleId : "";
+  const specHash = typeof payload.specHash === "string" ? payload.specHash : undefined;
   if (!host || !kind || !name || !ruleId) return undefined;
-  return { host, kind, name, ruleId };
+  return { host, kind, name, ruleId, specHash };
 }
 
 /** True when this ledger row is an operator yes we should honour later. */

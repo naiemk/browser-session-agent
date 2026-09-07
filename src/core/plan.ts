@@ -10,15 +10,23 @@
  * hidden. The graph is JSON on disk so a fresh process can pick it up tomorrow.
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { writeJsonAtomic } from "./atomic.ts";
 import { shortId } from "./ids.ts";
 import { ensureGoalDirs, goalPaths, type GoalPaths } from "./paths.ts";
 import { parsePredicate } from "./predicates.ts";
 import { redactDeep } from "./redact.ts";
-import { CoreError, type Predicate } from "./types.ts";
+import { CoreError, type ParkedOutcome, type Predicate } from "./types.ts";
 
-export type PlanTaskStatus = "pending" | "running" | "blocked" | "done" | "failed" | "abandoned";
+export type PlanTaskStatus =
+  | "pending"
+  | "running"
+  | "blocked"
+  | "parked"
+  | "done"
+  | "failed"
+  | "abandoned";
 
 export interface PlanTask {
   id: string;
@@ -37,6 +45,15 @@ export interface PlanTask {
   attempts: number;
   failureReason?: string;
   contextNeeds?: string[];
+  templateId?: string;
+  sprintId?: string;
+  skills?: string[];
+  resource?: string;
+  specVersion?: number;
+  maxAttempts?: number;
+  deferredUntil?: string;
+  parked?: ParkedOutcome;
+  lastHandoff?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +66,8 @@ export interface PlanRecord {
   /** Facts known at the goal level, available to every task. */
   facts: Record<string, unknown>;
   tasks: PlanTask[];
+  /** Default attempt cap; a task may override. */
+  maxAttemptsPerTask: number;
   /** Approach substitutions, oldest first. This is the replan history. */
   revisions: Array<{ at: string; reason: string; from?: string; to?: string }>;
   createdAt: string;
@@ -64,6 +83,12 @@ export interface AddTaskInput {
   entityId?: string;
   approach?: string;
   id?: string;
+  templateId?: string;
+  sprintId?: string;
+  skills?: string[];
+  resource?: string;
+  specVersion?: number;
+  maxAttempts?: number;
 }
 
 function planFile(paths: GoalPaths): string {
@@ -91,6 +116,7 @@ export class PlanStore {
         missingInputs: [],
         facts: {},
         tasks: [],
+        maxAttemptsPerTask: 3,
         revisions: [],
         createdAt: now(),
         updatedAt: now(),
@@ -110,12 +136,13 @@ export class PlanStore {
   }
 
   private async write(record: PlanRecord): Promise<void> {
-    await writeFile(planFile(this.paths), `${JSON.stringify(redactDeep(record), null, 2)}\n`, "utf8");
+    await writeJsonAtomic(planFile(this.paths), redactDeep(record));
   }
 
   async read(): Promise<PlanRecord> {
     const record = await this.tryRead();
     if (!record) throw new CoreError("missing_plan", `No plan for ${this.goalId}`);
+    if (record.maxAttemptsPerTask === undefined) record.maxAttemptsPerTask = 3;
     return record;
   }
 
@@ -142,6 +169,12 @@ export class PlanStore {
       entityId: input.entityId,
       approach: input.approach,
       attempts: 0,
+      templateId: input.templateId,
+      sprintId: input.sprintId,
+      skills: input.skills,
+      resource: input.resource,
+      specVersion: input.specVersion,
+      maxAttempts: input.maxAttempts,
       createdAt: now(),
       updatedAt: now(),
     };
@@ -199,6 +232,19 @@ export class PlanStore {
     return this.updateTask(taskId, { status: "failed", failureReason: reason });
   }
 
+  async markParked(taskId: string, parked: ParkedOutcome, deferredUntil?: string): Promise<PlanTask> {
+    return this.updateTask(taskId, {
+      status: "parked",
+      parked,
+      deferredUntil,
+      lastHandoff: parked.handoff,
+    });
+  }
+
+  async markPending(taskId: string): Promise<PlanTask> {
+    return this.updateTask(taskId, { status: "pending", parked: undefined, deferredUntil: undefined });
+  }
+
   /** Blocked, not failed: it can run once someone supplies what it needs. */
   async block(taskId: string, missingInputs: string[]): Promise<PlanTask> {
     await this.mutate((record) => ({
@@ -226,15 +272,26 @@ export class PlanStore {
    * The next task that can actually run: pending, dependencies done, prerequisites known.
    * Oldest first, so discovered work does not starve the original plan.
    */
-  async nextReadyTask(): Promise<PlanTask | undefined> {
+  async nextReadyTask(nowIso?: string): Promise<PlanTask | undefined> {
+    return (await this.readyTasks(nowIso))[0];
+  }
+
+  async readyTasks(nowIso?: string): Promise<PlanTask[]> {
     const record = await this.read();
     const done = new Set(record.tasks.filter((task) => task.status === "done").map((task) => task.id));
     const known = new Set(Object.keys(record.facts));
+    const at = nowIso ?? now();
+    const defaultCap = record.maxAttemptsPerTask ?? 3;
     return record.tasks
-      .filter((task) => task.status === "pending")
+      .filter((task) => task.status === "pending" || (task.status === "parked" && task.deferredUntil && task.deferredUntil <= at))
+      .filter((task) => {
+        const cap = task.maxAttempts ?? defaultCap;
+        return task.attempts < cap;
+      })
+      .filter((task) => !task.deferredUntil || task.deferredUntil <= at)
       .filter((task) => task.dependencies.every((id) => done.has(id)))
       .filter((task) => task.prerequisites.every((need) => known.has(need)))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
   async isComplete(): Promise<boolean> {
@@ -282,6 +339,7 @@ export class PlanStore {
       pending: 0,
       running: 0,
       blocked: 0,
+      parked: 0,
       done: 0,
       failed: 0,
       abandoned: 0,
