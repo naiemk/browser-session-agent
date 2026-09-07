@@ -4,7 +4,7 @@ import { fileEvidence } from "../../host/evidence.ts";
 import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { shortId } from "../../core/ids.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
-import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
+import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -139,9 +139,10 @@ export class OperatorRuntime {
     this.api.on("before_agent_start", async () => {
       if (!this.browserPrompt) return undefined;
       const plan = await standingPlanPrompt(this.evidenceGoalId);
+      const scratch = await standingScratchPrompt(this.evidenceGoalId);
       const injection = this.planMode?.injection();
       return {
-        systemPrompt: [this.browserPrompt, plan, injection].filter(Boolean).join("\n\n"),
+        systemPrompt: [this.browserPrompt, plan, scratch, injection].filter(Boolean).join("\n\n"),
       };
     });
     this.host.listeners = {

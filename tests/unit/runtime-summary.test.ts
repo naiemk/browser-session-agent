@@ -94,6 +94,10 @@ describe("one line per tool result", () => {
     assert.match(summarizeToolResult("subagent", { agent: "coder", exitCode: 143, aborted: true }), /coder exit 143, aborted/);
     assert.match(summarizeToolResult("scratch_ls", { count: 3 }), /3 scratch files/);
     assert.match(summarizeToolResult("scratch_read", { path: "notes.md", truncated: true }), /read notes.md \(truncated\)/);
+    assert.match(
+      summarizeToolResult("scratch_read", { path: "notes.md", truncated: true, offset: 2000 }),
+      /read notes.md \(truncated\) @2000/,
+    );
   });
 
   it("reports a peek that landed on the wrong url, and where it still is", () => {
