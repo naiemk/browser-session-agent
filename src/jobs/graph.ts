@@ -8,12 +8,40 @@ function sameCriteria(left: Predicate[], right: Predicate[]): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+export function assertMaterializablePlan(spec: SpecRecord): void {
+  const templatesById = new Map(spec.templates.map((template) => [template.id, template]));
+  if (!spec.templates.some((template) => !template.discoverable)) {
+    throw new CoreError("unmaterializable_plan", "the job has no non-discoverable seed task");
+  }
+  for (const template of spec.templates) {
+    if (template.discoverable && template.dependencies?.length) {
+      throw new CoreError(
+        "unmaterializable_dependency",
+        `discoverable template ${template.id} cannot declare static dependencies`,
+      );
+    }
+    for (const dependency of template.dependencies ?? []) {
+      const target = templatesById.get(dependency);
+      if (!target) {
+        throw new CoreError("unknown_dependency", `template ${template.id} depends on unknown template ${dependency}`);
+      }
+      if (target.discoverable) {
+        throw new CoreError(
+          "unmaterializable_dependency",
+          `template ${template.id} cannot depend on discoverable template ${dependency}`,
+        );
+      }
+    }
+  }
+}
+
 export async function materializePlan(
   plan: PlanStore,
   tasks: TaskStore,
   spec: SpecRecord,
   goals?: GoalStore,
 ): Promise<PlanTask[]> {
+  assertMaterializablePlan(spec);
   const created: PlanTask[] = [];
   const idByTemplate = new Map<string, string>();
   for (const template of spec.templates) {
@@ -37,9 +65,7 @@ export async function materializePlan(
     if (template.discoverable || !template.dependencies?.length) continue;
     const taskId = idByTemplate.get(template.id);
     if (!taskId) continue;
-    const deps = template.dependencies
-      .map((dep) => idByTemplate.get(dep))
-      .filter((id): id is string => Boolean(id));
+    const deps = template.dependencies.map((dep) => idByTemplate.get(dep)!);
     if (deps.length > 0) await plan.updateTask(taskId, { dependencies: deps });
   }
   return created;
