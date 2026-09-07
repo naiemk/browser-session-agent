@@ -5,6 +5,12 @@ import { JobService } from "../../src/jobs/service.ts";
 import { createFakePi, runCommand, runTool } from "../helpers/fake-pi.ts";
 import { APPLY_CRITERIA, readyPatch, removeRoot, tempRoot } from "../helpers/job-harness.ts";
 
+function toolText(result: { content: Array<{ type: string; text?: string }> }): string {
+  const block = result.content.find((entry) => entry.type === "text");
+  assert.ok(block?.type === "text" && block.text != null);
+  return block.text;
+}
+
 describe("job registry and plan sign-off", () => {
   let root = "";
 
@@ -36,6 +42,8 @@ describe("job registry and plan sign-off", () => {
 
     const propose = await runTool(pi, "job_propose_plan", {});
     assert.equal(propose.isError, true);
+    assert.match(toolText(propose), /issues/);
+    assert.doesNotMatch(toolText(propose), /Cannot read properties/);
 
     await service.updateDraft(
       outreach.jobId,
@@ -59,5 +67,50 @@ describe("job registry and plan sign-off", () => {
     assert.ok(job.approvedSpecHash);
     assert.equal(pi.active.includes("job_propose_plan"), false, "planning tools drop after approval");
     assert.match((await jobsBind.injection()) ?? "", /Sprint execution|bounded task/i);
+  });
+
+  it("reports real draft issues and proposes a messy successCriteria patch", async () => {
+    root = await tempRoot();
+    const service = new JobService({ root });
+    const pi = createFakePi(["yes"]);
+    bindJobCommands(pi, { root, service, headless: true });
+    await pi.startSession();
+    await runCommand(pi, "job-new", "Apply for YC jobs");
+
+    const incomplete = await runTool(pi, "job_update_draft", { patch: { inScope: ["YC listings"] } });
+    const incompleteBody = JSON.parse(toolText(incomplete));
+    assert.equal(incompleteBody.ready, false);
+    assert.ok(Array.isArray(incompleteBody.issues));
+    assert.notEqual(incompleteBody.issues, "draft");
+    assert.ok(incompleteBody.issues.some((issue: { code: string }) => issue.code === "templates"));
+
+    await runCommand(pi, "job-scratch");
+    assert.match(pi.notifications.join("\n"), /scratch/);
+
+    const messy = await runTool(pi, "job_update_draft", {
+      inScope: "YC Work at a Startup",
+      outOfScope: ["non-YC"],
+      completionCriteria: "operator said stop",
+      stopConditions: ["operator stop"],
+      templates: [
+        {
+          id: "apply-to-role",
+          objective: "Apply to one matching role",
+          successCriteria: [{ kind: "text_visible", text: "Application submitted" }],
+          discoverable: true,
+        },
+      ],
+      approvalEnvelope: {
+        neverPreapprove: ["destructive", "payment", "credential", "otp", "captcha"],
+        grants: ["submit-job-application"],
+      },
+    });
+    const messyBody = JSON.parse(toolText(messy));
+    assert.equal(messyBody.ready, true, JSON.stringify(messyBody.issues));
+    assert.equal(messyBody.issues.length, 0);
+
+    const proposed = await runTool(pi, "job_propose_plan", {});
+    assert.equal(proposed.isError, false, toolText(proposed));
+    assert.match(toolText(proposed), /Proposed hash/);
   });
 });

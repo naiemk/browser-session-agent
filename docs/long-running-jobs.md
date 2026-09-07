@@ -34,7 +34,7 @@ Crashes cannot leave a durable `running` state.
 
 ## Commands
 
-Pi: `/jobs`, `/job-new`, `/job-use`, `/job-title`, `/job-status`, `/job-plan`, `/job-approve-plan`, `/job-run`, `/job-inbox`, `/job-human`, `/job-pause`, `/job-resume`, `/job-revise`, `/job-rollover`.
+Pi: `/jobs`, `/job-new`, `/job-use`, `/job-title`, `/job-status`, `/job-plan`, `/job-approve-plan`, `/job-scratch`, `/job-run`, `/job-inbox`, `/job-human`, `/job-pause`, `/job-resume`, `/job-revise`, `/job-rollover`.
 
 CLI: `browser-agent jobs` and `browser-agent job create|show|title|approve-plan|pause|resume|tick|run`.
 
@@ -56,6 +56,8 @@ CLI: `browser-agent jobs` and `browser-agent job create|show|title|approve-plan|
 ## Skills
 
 Lifecycle skills are pinned by job phase (`job-planner`, `job-sprint`, `job-human`). The local CLI still launches with `--no-skills`; the extension injects the exact skill body. Semantic catalogue retrieval is not used for required lifecycle behaviour.
+
+Planning tools report real readiness issues. `job_update_draft` returns `{ ready, issues[] }`, not the status string `"draft"`. Spec templates use `criteria` (Predicate objects). Operator files such as a CV go in the job scratch directory (`/job-scratch`); planning has no upload UI and no coder/subagent.
 
 ## Testing
 

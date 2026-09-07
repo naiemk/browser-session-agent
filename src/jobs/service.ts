@@ -7,7 +7,7 @@ import { CoreError } from "../core/types.ts";
 import { standingJobPrompt } from "./context.ts";
 import { materializePlan } from "./graph.ts";
 import { tick, runUntilIdle, type TickOptions, type TickResult } from "./runner.ts";
-import { assertReady, mergeSpec, specHash } from "./spec.ts";
+import { assertReady, mergeSpec, normalizeSpec, specHash } from "./spec.ts";
 import { JobStore, listJobs, resolveJobId, type JobSummary } from "./store.ts";
 import { JOB_SCHEMA, type HumanItem, type SpecRecord } from "./types.ts";
 
@@ -43,7 +43,7 @@ export class JobService {
     return JobStore.open(this.root, jobId, this.clock);
   }
 
-  async updateDraft(jobId: string, patch: Partial<SpecRecord>): Promise<SpecRecord> {
+  async updateDraft(jobId: string, patch: object): Promise<SpecRecord> {
     const store = await this.resolve(jobId);
     const job = await store.readJob();
     if (job.status !== "planning" && job.status !== "awaiting_plan_approval") {
@@ -59,11 +59,27 @@ export class JobService {
   async proposePlan(jobId: string): Promise<SpecRecord> {
     const store = await this.resolve(jobId);
     const draft = await store.draftSpec();
-    assertReady(draft);
-    const hashed: SpecRecord = {
+    const normalized = normalizeSpec({
       ...draft,
+      status: "draft",
+      hash: undefined,
+      approvedAt: undefined,
+    });
+    await store.writeSpec(normalized);
+    try {
+      assertReady(normalized);
+    } catch (err) {
+      if (err instanceof CoreError) throw err;
+      throw new CoreError(
+        "spec_not_ready",
+        err instanceof Error ? err.message : String(err),
+        { issues: [{ code: "invalid_spec", message: err instanceof Error ? err.message : String(err) }] },
+      );
+    }
+    const hashed: SpecRecord = {
+      ...normalized,
       status: "proposed",
-      hash: specHash(draft),
+      hash: specHash(normalized),
       updatedAt: new Date(this.clock.nowMs()).toISOString(),
     };
     await store.writeSpec(hashed);

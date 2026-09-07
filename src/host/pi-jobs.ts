@@ -1,5 +1,7 @@
 import { Type } from "typebox";
+import { CoreError } from "../core/types.ts";
 import { coreRoot } from "../core/paths.ts";
+import { draftFeedback, SPEC_DRAFT_HINT } from "../jobs/spec.ts";
 import { JobService } from "../jobs/service.ts";
 import { planModeTools } from "./pi-plan-mode.ts";
 import { textResult, type ExtensionAPI, type ExtensionContext } from "../pi-api.ts";
@@ -34,6 +36,26 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   };
 
   const notify = (ctx: ExtensionContext, message: string) => ctx.ui.notify(message, "info");
+
+  const draftPatch = (params: Record<string, unknown>): object => {
+    const nested = params.patch;
+    if (nested && typeof nested === "object" && !Array.isArray(nested) && Object.keys(nested).length > 0) {
+      return nested;
+    }
+    const { patch: _ignored, ...rest } = params;
+    return rest;
+  };
+
+  const proposeError = (err: unknown) => {
+    if (err instanceof CoreError && err.code === "spec_not_ready") {
+      return textResult(
+        JSON.stringify({ ready: false, issues: err.details?.issues ?? [], hint: SPEC_DRAFT_HINT }, null, 2),
+        {},
+        true,
+      );
+    }
+    return textResult(err instanceof Error ? err.message : String(err), {}, true);
+  };
 
   const enablePlanningTools = () => {
     if (toolsBeforePlan === undefined) toolsBeforePlan = pi.getActiveTools();
@@ -132,7 +154,8 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
         return;
       }
       enablePlanningTools();
-      notify(ctx, "Planning tools on. Update the draft, then /job-approve-plan.");
+      const scratch = (await service.resolve(activeJobId)).paths().scratchDir;
+      notify(ctx, `Planning tools on. Update the draft, then /job-approve-plan.\nDrop files (CV, etc.) here: ${scratch}`);
     },
   });
 
@@ -268,9 +291,18 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     },
   });
 
+  pi.registerCommand("job-scratch", {
+    description: "Print the active job's scratch directory (drop a CV or other files here)",
+    handler: async (_args, ctx) => {
+      if (!activeJobId) return notify(ctx, "Select a job first.");
+      notify(ctx, (await service.resolve(activeJobId)).paths().scratchDir);
+    },
+  });
+
   pi.registerTool({
     name: "job_read",
-    description: "Read the active job record, draft spec, and inbox.",
+    description:
+      "Read the active job, draft spec, readiness issues, inbox, and scratchDir. Spec field names: templates[].criteria (not successCriteria); grants are {id,host,gateClass,maxCount}.",
     parameters: Type.Object({}),
     execute: async () => {
       if (!activeJobId) return textResult("No job selected.", {}, true);
@@ -278,28 +310,45 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
       const job = await store.readJob();
       const spec = await store.draftSpec();
       const humans = await store.listHuman();
-      return textResult(JSON.stringify({ job, spec, humans }, null, 2));
+      return textResult(
+        JSON.stringify(
+          {
+            job,
+            spec,
+            humans,
+            scratchDir: store.paths().scratchDir,
+            ...draftFeedback(spec),
+          },
+          null,
+          2,
+        ),
+      );
     },
   });
 
   pi.registerTool({
     name: "job_update_draft",
-    description: "Merge fields into the draft spec. Cannot edit an approved spec.",
-    parameters: Type.Object({ patch: Type.Object({}, { additionalProperties: true }) }),
+    description:
+      "Merge spec fields. Use templates[].criteria (Predicate[]), not successCriteria. Grants: {id, host, gateClass, maxCount}. Returns real readiness issues, not the draft status string.",
+    parameters: Type.Object(
+      { patch: Type.Optional(Type.Object({}, { additionalProperties: true })) },
+      { additionalProperties: true },
+    ),
     execute: async (_id, params) => {
       if (!activeJobId) return textResult("No job selected.", {}, true);
       try {
-        const spec = await service.updateDraft(activeJobId, (params.patch ?? params) as never);
-        return textResult(JSON.stringify({ version: spec.version, issues: spec.status }, null, 2));
+        const spec = await service.updateDraft(activeJobId, draftPatch(params as Record<string, unknown>));
+        return textResult(JSON.stringify(draftFeedback(spec), null, 2));
       } catch (err) {
-        return textResult(err instanceof Error ? err.message : String(err), {}, true);
+        return proposeError(err);
       }
     },
   });
 
   pi.registerTool({
     name: "job_propose_plan",
-    description: "Validate readiness and freeze a hash for operator approval.",
+    description:
+      "Normalize the draft, validate readiness, and freeze a hash. On failure returns {ready:false, issues[], hint} — fix those fields; do not invent an upload UI or call coder.",
     parameters: Type.Object({}),
     execute: async () => {
       if (!activeJobId) return textResult("No job selected.", {}, true);
@@ -307,7 +356,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
         const spec = await service.proposePlan(activeJobId);
         return textResult(`Proposed hash ${spec.hash}. Operator must /job-approve-plan.`);
       } catch (err) {
-        return textResult(err instanceof Error ? err.message : String(err), {}, true);
+        return proposeError(err);
       }
     },
   });
