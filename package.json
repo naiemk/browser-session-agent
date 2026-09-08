@@ -72,7 +72,7 @@
     "docker:node": "docker compose -f deploy/docker/compose.node.yml up -d"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.84.4",

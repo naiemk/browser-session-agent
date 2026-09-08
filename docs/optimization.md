@@ -22,6 +22,39 @@ numbers — bytes, duplicates, cache invalidation, key collisions — need no mo
 tokens, so they come free from the mock target. Token and cost numbers need a paid run:
 trigger the **Live baseline** workflow.
 
+## Live-run investigation backlog
+
+Real-run quality and performance hypotheses are tracked in
+[`live-run-investigation-plan.md`](live-run-investigation-plan.md). Use
+[`live-run-review-template.md`](live-run-review-template.md) for each new run and append
+the evidence to [`live-run-evidence-log.md`](live-run-evidence-log.md). Proposed fixes in
+that backlog are not accepted decisions until the evidence review moves them to
+`docs/decisions.md`.
+
+The opt-in Pi Fabric execution-kernel hypothesis has its own
+[`fabric-execution-experiment.md`](fabric-execution-experiment.md) design and
+[`AGENT-12-T02`](../work-items/tasks/agent-12-t02-fabric-execution-rd.md) R&D task. It
+targets repeated-loop turn and context cost without changing the accepted browser guard.
+
+Challenge termination and effect-aware approval are specified separately in
+[`challenge-and-approval-handling.md`](challenge-and-approval-handling.md). The Berlin
+checkout run showed why wall time must be decomposed: 5 unnecessary approval prompts
+accounted for about 45 of 108 minutes, while challenge pages were treated as successful
+navigations and retried. Model-turn optimization alone cannot recover either loss.
+
+Long-running optimization must use the shared attempt boundary in
+[`jobs-v2-spec.md`](jobs-v2-spec.md) (product overview: [`long-running-jobs.md`](long-running-jobs.md)).
+Each scheduled attempt gets a fresh compiled context rather than a growing transcript or
+persisted sprint. Queue, deliberate pacing, human wait, challenge block, browser work,
+model work, evaluation, review, and unavailable-runtime time are measured separately
+(OBS-01..04 / CAMPAIGN-04-T02). Resource breakers and rate budgets are shared across jobs
+using one profile, so one campaign cannot externalize challenge/retry cost onto another.
+Fabric remains an optional execution kernel for bounded homogeneous read-only batches
+(PERF-03 / AGENT-12-T02); the scheduler, durable state, effect journal, and quality oracle
+do not fork by kernel. Cost does not fail CI by itself; see
+[`jobs-v2-evaluation.md`](jobs-v2-evaluation.md) and the QUAL/PERF mapping in
+[`live-run-investigation-plan.md`](live-run-investigation-plan.md).
+
 ## Reading the report
 
 `metrics` prints four things, in the order they usually matter.

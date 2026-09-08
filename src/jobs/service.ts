@@ -124,6 +124,16 @@ export class JobService {
 
   async revise(jobId: string): Promise<SpecRecord> {
     const store = await this.resolve(jobId);
+    const job = await store.readJob();
+    const plan = await PlanStore.open(this.root, store.jobId, job.objective);
+    const existing = await plan.read();
+    if (existing.tasks.length > 0) {
+      throw new CoreError(
+        "revision_blocked",
+        "prototype cannot revise a job after work is materialized; create a new job instead",
+        { taskCount: existing.tasks.length },
+      );
+    }
     const current = (await store.approvedSpec()) ?? (await store.draftSpec());
     const next: SpecRecord = {
       ...current,

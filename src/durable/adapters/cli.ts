@@ -1,0 +1,150 @@
+import path from "node:path";
+import { SqliteJobRepository } from "../infrastructure/sqlite/repository.ts";
+import { JobApplicationService } from "../application/service.ts";
+import { FakeKernel, type ExecutionHost } from "../ports/execution-kernel.ts";
+import {
+  validatePrototypeRoot,
+  archivePrototypeJob,
+  importPrototypeReadOnly,
+} from "../infrastructure/prototype/validate.ts";
+import { coreRoot } from "../../core/paths.ts";
+
+export interface DurableCliArgs {
+  positional: string[];
+  flags: Record<string, string | boolean>;
+}
+
+function flagString(flags: Record<string, string | boolean>, name: string): string | undefined {
+  const value = flags[name];
+  return typeof value === "string" ? value : undefined;
+}
+
+function dbPath(root: string): string {
+  return path.join(root, "durable", "control.sqlite");
+}
+
+function hostFromEnv(): ExecutionHost | null {
+  if (process.env.BSA_DURABLE_HOST !== "1") return null;
+  return {
+    available: true,
+    profileKey: "local",
+    nowIso: () => new Date().toISOString(),
+    kernel: new FakeKernel(async () => ({ status: "completed", value: { ok: true }, evidenceIds: [] })),
+  };
+}
+
+export async function commandDurable(args: DurableCliArgs): Promise<number> {
+  const root = flagString(args.flags, "root") ?? coreRoot();
+  const json = Boolean(args.flags.json);
+  const verb = args.positional[0] ?? "help";
+  const rest = args.positional.slice(1);
+  const print = (value: unknown) => {
+    process.stdout.write(`${typeof value === "string" ? value : JSON.stringify(value, null, 2)}\n`);
+  };
+
+  try {
+    if (verb === "help") {
+      process.stdout.write(`Jobs V2 (durable) commands — experimental production path
+
+  browser-agent durable create "<objective>" [--title NAME] [--root DIR]
+  browser-agent durable propose <jobId> --spec <file.json> [--root DIR]
+  browser-agent durable approve <jobId> --hash <hash> [--root DIR]
+  browser-agent durable status <jobId> [--root DIR]
+  browser-agent durable cancel <jobId> [--root DIR]
+  browser-agent durable tick <jobId>|--due [--root DIR]
+  browser-agent durable prototype validate|import|archive [--root DIR] [--job ID]
+
+Requires Node 24 node:sqlite. Prototype job commands remain quarantined separately.
+`);
+      return 0;
+    }
+
+    if (verb === "prototype") {
+      const action = rest[0];
+      if (action === "validate") {
+        print(await validatePrototypeRoot(root));
+        return 0;
+      }
+      if (action === "import") {
+        const jobId = flagString(args.flags, "job") ?? rest[1];
+        if (!jobId) {
+          process.stderr.write("import needs --job <id>\n");
+          return 2;
+        }
+        print(await importPrototypeReadOnly(root, jobId));
+        return 0;
+      }
+      if (action === "archive") {
+        const jobId = flagString(args.flags, "job") ?? rest[1];
+        if (!jobId) {
+          process.stderr.write("archive needs --job <id>\n");
+          return 2;
+        }
+        print(await archivePrototypeJob(root, jobId, path.join(root, "archive")));
+        return 0;
+      }
+      process.stderr.write("prototype needs validate|import|archive\n");
+      return 2;
+    }
+
+    const repo = SqliteJobRepository.open(dbPath(root));
+    try {
+      const service = new JobApplicationService(repo, hostFromEnv);
+
+      if (verb === "create") {
+        const objective = rest.join(" ").trim();
+        const job = await service.create({ objective, title: flagString(args.flags, "title") });
+        print(json ? job : `${job.jobId}  ${job.title}  ${job.lifecycle}`);
+        return 0;
+      }
+      if (verb === "status") {
+        print(await service.status(rest[0] ?? ""));
+        return 0;
+      }
+      if (verb === "cancel") {
+        print(await service.cancel({ type: "CancelJob", jobId: rest[0] ?? "" }));
+        return 0;
+      }
+      if (verb === "propose") {
+        const specPath = flagString(args.flags, "spec");
+        if (!specPath) {
+          process.stderr.write("propose needs --spec <file>\n");
+          return 2;
+        }
+        const { readFile } = await import("node:fs/promises");
+        const draft = JSON.parse(await readFile(specPath, "utf8"));
+        const proposed = await service.propose(rest[0] ?? "", draft);
+        print({ jobId: proposed.jobId, hash: proposed.hash, version: proposed.version });
+        return 0;
+      }
+      if (verb === "approve") {
+        const hash = flagString(args.flags, "hash");
+        if (!hash) {
+          process.stderr.write("approve needs --hash\n");
+          return 2;
+        }
+        print(await service.approve(rest[0] ?? "", hash));
+        return 0;
+      }
+      if (verb === "tick") {
+        if (args.flags.due) {
+          const results = await service.tickDue();
+          print(results);
+          if (results.some((r) => r.status === "runtime_unavailable")) return 4;
+          return 0;
+        }
+        const result = await service.tick(rest[0] ?? "");
+        print(result);
+        if (result.status === "runtime_unavailable") return 4;
+        return 0;
+      }
+      process.stderr.write(`unknown durable verb "${verb}"\n`);
+      return 2;
+    } finally {
+      repo.close();
+    }
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+}

@@ -139,7 +139,13 @@ Probing, checks, and an approval gate can each add turns, and a browser step alr
 
 ## D31. Campaigns are the eventual target; the agent is built to yield
 
-Status: accepted as direction, out of scope to build. Real-world processes run on calendar time over many entities, mostly blocked on other people, where deliberate slowness is correct and volume is a liability (`docs/v2-campaigns.md`). A campaign layer will manage agent runs. We do not build it now, but three cheap choices keep it reachable and are hard to retrofit: `parked` is a normal task outcome carrying a reason, a wake condition, and a perishability flag; durable state is entity-oriented with idempotency keys rather than one run blob; and a task must resume cold, with no session context. Corollary for D27: session memory is a within-day optimization and never the source of truth.
+Status: accepted as product direction. The earlier assumption that campaign is a separate
+engine above jobs is superseded by D57. Real-world processes run on calendar time over
+many independent cases, mostly blocked on other people, where deliberate slowness is
+correct and volume is a liability (`docs/v2-campaigns.md`). `blocked` is a normal
+operation outcome; durable state is case-oriented; and an attempt resumes cold with no
+session transcript as authority. Corollary for D27: session memory is a within-day
+optimization and never the source of truth.
 
 ## D32. Human help is queued and batched, never interruptive
 
@@ -525,14 +531,69 @@ is not this product. D1 still forbids wrapping the runtime as an MCP click serve
 
 ## D56. Long-running jobs are explicit, disk-backed, and tick-driven
 
-Status: accepted. Multi-week work is a job the operator starts with `/job-new` or `browser-agent job create`, never an ordinary chat that quietly persists. `goalId` is the storage namespace; `job.json` is the marker that a directory is a job. One-shot goals and legacy `RunState` runs are not jobs and are not migrated.
+Status: superseded in implementation detail by D57; product principles retained.
+Multi-week work is a job the operator starts explicitly, never an ordinary chat that
+quietly persists or selects old work. One-shot goals and legacy `RunState` runs are not
+jobs.
 
-JSON on disk is authoritative. Markdown specs and sprints are generated projections. Pi transcripts, child `--session-id` reuse, open tabs, and archived sprints are not required to resume.
+The prototype chose separate JSON stores, generated sprint projections, and
+`goalId`-based directories. That choice is not retained: it created overlapping sources
+of truth and non-atomic transitions. Pi transcripts and stale open tabs remain
+non-authoritative.
 
-Execution is a bounded `tick`: at most one agent attempt, serialized by a global browser lease and a per-job lease. Calendar time is `job tick --due` invoked by the operator or an external cron/launchd unit. This package does not install a daemon.
+The bounded-tick principle remains: one dispatch leases finite work and returns a typed
+outcome. The prototype's `job tick --due` is not an execution entry point because it
+constructs neither a model nor a browser. Calendar scheduling is not supported until a
+tick can attach to the persistent execution host.
 
-Planning skills load because the job is in a planning phase, not because the model retrieved them. Spec approval is a human confirmation of a canonical hash. Grants are bounded and spec-scoped; CAPTCHA, OTP, credentials, payments, and destructive actions stay runtime gates. Perishable human work stores intent and re-drives when the human is present (D32).
+Planning skills load because the job is in a planning phase, not because the model
+retrieved them. Spec approval confirms canonical immutable bytes. Approval follows an
+effect envelope; CAPTCHA, OTP, credentials, payment confirmation, and destructive work
+remain nondelegable. Perishable work stores intent and rehydrates when the human is
+present (D32).
 
+## D57. Jobs and campaigns share one transactional durable-work engine
+
+Status: target architecture; acceptance requires the CAMPAIGN epic evidence under
+[`docs/jobs-v2-evaluation.md`](jobs-v2-evaluation.md). Normative requirements:
+[`docs/jobs-v2-spec.md`](jobs-v2-spec.md). Product overview:
+[`docs/long-running-jobs.md`](long-running-jobs.md).
+
+A job is the explicit durable root. A campaign is a recurring, multi-case job, not a
+second scheduler or agent manager. A simple long-running job uses a singleton case.
+`Job`, `SpecVersion`, `Case`, `WorkItem`, `Attempt`, `Effect`, and `HumanRequest` each
+have one authority. `Run` is attempt telemetry. Persisted sprints are removed because
+they duplicate work state and context batching is derived.
+
+New code lives under `src/durable/` (`domain`, `application`, `ports`,
+`infrastructure/sqlite`, `adapters`). Core domain imports no Pi, Playwright, CLI,
+SQLite, or Fabric implementation. Specs compile strictly to immutable canonical bytes
+with no string-to-predicate coercion or wildcard grant synthesis at approval. Every work
+item is pinned to a spec hash; revision requires an explicit retain/map/cancel/archive
+plan.
+
+The application service, pure scheduler policy, execution dispatcher, and execution
+kernel are separate ports. A dispatcher requires an attached model and persistent
+`BrowserPort`; absence is `runtime_unavailable`, never `idle`. Leases use renewal and
+fencing so stale attempts cannot commit. Direct and Fabric kernels satisfy one
+`ExecutionKernel` contract; Direct persistent-browser execution ships first; Fabric
+remains optional and cannot fork safety or state.
+
+Durable control state is transactional behind a `JobRepository`; the target local
+implementation is one versioned root SQLite control database (Node 24 / `node:sqlite`
+canary first — if it fails, stop for an explicit decision). Browser evidence and large
+artifacts remain content-addressed files. External effects use a
+prepared/dispatched/observed/uncertain/reconciled/abandoned journal. A local idempotency
+claim is not represented as proof that a remote effect happened. Challenges, approvals,
+retries, and cancellation return one typed outcome; human-only work cannot wake by timer.
+Top-level completion uses durable typed outputs, provenance, artifacts, and aggregate
+oracles. Migration is not dual-write: prototype jobs are validated and imported read-only
+or archived; malformed records are never scheduled.
+
+The evidence for replacing D56's storage/runtime details is structural, not speculative:
+the prototype has six overlapping records, multi-file non-atomic transitions, a due-tick
+path with no runtime, an ephemeral CLI browser, unenforced spec fields, no job-level
+oracle, and tests that do not cross the production process/browser boundary.
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

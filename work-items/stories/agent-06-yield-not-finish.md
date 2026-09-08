@@ -1,8 +1,9 @@
 # AGENT-06: Built to yield, not to finish
 
-Status: todo
+Status: done for bounded-attempt primitives; durable integration is CAMPAIGN-03
 
-As a future campaign layer, I can stop an agent task mid-way, come back tomorrow, and continue — because stopping is a normal outcome and the state that matters is on disk, not in a session.
+As a durable-work engine, I can stop a bounded attempt with a typed checkpoint because
+stopping is a normal outcome and session text is not workflow truth.
 
 ## Acceptance criteria
 
@@ -10,7 +11,8 @@ As a future campaign layer, I can stop an agent task mid-way, come back tomorrow
 - Parking is per entity: one parked entity does not stop unrelated work.
 - Durable state is entity-oriented, with a stable entity id and an `idempotencyKey` per consequential action.
 - A guarded action whose idempotency key already exists is refused as a duplicate.
-- A fresh process resumes a partway task from disk alone and completes it, without repeating an already-committed action.
+- A fresh process can reconstruct a partway task from durable input; production
+  persistent-profile and uncertain-effect recovery are proved in CAMPAIGN-02/03.
 - No scheduler, queue UI, or notification channel is built here; this is the state shape only.
 
 ## Decisions

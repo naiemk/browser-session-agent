@@ -76,8 +76,8 @@ describe("job CLI smoke", () => {
     assert.match(paused.out, /paused/);
     assert.equal((await captureMain(["job", "resume", id, "--root", root, "--json"])).code, 0);
     const ticked = await captureMain(["job", "tick", id, "--root", root, "--json"]);
-    assert.equal(ticked.code, 0);
-    assert.match(ticked.out, /idle|worked|complete/);
+    assert.equal(ticked.code, 4);
+    assert.match(ticked.out, /runtime_unavailable/);
   });
 
   it("seeded jobs survive a second process listing them", async () => {

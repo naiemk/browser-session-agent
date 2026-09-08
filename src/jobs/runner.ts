@@ -37,6 +37,7 @@ import type { HumanItem, HumanKind, SpecRecord, SprintRecord } from "./types.ts"
 export type TickStatus =
   | "worked"
   | "idle"
+  | "runtime_unavailable"
   | "waiting_human"
   | "busy"
   | "paused"
@@ -188,7 +189,13 @@ async function runLocked(store: JobStore, options: TickOptions, clock: Clock): P
   }
 
   if (!options.stream || !options.browser) {
-    return { status: "idle", jobId: job.jobId, detail: "no runtime attached", taskId: picked.id };
+    // Eligible work without an ExecutionHost is never "idle" (MIGRATE-01 / ADAPTER-02).
+    return {
+      status: "runtime_unavailable",
+      jobId: job.jobId,
+      detail: "no model/browser host attached; prototype cannot execute scheduled work",
+      taskId: picked.id,
+    };
   }
 
   let entityId = picked.entityId;
@@ -502,6 +509,19 @@ async function pickSprintTask(
 }
 
 function toGateGrants(spec: SpecRecord, scheduler: Awaited<ReturnType<JobStore["readScheduler"]>>): GateGrant[] {
+  return buildPrototypeGateGrants(spec, scheduler);
+}
+
+/** Exported for quarantine tests (MIGRATE-01 grant hardening). */
+export function buildPrototypeGateGrants(
+  spec: SpecRecord,
+  scheduler: Awaited<ReturnType<JobStore["readScheduler"]>>,
+): GateGrant[] {
+  // Prototype grants do not authorize external effects outside explicit development
+  // (MIGRATE-01). Spec `neverPreapprove` names are not independently enforced at the gate.
+  if (process.env.BSA_JOB_PROTOTYPE_DEV !== "1") {
+    return [];
+  }
   return spec.approvalEnvelope.grants.map((grant) => ({
     id: grant.id,
     specHash: spec.hash ?? "",

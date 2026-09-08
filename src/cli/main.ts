@@ -108,12 +108,16 @@ Usage:
   browser-agent job approve-plan <id> --hash <hash> [--root <dir>]
   browser-agent job pause <id> [--root <dir>]
   browser-agent job resume <id> [--root <dir>]
-  browser-agent job tick <id>|--due [--root <dir>] [--json] [--max-turns <n>]
-  browser-agent job run <id> [--root <dir>] [--json] [--max-ticks <n>]
+  browser-agent job tick <id>|--due [--root <dir>] [--json]
+  browser-agent job run <id> --allow-ephemeral [--root <dir>] [--json] [--max-ticks <n>] [--headed]
 
-job tick --due is safe for cron/launchd. This package does not install a scheduler.
-Example: * /20 * * * * browser-agent job tick --due --root ~/.browser-agent-core
+  browser-agent durable …            Jobs V2 control plane (see durable help)
 
+EXPERIMENTAL: the src/jobs prototype is not a production scheduler. job tick without a
+model/browser host returns runtime_unavailable (exit 4), never idle. Do not cron these
+commands until Jobs V2 attaches a persistent ExecutionHost. job run uses an ephemeral
+Playwright browser (no Magpie profile); --allow-ephemeral is required and warns on stderr.
+Use \`browser-agent durable\` for the Jobs V2 SQLite path.
 
 run options:
   --url <url>              page to start from (required)
@@ -677,15 +681,41 @@ async function commandJob(args: ParsedArgs): Promise<number> {
       if (due) {
         const results = await service.tickDue();
         print(results);
-        return results.some((result) => result.status === "busy") ? 3 : 0;
+        if (results.some((result) => result.status === "busy")) return 3;
+        if (results.some((result) => result.status === "runtime_unavailable")) {
+          process.stderr.write(
+            "runtime_unavailable: at least one due job has eligible work without a host " +
+              "(experimental jobs prototype; not idle)\n",
+          );
+          return 4;
+        }
+        if (results.some((result) => result.status === "failed")) return 1;
+        return 0;
       }
       const result = await service.tick({ jobId: rest[0] ?? "" });
       print(result);
       if (result.status === "busy") return 3;
+      if (result.status === "runtime_unavailable") {
+        process.stderr.write(
+          "runtime_unavailable: eligible work exists but no model/browser host is attached " +
+            "(experimental jobs prototype; not idle)\n",
+        );
+        return 4;
+      }
       if (result.status === "failed") return 1;
       return 0;
     }
     if (verb === "run") {
+      if (!args.flags["allow-ephemeral"]) {
+        process.stderr.write(
+          "job run is experimental and launches an ephemeral browser (no persistent Magpie profile).\n" +
+            "Pass --allow-ephemeral to continue, or wait for Jobs V2 persistent execution.\n",
+        );
+        return 2;
+      }
+      process.stderr.write(
+        "warning: ephemeral job run — login state and open tabs will not persist across processes\n",
+      );
       let live;
       try {
         live = await createLiveModel({ model: flagString(args.flags, "model") });
@@ -760,6 +790,8 @@ export async function main(argv: string[]): Promise<number> {
       return commandJobs(args);
     case "job":
       return commandJob(args);
+    case "durable":
+      return (await import("../durable/adapters/cli.ts")).commandDurable(args);
     case "help":
     case "--help":
     case "-h":

@@ -30,6 +30,18 @@ BrowserSession (run orchestration)
 
 The worker and stores are host-agnostic. The Pi TUI extension is one adapter. The web API is another. Chromium never runs on the VPS. See `docs/web-operator.md`.
 
+## Durable-work status
+
+`src/jobs` is an isolated prototype over the newer bounded runtime, not part of the
+shipping execution path shown above. Pi currently exposes its planning/inbox commands,
+but scheduled ticks are not attached to the persistent `BrowserWorker`; CLI `job run`
+creates an ephemeral browser, and `job tick --due` has no model or browser runtime.
+
+Do not treat the prototype's JSON plan/task/entity/sprint stores as architecture. The
+replacement shares this product's persistent browser ownership while putting transactional
+job/case/work/effect state above the bounded attempt port. Normative design:
+`docs/jobs-v2-spec.md` (overview: `docs/long-running-jobs.md`, decision D57).
+
 ## Runtime layout
 
 Default data root: `~/.browser-session-agent/` (override with `BSA_HOME`).

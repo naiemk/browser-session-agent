@@ -1,83 +1,125 @@
-# Long-running jobs
+# Long-running jobs and campaigns
 
-Local-first durable work that can span days or weeks. A job is created explicitly; an ordinary Pi conversation never becomes one. Hosted web/RPC, notifications, multi-profile fan-out, and a resident daemon are out of scope for this release.
+Status: product/architecture overview. **Normative requirements live in
+[`docs/jobs-v2-spec.md`](jobs-v2-spec.md).** Evaluation and cutover gates:
+[`docs/jobs-v2-evaluation.md`](jobs-v2-evaluation.md). Work breakdown:
+[`work-items/epics/v2-campaigns.md`](../work-items/epics/v2-campaigns.md).
 
-Pi supplies the model loop, TUI, tools, and bounded task runtime. Durable state, safety rules, and scheduling live in TypeScript. Session transcripts are a cache. Disk is the source of truth.
+The current `src/jobs` tree is a prototype, not a production long-running product. Do not
+treat green prototype tests as proof of multi-week campaigns, cron, CAPTCHA handling,
+nondelegable enforcement, or cold-process recovery.
 
-## Layout
+## Product idea
 
-Jobs reuse the goal directory (`~/.browser-agent-core/goals/<jobId>/`). A `job.json` marker distinguishes a job from a one-shot goal. Existing goals and legacy `RunState` runs are not migrated.
+A **job** is an explicitly created durable workflow. A **campaign** is the same engine in
+recurring multi-case mode. A simple durable job uses one singleton case. An ordinary
+browser conversation never silently becomes or selects a job.
 
-```
-goals/<jobId>/
-  job.json                 # identity, title, durable status, spec/sprint pointers
-  specs/<n>.json|.md       # versioned spec; JSON is canonical
-  plan.json                # living task graph (PlanStore)
-  tasks/<id>.json          # immutable oracle criteria (TaskStore)
-  entities/<id>.json       # per-entity park, journal, facts
-  sprints/<id>.json|.md    # current sprint is the only one loaded on resume
-  human/<id>.json          # human-attention inbox
-  scheduler.json           # cooldowns, circuit breakers, grant usage, spend
-  events.jsonl             # append-only evidence
-  .locks/job/              # per-job mutation lease
-  artifacts/ scratch/ checkpoint-*.json
-.locks/browser/            # one global browser lease under the core root
-```
-
-## Durable vs display status
-
-Durable: `planning`, `awaiting_plan_approval`, `active`, `paused`, `completed`, `cancelled`, `failed`.
-
-Derived for humans: `running` (lease held), `idle` (active, nothing due), `waiting_human` (inbox open).
-
-Crashes cannot leave a durable `running` state.
-
-## Commands
-
-Pi: `/jobs`, `/job-new`, `/job-use`, `/job-clear`, `/job-title`, `/job-status`, `/job-plan`, `/job-approve-plan`, `/job-scratch`, `/job-run`, `/job-inbox`, `/job-human`, `/job-pause`, `/job-resume`, `/job-revise`, `/job-rollover`.
-
-CLI: `browser-agent jobs` and `browser-agent job create|show|title|approve-plan|pause|resume|tick|run`.
-
-`job tick --due` is the calendar-time entry point. Invoke it by hand or from cron/launchd. This package does not install a scheduler.
-
-Fresh sessions never select or approve a job from disk or transcript history. `/job-new` and
-`/job-use` are the only binding actions; `/job-clear` returns the session to ordinary chat.
-Plan confirmation makes a job eligible for a future scheduler tick—it does not claim that
-execution has started.
-
-## Invariants
-
-1. No attempt starts without an approved hashed spec and a current sprint pinned to it.
-2. Title is display metadata. Identity is the job id.
-3. Approved spec bytes never change. `/job-revise` drafts version N+1 and pauses new work until that hash is approved.
-4. Task criteria are immutable. Discoveries instantiate an approved template.
-5. Parking one entity never blocks unrelated ready work.
-6. Consequential actions journal prepare → fired → verified. Resume reconciles live criteria before retrying.
-7. Approval grants match spec hash, host, authorization class, optional control, expiry, and remaining count. Destructive, payment, credential, OTP, and CAPTCHA work are never blanket-preapproved.
-8. Agent retry recommendations are clamped by policy. Cooldowns and circuit breakers are shared per host/account resource.
-9. A fresh process continues from spec + current sprint + stores + ledger. Archived sprints and Pi transcripts are optional.
-10. Secrets are references. Payloads are redacted and capped.
-
-## Skills
-
-Lifecycle skills are pinned by job phase (`job-planner`, `job-sprint`, `job-human`). The local CLI still launches with `--no-skills`; the extension injects the exact skill body. Semantic catalogue retrieval is not used for required lifecycle behaviour.
-
-Planning tools report real readiness issues. `job_update_draft` returns `{ ready, issues[] }`, not the status string `"draft"`. Spec templates use `criteria` (Predicate objects). The person in chat confirms a Yes/No summary; they are not expected to type job ids, hashes, or slash commands. CVs are pasted in chat or collected at runtime.
-
-## Testing
-
-CI is token-free: mock model, real browser fixtures, injected clock. Live Pi login and the persistent profile are a manual smoke only. No production CAPTCHA solving and no live external commits in automated tests.
-
-## Operations
-
-Jobs are directories. Backup or restore one with a copy of `goals/<jobId>/`. The rest of the core root can stay put. Do not edit `job.json`, an approved `specs/<n>.json`, or `events.jsonl` by hand; use `/job-revise` or `browser-agent job` when the spec must change.
-
-There is no daemon. Calendar time is `browser-agent job tick --due`, by hand or from cron/launchd:
-
-```
-*/20 * * * * browser-agent job tick --due --root ~/.browser-agent-core
+```text
+Pi / CLI / hosted UI
+        |
+        v
+JobApplicationService
+  - create, revise, approve, pause, answer human work
+        |
+        +--> SpecCompiler --------> immutable WorkflowSpec
+        |
+        +--> JobRepository -------> transactional durable state
+        |
+        +--> SchedulerPolicy -----> pure next-work decision
+                                      |
+                                      v
+                              AttemptDispatcher
+                                - lease + fencing
+                                - ExecutionHost required
+                                      |
+                         +------------+-------------+
+                         |                          |
+                  ContextCompiler            ResourceCoordinator
+                         |                    profile/host/account
+                         v                          |
+                  ExecutionKernel -----------------+
+                    direct | Fabric (optional)
+                         |
+                  persistent BrowserPort
+                         |
+                  OutcomeEvaluator
+                         |
+             transactional state/effect/event commit
 ```
 
-`tick` is one attempt. `job run` keeps ticking until idle, paused, waiting on a human, or the tick cap. Headless ticks cannot take over a live CAPTCHA or OTP; those stay in the inbox until a headed `/job-human` session. Never put a CAPTCHA solver on the agent.
+Control adapters never contain scheduling or workflow rules. The scheduler never owns a
+model or browser. Missing `ExecutionHost` is `runtime_unavailable`, never `idle`.
 
-Optional live smoke, not CI: create a job against a local harmless page (`/job-new` or `browser-agent job create`), grill and approve the hashed spec, then `job tick` until idle. Confirm the job still lists after a new process. Do not target production sites, payments, or credentials.
+## Vocabulary
+
+| Term | Meaning |
+| --- | --- |
+| Job | Durable user-created objective, active spec, lifecycle, policy |
+| Campaign | Product view of a multi-case recurring job (not a second scheduler) |
+| Spec version | Immutable approved workflow and policy |
+| Case | Independently advancing subject with stable task-defined key |
+| Work item | Schedulable operation from an approved template |
+| Attempt | Leased, bounded execution of one work item (or homogeneous read-only batch) |
+| Effect | Externally observable consequence with its own journal |
+| Human request | Durable decision/approval or rehydratable challenge/identity work |
+| Run | Telemetry for an attempt — not workflow authority |
+| Goal | One-shot chat objective — not a job |
+
+**Sprint is never authoritative.** Context batching is derived from ready work.
+
+## Settled principles (see D57 + normative spec)
+
+- One authority per record type; transactional control store (SQLite target after Node 24
+  canary); large evidence remains content-addressed files.
+- Specs compile strictly to immutable canonical bytes; no string-to-predicate coercion or
+  wildcard grant synthesis at approval.
+- Every work item is pinned to a spec hash; revision needs an explicit migration plan.
+- Direct kernel ships first on the persistent Magpie browser; Fabric is optional behind
+  one `ExecutionKernel` and cannot fork safety or state.
+- Challenges, approvals, retries, and cancellation return one typed outcome. Human-only
+  work cannot wake by timer.
+- Effects use prepared → dispatched → observed / uncertain → reconciled / abandoned.
+  A local claim never proves a remote effect happened.
+- Top-level completion uses durable typed outputs, provenance, artifacts, and aggregate
+  oracles — not the executor claim or current page.
+- No dual-write migration. Prototype jobs are validated and imported read-only or
+  archived; malformed records are never scheduled.
+
+## Prototype reality (why replacement is required)
+
+The prototype proves useful pieces (explicit creation, versioned specs, bounded `runTask`,
+fixture browser, inbox/leases) but does **not** yet:
+
+1. Execute due ticks with a real model/browser (`runtime_unavailable` path is honest only
+   after quarantine).
+2. Reconnect CLI/Pi runs to Magpie's persistent profile.
+3. Keep one transactional authority (overlapping JSON stores; non-atomic transitions).
+4. Enforce revision, completion oracles, pacing, challenge breakers, lease renewal/fencing,
+   cancel, or due-scan fairness as product claims.
+
+Full requirement IDs and contracts: [`jobs-v2-spec.md`](jobs-v2-spec.md). Challenge and
+approval attempt contracts: [`challenge-and-approval-handling.md`](challenge-and-approval-handling.md).
+Campaign product semantics: [`v2-campaigns.md`](v2-campaigns.md). QUAL/PERF mapping:
+[`live-run-investigation-plan.md`](live-run-investigation-plan.md).
+
+## Implementation order (summary)
+
+1. CAMPAIGN-00-T01 — quarantine prototype claims.
+2. CAMPAIGN-01 — domain, strict compiler, SQLite repository, importer.
+3. CAMPAIGN-02 — pure scheduler, leases, context/evaluator, persistent host.
+4. CAMPAIGN-03 — cases, effects, challenges, human rehydration, quality oracles.
+5. CAMPAIGN-04 — adapters, telemetry, fault matrix, cutover and delete `src/jobs`.
+
+Every task follows the mandatory discovery → evidence → senior review → **improvement
+pass** protocol in [`jobs-v2-evaluation.md`](jobs-v2-evaluation.md). First safe
+implementation tickets: **CAMPAIGN-00-T01** and **CAMPAIGN-01-T01** (parallel).
+
+## Open evidence-dependent items (not claimed done)
+
+- Cron / calendar scheduling until a real execution host is attached.
+- CAPTCHA solving (out of scope); challenge detection/handoff is AGENT-13 + CAMPAIGN-03.
+- Nondelegable category enforcement end-to-end (AGENT-14 + effect envelope).
+- Cold-process recovery and persistent-profile reattachment (CAMPAIGN-02-T04 / 04-T03).
+- Fabric adoption (PERF-03 / AGENT-12-T02) — optional, not a cutover gate.
+- QUAL-01, QUAL-05, PERF-04, PERF-05, PERF-09 remain open outside Jobs V2 cutover.

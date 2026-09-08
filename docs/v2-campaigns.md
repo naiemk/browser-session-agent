@@ -1,19 +1,27 @@
-# V2 — Campaign engine
+# V2 — Campaign product
 
-Status: **partially implemented as local-first long-running jobs.** The first slice is `docs/long-running-jobs.md`: explicit job identity, versioned specs, sprints, tick-driven execution, and a batched human inbox. A resident daemon, hosted campaign UI, notifications, CRM integrations, and multi-profile fan-out remain out of scope. Decisions live in `docs/decisions.md` (D56).
+Status: product semantics for the target durable-work architecture. The current
+`src/jobs` prototype does not yet implement this product.
 
-## Shape
+**Normative engine requirements:** [`docs/jobs-v2-spec.md`](jobs-v2-spec.md)
+**Evaluation / cutover gates:** [`docs/jobs-v2-evaluation.md`](jobs-v2-evaluation.md)
+**Product overview:** [`docs/long-running-jobs.md`](long-running-jobs.md)
+**Tickets:** [`work-items/epics/v2-campaigns.md`](../work-items/epics/v2-campaigns.md)
 
-A campaign manages agents. The agent layer completes bounded tasks in a browser; the campaign layer decides which tasks exist, when they run, who they concern, and when a human is needed.
+A campaign is a long-running job with a recurring source and many independent cases. It
+does not introduce another scheduler, agent hierarchy, persistence model, or approval
+system.
 
-```
-Campaign (calendar time, many entities, budgets, human queue)
-    │  schedules
-    ▼
-Agent run (one bounded task, minutes)
-    │  drives
-    ▼
-Browser (one profile, one identity, one screen)
+```text
+Job (objective, spec, aggregate outcome)
+  |
+  +-- source operation discovers stable case keys
+  |
+  +-- Case A -- work item -> bounded attempt -> browser
+  +-- Case B -- parked on a human
+  +-- Case C -- waiting on time
+  |
+  +-- shared profile/host/model/human budgets
 ```
 
 ## Why a campaign is not a long task
@@ -24,7 +32,8 @@ Real-world processes are not one connected piece of work. "Reach small email-ser
 discovered → qualified → contacted → responded → engaged → closed | dropped
 ```
 
-The unit of work is an **entity with state**, not a step in a dependency graph. Most entities are blocked on someone else most of the time.
+The schedulable unit is a **work item that advances one case**. The campaign is judged
+from case outcomes and artifacts, not from the completion of one browser session.
 
 Three properties follow, none of which a coding agent needs:
 
@@ -32,13 +41,23 @@ Three properties follow, none of which a coding agent needs:
 - **The world changes while you wait.** New candidates appear, invites expire, the site redesigns, the session logs out. Progress must be re-derived from reality, not assumed from our records.
 - **Deliberate slowness is correct.** Platform pacing and human tolerance both bound throughput. Volume is a liability, not a goal.
 
-## Campaign model
+## Campaign additions to the shared job model
 
-- **Entities** with stable identity and stage, each carrying an idempotency key so a resume never repeats a contact.
-- **Park and wake** instead of blocking. A parked entity records why it stopped, what would unblock it, and whether that block is perishable. Wake sources: a timer, a third-party event observed on re-check, or human attention.
-- **Reconciliation.** On wake, verify state against the site before acting. The user may have replied, invited, or applied manually since we last looked.
-- **Three budgets per campaign, per time window:** model cost, site pace, and human attention. The scheduler respects all three. They are the same shape: a scarce resource per unit time.
-- **Approach-level replanning.** "Search LinkedIn" failing should promote the alternative "search the web for companies first, then look them up", not a retry of the same step. This is strategy substitution, distinct from step-level recovery.
+- **Stable case identity.** Discovery emits task-defined keys. Repeating a source updates
+  or ignores an existing case instead of duplicating it.
+- **Approved per-case workflow.** Discovery instantiates a template graph for that case;
+  it does not ask the model to invent weaker success criteria.
+- **Park and wake.** A blocked case records a typed reason, checkpoint, wake condition,
+  and evidence. Timer, observed external change, resource recovery, or human work may wake
+  it according to policy.
+- **Reconciliation.** Every wake checks current external state before attempting an effect.
+  The user or third party may have acted while the case was parked.
+- **Windowed budgets.** Model cost, browser/site pace, external effects, challenges, and
+  human attention are scarce resources enforced by the shared scheduler.
+- **Aggregate quality.** Typed job-level oracles evaluate accepted case outputs, coverage,
+  evidence, and stop policy.
+- **Approach substitution.** A failed route chooses another approved template or requests
+  a spec revision. It is distinct from repeating a failed click.
 
 ## Human collaboration is batched, not interruptive
 
@@ -46,7 +65,9 @@ The agent will get stuck. Coding has this too: "I cannot push, please run these 
 
 In coding a block is usually singular and on the critical path, and the hand-off stays valid for days. In a campaign, blocks are **many, independent, and off the critical path** — thirty-nine other applications remain workable while one hits a CAPTCHA — and many blocks are **perishable**.
 
-So a block must never stop the campaign. It parks one entity and the scheduler continues. Requests accumulate into a queue and are presented in one sitting.
+So a case-local block does not stop unrelated work. A host/profile challenge can
+legitimately stop all work sharing that resource, while work on independent resources may
+continue. Requests accumulate and are presented in one sitting.
 
 **The cost being optimized is the human's context switching**, so items batch by interaction kind. Ten CAPTCHAs in a row is fast; alternating CAPTCHA, decision, and approval is slow.
 
@@ -56,7 +77,9 @@ Three kinds, because they have different physics:
 - **Perishable and session-bound** — CAPTCHA, OTP, an open modal. Cannot be held for hours; the challenge and often the page session go stale. Do not attempt to freeze a live modal. Park the *intent* and re-drive the task to the blocking point when the human is present.
 - **Identity and credential** — login, 2FA, payment confirmation. Perishable, requires the live browser and the highest trust. Takeover already covers the mechanics.
 
-A human session is therefore something the campaign **schedules and justifies**: "twelve items, roughly eight minutes, five are perishable so they need you at the browser." That is a feature, not a queue dump.
+A human session is something the job **schedules and justifies**: "twelve items, roughly
+eight minutes, five are perishable so they need you at the browser." Perishable work is
+re-driven one item at a time; the system does not pretend a stale browser modal was saved.
 
 ## Quality is the objective, not throughput
 
@@ -72,25 +95,43 @@ One honest limit: quality addresses the ethical problem, not the platform-policy
 
 ## Shared-resource constraint
 
-The campaign manages many agent runs, but they contend for **one browser profile, one logged-in identity, one rate limit, and one screen for takeover**. Fan-out is bounded by that, not by compute. Tab ownership and exclusive locks already exist in the agent layer (`ownedTabIds`, `assertCanAct`) and are the right substrate; the campaign cannot simply spawn twenty workers.
+Many attempts contend for **one browser profile, one logged-in identity, one rate limit,
+and one screen for takeover**. Fan-out is bounded by that, not by compute. The shared
+`ResourceCoordinator` owns profile, host, account, challenge, and pacing state across all
+jobs. A campaign cannot simply spawn twenty browser workers.
 
-## What this implies for the agent layer now
+## Required shared-engine guarantees
 
-The campaign engine is not being built. These are the cheap choices that keep it reachable, and they are nearly impossible to retrofit:
+1. **Blocked is a normal outcome.** It carries a typed reason, checkpoint, resource scope,
+   wake condition, and evidence.
+2. **Durable state is case-oriented.** A model transcript or browser run is never the
+   source of workflow truth.
+3. **Cold resume is real.** A new process reconnects to the persistent browser profile,
+   compiles a fresh bounded context, and reconciles before effects.
+4. **External effects are honest.** A local claim cannot prove a remote effect happened;
+   uncertain effects enter reconciliation.
+5. **The agent yields.** “Stopped; here is exactly what is needed” is a successful
+   scheduler outcome, not a loop failure.
+6. **No interruptive approval.** Scheduled workers persist an approval request and release
+   resources rather than waiting inside a model call.
 
-1. **Park is a normal outcome, not an error.** A bounded task must be able to return `parked` with a reason, a wake condition, and a perishability flag. Today `awaiting_takeover` stops an entire run; it needs to become per-entity.
-2. **Durable state is entity-oriented with idempotency keys**, not one run blob. Today's `RunState` is session-shaped.
-3. **Cold resume.** Task state must be sufficient to resume with no session context, which confirms that session memory is a within-day optimization and never the source of truth.
-4. **Design the agent to yield, not to finish.** This is the one-line summary: a campaign-ready agent is one whose normal outcomes include "stopped, here is exactly what I need," and which keeps nothing important only in a session.
+## Out of scope for the first production slice
 
-## Out of scope for V2 as written
+- hosted campaign UI and notification channels;
+- multi-profile or multi-identity fan-out;
+- CRM-specific integrations or domain-specific stage names;
+- autonomous CAPTCHA solving;
+- autonomous external effects outside an approved effect envelope;
+- high-volume operation as a product objective.
 
-Scheduler implementation, notification channels, campaign UI, multi-profile or multi-identity fan-out, CRM integrations, and any autonomous sending without an approval path.
+## Open questions to settle with evidence
 
-## Open questions
-
-- How is a perishable block re-approached cheaply when the human arrives — replay from a checkpoint, or re-drive the task from its start?
-- What reply-rate floor is meaningful, and over what window, before a campaign should pause itself?
-- How is personalization evidence represented so the gate can check it mechanically rather than asking a model whether the message "feels" personal?
-- Can durable decisions be answered entirely outside the browser session, so the inbox works on a phone?
-- How does the campaign detect that the user acted manually, without re-scanning everything?
+- Which checkpoint fields make perishable rehydration cheaper without depending on stale
+  refs or page structure?
+- Which aggregate quality metrics are generic enough for the engine, and which belong in a
+  task-specific oracle package?
+- When may read-only cases share one direct/Fabric batch without increasing challenge
+  incidence?
+- Can durable decisions be answered entirely outside a browser session?
+- What is the cheapest reconciliation strategy that reliably detects manual or third-party
+  action?
