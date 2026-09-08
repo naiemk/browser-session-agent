@@ -3,7 +3,7 @@ id: AGENT-15-T01
 title: Stage failures and bound no-progress recovery
 story: AGENT-15
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-15-T01 — Stage failures and bound no-progress recovery
