@@ -1,8 +1,17 @@
-# browser-session-agent
+# magpie
 
 A browser agent that works the way a good coding agent works: look before acting, verify
 every action, ask when something is genuinely unknown, and never claim success the page
 does not support.
+
+```bash
+npm install -g magpie
+npx playwright install chromium
+magpie
+```
+
+`magpie` is the same as `npm run cli` in this repo: an interactive Pi TUI with the in-repo
+browser extension, driving Chromium on this machine.
 
 Three local entry points, for three different jobs. None of them need the VPS.
 
@@ -57,16 +66,20 @@ window. `--port 8787` changes the listen port.
 Do not run `npm run cli` or `npm run agent` against the same profile while the web stack
 is open.
 
-## `bsa` — interactive Pi session (dev, no VPS)
+## `magpie` — interactive Pi session (dev, no VPS)
 
 An interactive Pi TUI with the in-repo browser extension, driving Chromium on this
 machine. Useful when you want to steer the agent yourself rather than hand it a goal.
 
 ```bash
-npm run cli
+npm install -g magpie
+npx playwright install chromium
+magpie
 ```
 
-`npm run cli -- --check` verifies Node, Pi, the extension, and Playwright Chromium.
+From a checkout, `npm run cli` is the same command.
+
+`magpie --check` verifies Node, Pi, the extension, and Playwright Chromium.
 
 In the TUI:
 

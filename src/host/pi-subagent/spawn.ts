@@ -62,6 +62,14 @@ export function packageRootFrom(moduleUrl = import.meta.url): string {
 }
 
 export function piCliPath(root = packageRootFrom()): string {
+  const require = createRequire(import.meta.url);
+  try {
+    const main = require.resolve("@earendil-works/pi-coding-agent");
+    const cli = path.join(path.dirname(main), "cli.js");
+    if (existsSync(cli)) return cli;
+  } catch {
+    /* nested or unpublished layouts fall through to the checkout node_modules path */
+  }
   return path.join(root, "node_modules", ...PI_CLI.split(path.sep));
 }
 

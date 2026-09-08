@@ -41,7 +41,7 @@ if (items.find((item) => item.name === "chromium" && !item.ok)) {
   process.exit(1);
 }
 
-process.stderr.write("browser-session-agent local CLI — Chromium on this machine, no VPS.\n");
+process.stderr.write("magpie local CLI — Chromium on this machine, no VPS.\n");
 process.stderr.write("In Pi: /login (once), then /browser-start <goal>\n");
 
 const env = { ...process.env };
