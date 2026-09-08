@@ -3,12 +3,12 @@ import { CoreError } from "../core/types.ts";
 import { coreRoot } from "../core/paths.ts";
 import { draftFeedback, planConfirmMessage, SPEC_DRAFT_HINT } from "../jobs/spec.ts";
 import { JobService } from "../jobs/service.ts";
-import { planModeTools } from "./pi-plan-mode.ts";
+import { capabilityCoordinator } from "./pi-capabilities.ts";
+import { PLAN_MODE_CAPABILITY_DISABLED } from "./pi-plan-mode.ts";
 import { textResult, type ExtensionAPI, type ExtensionContext } from "../pi-api.ts";
 import type { JobDurableStatus } from "../jobs/types.ts";
 
 const JOB_TOOLS = ["job_read", "job_update_draft", "job_propose_plan"] as const;
-const UNFINISHED_PLAN: JobDurableStatus[] = ["planning", "awaiting_plan_approval"];
 
 export interface JobBindOptions {
   root?: string;
@@ -30,8 +30,8 @@ function parseFlag(args: string, name: string): { value?: string; rest: string }
 export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}): JobBindHandle {
   const service = options.service ?? new JobService({ root: options.root ?? coreRoot() });
   const headless = options.headless ?? process.env.BSA_HEADLESS === "1";
+  const capabilities = capabilityCoordinator(pi);
   let activeJobId: string | undefined;
-  let toolsBeforePlan: string[] | undefined;
 
   const persist = () => {
     pi.appendEntry?.("active-job", { jobId: activeJobId });
@@ -60,13 +60,14 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   };
 
   const enablePlanningTools = () => {
-    if (toolsBeforePlan === undefined) toolsBeforePlan = pi.getActiveTools();
-    pi.setActiveTools([...planModeTools(toolsBeforePlan), ...JOB_TOOLS]);
+    capabilities.constrain("job-planning", {
+      disable: PLAN_MODE_CAPABILITY_DISABLED,
+      enable: JOB_TOOLS,
+    });
   };
 
   const restoreTools = () => {
-    if (toolsBeforePlan) pi.setActiveTools(toolsBeforePlan);
-    toolsBeforePlan = undefined;
+    capabilities.release("job-planning");
   };
 
   const userFacingResume = (title: string, status: JobDurableStatus, created = false): string => {
@@ -80,7 +81,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
       return `The plan for "${title}" is ready. Please confirm the summary.`;
     }
     if (status === "paused") return `"${title}" is paused. Say if you want to continue.`;
-    if (status === "active") return `Continuing "${title}".`;
+    if (status === "active") return `"${title}" is approved and ready for its next scheduled step.`;
     return `This is "${title}".`;
   };
 
@@ -89,7 +90,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     const store = await service.resolve(activeJobId);
     const job = await store.readJob();
     if (job.status === "active") {
-      notify(ctx, `"${job.title}" is already running.`);
+      notify(ctx, `"${job.title}" is already approved.`);
       return "approved";
     }
     let spec;
@@ -98,14 +99,14 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     } catch {
       return "not_ready";
     }
-    const ok = await ctx.ui.confirm("Start this job?", planConfirmMessage(spec));
+    const ok = await ctx.ui.confirm("Approve this job plan?", planConfirmMessage(spec));
     if (!ok) {
-      notify(ctx, "Okay — nothing will run until you confirm.");
+      notify(ctx, "Okay — nothing is scheduled until you confirm.");
       return "declined";
     }
     await service.approvePlan(activeJobId, spec.hash!);
     restoreTools();
-    notify(ctx, `Started "${job.title}".`);
+    notify(ctx, `Approved "${job.title}". It will run on the next scheduler tick.`);
     return "approved";
   };
 
@@ -117,29 +118,6 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     if (job.status === "planning" || job.status === "awaiting_plan_approval") enablePlanningTools();
     else restoreTools();
     notify(ctx, userFacingResume(job.title, job.status, created));
-  };
-
-  const resumeOpenJob = async (ctx: ExtensionContext) => {
-    const entries = ctx?.sessionManager?.getEntries?.() ?? [];
-    const found = [...entries].reverse().find((entry) => entry.customType === "active-job");
-    const remembered = (found?.data as { jobId?: string } | undefined)?.jobId;
-    if (remembered) {
-      try {
-        await useJob(remembered, ctx);
-      } catch {
-        activeJobId = undefined;
-      }
-    }
-    if (!activeJobId) {
-      const allowDiskResume = Boolean(options.root) || !process.env.NODE_TEST_CONTEXT;
-      if (allowDiskResume) {
-        const unfinished = (await service.list()).filter((job) => UNFINISHED_PLAN.includes(job.status));
-        if (unfinished.length === 1) await useJob(unfinished[0]!.jobId, ctx);
-      }
-    }
-    if (!activeJobId) return;
-    const job = await (await service.resolve(activeJobId)).readJob();
-    if (job.status === "awaiting_plan_approval") await offerPlanApproval(ctx);
   };
 
   pi.registerCommand("jobs", {
@@ -184,6 +162,18 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
         return;
       }
       await useJob(args.trim(), ctx);
+      const job = await (await service.resolve(activeJobId!)).readJob();
+      if (job.status === "awaiting_plan_approval") await offerPlanApproval(ctx);
+    },
+  });
+
+  pi.registerCommand("job-clear", {
+    description: "Leave the active job and return this session to ordinary chat",
+    handler: (_args, ctx) => {
+      activeJobId = undefined;
+      restoreTools();
+      persist();
+      notify(ctx, "Job cleared. This session is ordinary chat until you explicitly create or select a job.");
     },
   });
 
@@ -227,7 +217,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   });
 
   pi.registerCommand("job-approve-plan", {
-    description: "Confirm the proposed spec and start execution",
+    description: "Confirm the proposed spec for scheduled execution",
     handler: async (_args, ctx) => {
       if (!activeJobId) {
         notify(ctx, "No job in this session yet.");
@@ -319,7 +309,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     handler: async (_args, ctx) => {
       if (!activeJobId) return notify(ctx, "Select a job first.");
       await service.resume(activeJobId);
-      notify(ctx, "Active.");
+      notify(ctx, "Resumed. The job is eligible for its next scheduler tick.");
     },
   });
 
@@ -406,7 +396,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
         const decision = await offerPlanApproval(ctx);
         if (decision === "approved") {
           return textResult(
-            "The user confirmed. The job is now running. Tell them in plain language that you will start; do not mention commands, hashes, or job ids.",
+            "The user confirmed. The job is approved for its next scheduler tick; it is not running yet. Do not mention commands, hashes, or job ids.",
           );
         }
         if (decision === "declined") {
@@ -421,15 +411,6 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
         return proposeError(err);
       }
     },
-  });
-
-  pi.on("session_start", async (_event: unknown, ctxUnknown: unknown) => {
-    const ctx = ctxUnknown as ExtensionContext;
-    try {
-      await resumeOpenJob(ctx);
-    } catch {
-      activeJobId = undefined;
-    }
   });
 
   return {

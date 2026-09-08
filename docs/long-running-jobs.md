@@ -34,11 +34,16 @@ Crashes cannot leave a durable `running` state.
 
 ## Commands
 
-Pi: `/jobs`, `/job-new`, `/job-use`, `/job-title`, `/job-status`, `/job-plan`, `/job-approve-plan`, `/job-scratch`, `/job-run`, `/job-inbox`, `/job-human`, `/job-pause`, `/job-resume`, `/job-revise`, `/job-rollover`.
+Pi: `/jobs`, `/job-new`, `/job-use`, `/job-clear`, `/job-title`, `/job-status`, `/job-plan`, `/job-approve-plan`, `/job-scratch`, `/job-run`, `/job-inbox`, `/job-human`, `/job-pause`, `/job-resume`, `/job-revise`, `/job-rollover`.
 
 CLI: `browser-agent jobs` and `browser-agent job create|show|title|approve-plan|pause|resume|tick|run`.
 
 `job tick --due` is the calendar-time entry point. Invoke it by hand or from cron/launchd. This package does not install a scheduler.
+
+Fresh sessions never select or approve a job from disk or transcript history. `/job-new` and
+`/job-use` are the only binding actions; `/job-clear` returns the session to ordinary chat.
+Plan confirmation makes a job eligible for a future scheduler tick—it does not claim that
+execution has started.
 
 ## Invariants
 

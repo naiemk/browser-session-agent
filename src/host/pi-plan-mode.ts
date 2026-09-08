@@ -31,6 +31,7 @@ import {
   markCompletedSteps,
   type TodoItem,
 } from "./pi-plan-todos.ts";
+import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { clipWidgetLines } from "./pi-tool-view.ts";
 
 export const PLAN_COMMAND = "plan";
@@ -57,6 +58,11 @@ export const PLAN_MODE_DISABLED_TOOLS = new Set<string>([
   "scratch_write",
   TOOL_PARK,
   TOOL_DISCOVER,
+]);
+
+export const PLAN_MODE_CAPABILITY_DISABLED = new Set<string>([
+  ...PARENT_NEVER_TOOLS,
+  ...PLAN_MODE_DISABLED_TOOLS,
 ]);
 
 const PLAN_MODE_CONTEXT = `[PLAN MODE ACTIVE]
@@ -109,10 +115,10 @@ export function sessionTurnCount(
 }
 
 export function bindPlanMode(pi: ExtensionAPI): PlanModeHandle {
+  const capabilities = capabilityCoordinator(pi);
   let planModeEnabled = false;
   let executionMode = false;
   let todoItems: TodoItem[] = [];
-  let toolsBeforePlanMode: string[] | undefined;
 
   function injection(): string | undefined {
     if (planModeEnabled) return PLAN_MODE_CONTEXT;
@@ -149,27 +155,15 @@ After completing a step, include a [DONE:n] tag in your response.`;
   }
 
   function enablePlanModeTools(): void {
-    if (toolsBeforePlanMode === undefined) {
-      toolsBeforePlanMode = parentSafeTools(pi.getActiveTools());
-    } else {
-      toolsBeforePlanMode = parentSafeTools(toolsBeforePlanMode);
-    }
-    pi.setActiveTools(planModeTools(toolsBeforePlanMode));
+    capabilities.constrain("plan-mode", { disable: PLAN_MODE_CAPABILITY_DISABLED });
   }
 
   function restoreNormalModeTools(): void {
-    if (toolsBeforePlanMode) pi.setActiveTools(parentSafeTools(toolsBeforePlanMode));
-    toolsBeforePlanMode = undefined;
+    capabilities.release("plan-mode");
   }
 
   function adoptParentTools(names: string[]): void {
-    const safe = parentSafeTools(names);
-    if (planModeEnabled) {
-      toolsBeforePlanMode = safe;
-      pi.setActiveTools(planModeTools(safe));
-    } else {
-      pi.setActiveTools(safe);
-    }
+    capabilities.adoptBaseTools(parentSafeTools(names));
   }
 
   function persistState(): void {
@@ -177,7 +171,6 @@ After completing a step, include a [DONE:n] tag in your response.`;
       enabled: planModeEnabled,
       todos: todoItems,
       executing: executionMode,
-      toolsBeforePlanMode,
     });
   }
 
@@ -374,7 +367,6 @@ After completing a step, include a [DONE:n] tag in your response.`;
             enabled?: boolean;
             todos?: TodoItem[];
             executing?: boolean;
-            toolsBeforePlanMode?: string[];
           };
         }
       | undefined;
@@ -383,7 +375,6 @@ After completing a step, include a [DONE:n] tag in your response.`;
       planModeEnabled = planModeEntry.data.enabled ?? planModeEnabled;
       todoItems = planModeEntry.data.todos ?? todoItems;
       executionMode = planModeEntry.data.executing ?? executionMode;
-      toolsBeforePlanMode = planModeEntry.data.toolsBeforePlanMode ?? toolsBeforePlanMode;
     }
 
     if (planModeEntry && executionMode && todoItems.length > 0) {

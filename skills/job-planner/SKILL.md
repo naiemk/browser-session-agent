@@ -27,13 +27,19 @@ The person in chat is not a developer. Never tell them to type slash commands, j
   "knownFacts": {},
   "assumptions": [{ "id": "a1", "text": "..." }],
   "questions": [{ "id": "q1", "text": "...", "required": true, "answer": "..." }],
-  "templates": [{
-    "id": "apply",
-    "objective": "Apply to one role",
-    "criteria": [{ "kind": "text_visible", "text": "Application submitted" }],
-    "discoverable": true,
-    "dependencies": []
-  }],
+  "templates": [
+    {
+      "id": "find-roles",
+      "objective": "Find matching roles and discover one task per role",
+      "criteria": [{ "kind": "text_visible", "text": "Open roles" }]
+    },
+    {
+      "id": "apply",
+      "objective": "Apply to one discovered role",
+      "criteria": [{ "kind": "text_visible", "text": "Application submitted" }],
+      "discoverable": true
+    }
+  ],
   "budgets": { "maxTurnsPerTask": 16, "sprintTaskLimit": 5 },
   "pacing": { "minCooldownMs": 900000, "maxCooldownMs": 86400000, "circuitBreakerAfter": 3 },
   "stopConditions": ["operator says stop"],
@@ -46,6 +52,8 @@ The person in chat is not a developer. Never tell them to type slash commands, j
 ```
 
 - Templates use `criteria`, never `successCriteria`.
+- Every plan needs at least one non-discoverable seed task. A plan made only of discoverable templates cannot start.
+- Discoverable templates are instantiated by a seed task at runtime. They cannot declare static dependencies, and other templates cannot depend on them.
 - Grants are objects with `gateClass` (`outbound` | `destructive` | `none`). Do not send a string list, and do not name the field `authorization`.
 - `neverPreapprove` must include destructive, payment, credential, otp, captcha.
 

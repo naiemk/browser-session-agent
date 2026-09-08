@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { bindJobCommands } from "../../src/host/pi-jobs.ts";
+import { bindPlanMode, PLAN_COMMAND } from "../../src/host/pi-plan-mode.ts";
 import { JobService } from "../../src/jobs/service.ts";
 import { createFakePi, runCommand, runTool } from "../helpers/fake-pi.ts";
 import { APPLY_CRITERIA, readyPatch, removeRoot, tempRoot } from "../helpers/job-harness.ts";
@@ -61,12 +62,12 @@ describe("job registry and plan sign-off", () => {
     );
     const proposed = await runTool(pi, "job_propose_plan", {});
     assert.equal(proposed.isError, false);
-    assert.match(toolText(proposed), /confirmed|running/i);
+    assert.match(toolText(proposed), /confirmed|approved/i);
     assert.doesNotMatch(toolText(proposed), /\/job-approve-plan/);
     const afterPropose = await (await service.resolve(outreach.jobId)).readJob();
     assert.equal(afterPropose.status, "active");
     await runCommand(pi, "job-approve-plan");
-    assert.match(pi.notifications.join("\n"), /already running/i);
+    assert.match(pi.notifications.join("\n"), /already approved/i);
     const job = await (await service.resolve(outreach.jobId)).readJob();
     assert.equal(job.status, "active");
     assert.ok(job.approvedSpecHash);
@@ -104,6 +105,11 @@ describe("job registry and plan sign-off", () => {
           successCriteria: [{ kind: "text_visible", text: "Application submitted" }],
           discoverable: true,
         },
+        {
+          id: "find-roles",
+          objective: "Find matching roles",
+          criteria: [{ kind: "text_visible", text: "Open roles" }],
+        },
       ],
       approvalEnvelope: {
         neverPreapprove: ["destructive", "payment", "credential", "otp", "captcha"],
@@ -116,25 +122,25 @@ describe("job registry and plan sign-off", () => {
 
     const proposed = await runTool(pi, "job_propose_plan", {});
     assert.equal(proposed.isError, false, toolText(proposed));
-    assert.match(toolText(proposed), /confirmed|running/i);
+    assert.match(toolText(proposed), /confirmed|approved/i);
     assert.doesNotMatch(toolText(proposed), /\/job-approve-plan/);
   });
 
-  it("resumes an open job so the user can keep talking", async () => {
+  it("does not bind the only unfinished disk job on a fresh session", async () => {
     root = await tempRoot();
     const service = new JobService({ root });
     const store = await service.create("Apply for all the relevant YC company jobs", "YC applications");
     const pi = createFakePi();
+    pi.entries.push({ customType: "active-job", data: { jobId: store.jobId } });
     const jobsBind = bindJobCommands(pi, { root, service, headless: true });
     await pi.startSession();
-    assert.equal(jobsBind.activeJobId(), store.jobId);
-    assert.ok(pi.active.includes("job_propose_plan"));
-    assert.match(pi.notifications.join("\n"), /Continuing "YC applications"/);
-    assert.match(pi.notifications.join("\n"), /Keep talking here/);
-    assert.doesNotMatch(pi.notifications.join("\n"), /\/job-use|\/job-plan|\/job-approve-plan/);
+    assert.equal(jobsBind.activeJobId(), undefined);
+    assert.equal(await jobsBind.injection(), undefined);
+    assert.equal(pi.active.includes("job_propose_plan"), false);
+    assert.equal(pi.notifications.length, 0);
   });
 
-  it("asks the user to confirm a waiting plan on a fresh session", async () => {
+  it("does not approve a waiting plan until the user explicitly selects it", async () => {
     root = await tempRoot();
     const service = new JobService({ root });
     const store = await service.create("Apply for YC jobs", "YC applications");
@@ -148,11 +154,57 @@ describe("job registry and plan sign-off", () => {
     );
     await service.proposePlan(store.jobId);
     const pi = createFakePi();
-    bindJobCommands(pi, { root, service, headless: true });
+    const jobsBind = bindJobCommands(pi, { root, service, headless: true });
     await pi.startSession();
-    const job = await store.readJob();
-    assert.equal(job.status, "active");
-    assert.match(pi.notifications.join("\n"), /Started "YC applications"|confirm the summary/);
-    assert.doesNotMatch(pi.notifications.join("\n"), /\/job-approve-plan|Hash /);
+    assert.equal(jobsBind.activeJobId(), undefined);
+    assert.equal((await store.readJob()).status, "awaiting_plan_approval");
+
+    await runCommand(pi, "job-use", store.jobId);
+    assert.equal(jobsBind.activeJobId(), store.jobId);
+    assert.equal((await store.readJob()).status, "active");
+    assert.match(pi.notifications.join("\n"), /Approved "YC applications"/);
+  });
+
+  it("clears a selected job and composes job planning with plan mode in either exit order", async () => {
+    root = await tempRoot();
+    const service = new JobService({ root });
+    const pi = createFakePi(["yes"]);
+    bindPlanMode(pi);
+    const jobsBind = bindJobCommands(pi, { root, service, headless: true });
+    await pi.startSession();
+    pi.active = ["observe", "act", "subagent", "scratch_write", "ask_user"];
+
+    await runCommand(pi, "job-new", "Collect public records");
+    const jobId = jobsBind.activeJobId()!;
+    await runCommand(pi, PLAN_COMMAND);
+    assert.equal(pi.active.includes("act"), false);
+    assert.equal(pi.active.includes("subagent"), false);
+
+    await service.updateDraft(
+      jobId,
+      readyPatch({
+        objective: "Collect public records",
+        completionText: "List complete",
+        templates: [{ id: "collect", objective: "Collect", criteria: APPLY_CRITERIA }],
+      }),
+    );
+    await runTool(pi, "job_propose_plan", {});
+    assert.equal(pi.active.includes("act"), false, "general plan mode still owns its restriction");
+    await runCommand(pi, PLAN_COMMAND);
+    assert.equal(pi.active.includes("act"), true);
+    assert.equal(pi.active.includes("subagent"), true);
+
+    await runCommand(pi, "job-clear");
+    assert.equal(jobsBind.activeJobId(), undefined);
+    assert.equal(await jobsBind.injection(), undefined);
+    assert.equal(pi.active.includes("job_read"), false);
+
+    await runCommand(pi, "job-new", "Collect another public list");
+    await runCommand(pi, PLAN_COMMAND);
+    await runCommand(pi, PLAN_COMMAND);
+    assert.equal(pi.active.includes("act"), false, "job planning still owns its restriction");
+    await runCommand(pi, "job-clear");
+    assert.equal(pi.active.includes("act"), true);
+    assert.equal(pi.active.includes("subagent"), true);
   });
 });

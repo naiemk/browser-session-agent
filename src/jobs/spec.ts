@@ -390,12 +390,39 @@ function collectReadinessIssues(spec: SpecRecord): ReadinessIssue[] {
   if (canonical.templates.length === 0) {
     issues.push({ code: "templates", message: "at least one task template is required" });
   }
+  const templatesById = new Map(canonical.templates.map((template) => [template.id, template]));
+  if (canonical.templates.length > 0 && canonical.templates.every((template) => template.discoverable)) {
+    issues.push({
+      code: "executable_template",
+      message: "at least one non-discoverable seed task is required to start the job",
+    });
+  }
   for (const template of canonical.templates) {
     if (!template.criteria.length) {
       issues.push({
         code: "template_criteria",
         message: `template ${template.id} needs criteria (field name is criteria, not successCriteria)`,
       });
+    }
+    if (template.discoverable && template.dependencies?.length) {
+      issues.push({
+        code: "discoverable_dependency",
+        message: `discoverable template ${template.id} cannot declare static dependencies`,
+      });
+    }
+    for (const dependency of template.dependencies ?? []) {
+      const target = templatesById.get(dependency);
+      if (!target) {
+        issues.push({
+          code: "unknown_dependency",
+          message: `template ${template.id} depends on unknown template ${dependency}`,
+        });
+      } else if (target.discoverable) {
+        issues.push({
+          code: "unmaterialized_dependency",
+          message: `template ${template.id} cannot depend on discoverable template ${dependency}`,
+        });
+      }
     }
   }
   if (!canonical.budgets.maxTurnsPerTask || canonical.budgets.sprintTaskLimit < 1) {

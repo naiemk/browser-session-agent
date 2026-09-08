@@ -67,6 +67,11 @@ describe("job spec readiness", () => {
             successCriteria: [{ kind: "text_visible", text: "Application submitted" }],
             discoverable: true,
           },
+          {
+            id: "find-roles",
+            objective: "Find matching roles",
+            criteria: [{ kind: "text_visible", text: "Open roles" }],
+          },
         ],
         approvalEnvelope: {
           neverPreapprove: ["destructive", "payment", "credential", "otp", "captcha"],
@@ -80,6 +85,45 @@ describe("job spec readiness", () => {
     assert.equal(ready.approvalEnvelope.grants[0]?.gateClass, "outbound");
     assert.equal(ready.approvalEnvelope.grants[0]?.id, "submit-job-application");
     assert.deepEqual(ready.inScope, ["YC Work at a Startup"]);
+  });
+
+  it("rejects plans with no executable seed or with dependencies that cannot materialize", () => {
+    const clock = new FakeClock();
+    const base = mergeSpec(
+      emptySpec("job_graph", "Build a list", clock),
+      {
+        inScope: ["public records"],
+        completionCriteria: [{ kind: "text_visible", text: "List complete" }],
+        stopConditions: ["target reached"],
+        templates: [
+          {
+            id: "entity",
+            objective: "Process one discovered entity",
+            criteria: [{ kind: "text_visible", text: "Entity complete" }],
+            discoverable: true,
+          },
+        ],
+      },
+      clock,
+    );
+    assert.ok(readinessIssues(base).some((issue) => issue.code === "executable_template"));
+
+    const withBrokenReview = mergeSpec(
+      base,
+      {
+        templates: [
+          ...base.templates,
+          {
+            id: "review",
+            objective: "Review discovered entities",
+            criteria: [{ kind: "text_visible", text: "Review complete" }],
+            dependencies: ["entity"],
+          },
+        ],
+      },
+      clock,
+    );
+    assert.ok(readinessIssues(withBrokenReview).some((issue) => issue.code === "unmaterialized_dependency"));
   });
 
   it("remaps grant authorization to gateClass before redaction can eat it", async () => {
