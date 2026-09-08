@@ -83,8 +83,8 @@ attempt, challenge, approval, and recovery contracts.
 | [AGENT-13-T02](../tasks/agent-13-t02-challenge-outcome-breakers.md) | AGENT-13 | done |
 | [AGENT-13-T03](../tasks/agent-13-t03-challenge-handoff-resume.md) | AGENT-13 | todo |
 | [AGENT-13-T04](../tasks/agent-13-t04-challenge-mitigation-experiment.md) | AGENT-13 | todo |
-| [AGENT-14-T01](../tasks/agent-14-t01-approval-precision.md) | AGENT-14 | todo |
-| [AGENT-14-T02](../tasks/agent-14-t02-effect-envelope.md) | AGENT-14 | todo |
+| [AGENT-14-T01](../tasks/agent-14-t01-approval-precision.md) | AGENT-14 | done |
+| [AGENT-14-T02](../tasks/agent-14-t02-effect-envelope.md) | AGENT-14 | done |
 | [AGENT-15-T01](../tasks/agent-15-t01-action-failure-budget.md) | AGENT-15 | todo |
 
 Also built beyond the original table, because the todo list called for them: the

@@ -518,7 +518,8 @@ export function buildPrototypeGateGrants(
   scheduler: Awaited<ReturnType<JobStore["readScheduler"]>>,
 ): GateGrant[] {
   // Prototype grants do not authorize external effects outside explicit development
-  // (MIGRATE-01). Spec `neverPreapprove` names are not independently enforced at the gate.
+  // (MIGRATE-01). Core gate enforces neverPreapprove categories when grants are present
+  // (AGENT-14); this helper only strips grants unless BSA_JOB_PROTOTYPE_DEV=1.
   if (process.env.BSA_JOB_PROTOTYPE_DEV !== "1") {
     return [];
   }

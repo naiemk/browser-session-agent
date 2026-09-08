@@ -3,7 +3,7 @@ id: AGENT-14-T02
 title: Add intent-bound effect envelopes
 story: AGENT-14
 epic: agent
-status: todo
+status: done
 depends: AGENT-14-T01
 ---
 

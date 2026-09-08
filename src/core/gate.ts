@@ -103,14 +103,39 @@ function forbiddenByEnvelope(
   classification: Classification,
   controlName: string | undefined,
   never: NondelegableAction[] | undefined,
-): boolean {
-  if (!never?.length) return false;
-  if (classification.authorization === "destructive" && never.includes("destructive")) return true;
-  const name = controlName ?? "";
-  if (never.includes("payment") && /\b(pay|purchase|buy|checkout|order|transfer|withdraw)\b/i.test(name)) {
-    return true;
+  request?: ActionRequest,
+  control?: { name?: string; inputType?: string; role?: string },
+): { forbidden: boolean; category?: NondelegableAction } {
+  if (!never?.length) return { forbidden: false };
+  if (classification.authorization === "destructive" && never.includes("destructive")) {
+    return { forbidden: true, category: "destructive" };
   }
-  return false;
+  const name = `${controlName ?? ""} ${control?.name ?? ""}`;
+  if (never.includes("payment") && /\b(pay|purchase|buy|checkout|order|transfer|withdraw)\b/i.test(name)) {
+    return { forbidden: true, category: "payment" };
+  }
+  if (
+    never.includes("credential") &&
+    (control?.inputType === "password" ||
+      /\b(password|passwd|passcode|credentials?|login password)\b/i.test(name) ||
+      (request?.kind === "type" && /\b(password|passwd)\b/i.test(name)))
+  ) {
+    return { forbidden: true, category: "credential" };
+  }
+  if (
+    never.includes("otp") &&
+    /\b(otp|one[-\s]?time|verification code|2fa|mfa|authenticator)\b/i.test(name)
+  ) {
+    return { forbidden: true, category: "otp" };
+  }
+  if (
+    never.includes("captcha") &&
+    (/\b(captcha|i'?m not a robot|human check|verify you are human)\b/i.test(name) ||
+      classification.authorizationRuleId === "captcha-control")
+  ) {
+    return { forbidden: true, category: "captcha" };
+  }
+  return { forbidden: false };
 }
 
 function matchingGrant(
@@ -273,6 +298,32 @@ export async function guardedAct(
   const classify = options.classify ?? (await import("./reversibility.ts")).classifyAction;
   const classification = classify(request, control);
 
+  const earlyNondelegable = forbiddenByEnvelope(
+    classification,
+    control?.name,
+    options.neverPreapprove,
+    request,
+    control,
+  );
+  if (earlyNondelegable.forbidden) {
+    await options.ledger?.append({
+      type: "approval",
+      entityId: options.entityId,
+      intent: request.intent ?? `${request.kind} ${control?.name ?? request.ref ?? ""}`.trim(),
+      outcome: { ok: false, detail: `nondelegable:${earlyNondelegable.category}` },
+      payload: gatePayload(classification, {
+        policy,
+        neverPreapprove: options.neverPreapprove,
+        category: earlyNondelegable.category,
+      }),
+    });
+    return {
+      status: "refused",
+      code: `nondelegable_${earlyNondelegable.category}`,
+      reason: `neverPreapprove forbids ${earlyNondelegable.category} even with a job grant`,
+    };
+  }
+
   if (needsCheckpoint(request, classification) && options.checkpoint) {
     await saveCheckpoint(browser, {
       root: options.checkpoint.root,
@@ -336,9 +387,24 @@ export async function guardedAct(
       }
     : undefined;
 
-  const grant = forbiddenByEnvelope(classification, control?.name, options.neverPreapprove)
-    ? undefined
-    : matchingGrant(options.grants, identity, classification.authorization, options.nowMs ?? Date.now());
+  const nondelegable = forbiddenByEnvelope(
+    classification,
+    control?.name,
+    options.neverPreapprove,
+    request,
+    control,
+  );
+  // Already refused on the exploration path above; keep a second check before grants.
+  if (nondelegable.forbidden) {
+    return {
+      status: "refused",
+      code: `nondelegable_${nondelegable.category}`,
+      reason: `neverPreapprove forbids ${nondelegable.category} even with a job grant`,
+      precondition,
+    };
+  }
+
+  const grant = matchingGrant(options.grants, identity, classification.authorization, options.nowMs ?? Date.now());
 
   if (grant) {
     await options.onGrantUsed?.(grant.id);
