@@ -1,6 +1,6 @@
 {
   "name": "magpie",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi-powered persistent browser operator with bounded Playwright tools",
   "type": "module",
   "keywords": [
