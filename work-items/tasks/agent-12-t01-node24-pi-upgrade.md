@@ -3,7 +3,7 @@ id: AGENT-12-T01
 title: Upgrade the runtime to Node 24 and Pi 0.85
 story: AGENT-12
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-12-T01 — Upgrade the runtime to Node 24 and Pi 0.85

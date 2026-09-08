@@ -76,7 +76,8 @@ attempt, challenge, approval, and recovery contracts.
 | [AGENT-11-T03](../tasks/agent-11-t03-expect-note.md) | AGENT-11 | done |
 | [AGENT-11-T04](../tasks/agent-11-t04-clip-failures.md) | AGENT-11 | done |
 | [AGENT-11-T05](../tasks/agent-11-t05-epoch-snapshots.md) | AGENT-11 | done |
-| [AGENT-12-T01](../tasks/agent-12-t01-node24-pi-upgrade.md) | AGENT-12 | todo |
+| [AGENT-12-T01](../tasks/agent-12-t01-node24-pi-upgrade.md) | AGENT-12 | done |
+
 | [AGENT-12-T02](../tasks/agent-12-t02-fabric-execution-rd.md) | AGENT-12 | todo — isolated R&D branch |
 | [AGENT-13-T01](../tasks/agent-13-t01-challenge-detection-telemetry.md) | AGENT-13 | todo |
 | [AGENT-13-T02](../tasks/agent-13-t02-challenge-outcome-breakers.md) | AGENT-13 | todo |

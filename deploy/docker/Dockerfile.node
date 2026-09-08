@@ -1,6 +1,6 @@
 # Desktop node — Playwright Chromium matching package-lock, outbound WS to the API.
 # Built in CI so operators only pull. Do not run this image on the VPS.
-FROM node:22-bookworm
+FROM node:24-bookworm
 
 WORKDIR /app
 ENV NODE_ENV=production

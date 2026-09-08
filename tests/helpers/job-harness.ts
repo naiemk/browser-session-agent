@@ -9,6 +9,12 @@ import { TOOL_ACT } from "../../src/runtime/names.ts";
 import { actStep, createMockModel, type PlanStep } from "../../src/runtime/mock-model.ts";
 import { FixtureServer } from "./fixture-server.ts";
 
+// Prototype grants are stripped outside development (MIGRATE-01). Fixture e2e that
+// exercises approval envelopes must opt in; quarantine tests unset this explicitly.
+if (process.env.BSA_JOB_PROTOTYPE_DEV === undefined) {
+  process.env.BSA_JOB_PROTOTYPE_DEV = "1";
+}
+
 export const APPLY_CRITERIA = [{ kind: "text_visible" as const, text: "Thanks Ada Lovelace" }];
 
 export function applyTemplate(id = "apply", extra: Partial<TaskTemplate> = {}): TaskTemplate {

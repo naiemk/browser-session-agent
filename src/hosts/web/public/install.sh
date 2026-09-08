@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://agent.trustless-commerce.com/install.sh | BSA_PAIR_CODE=… bash
 #
-# First run installs Node 22 + Playwright Chromium (or uses Docker if the
+# First run installs Node 24 + Playwright Chromium (or uses Docker if the
 # daemon is already up). Later runs reuse ~/.browser-session-agent.
 set -euo pipefail
 
@@ -26,7 +26,7 @@ Optional env:
   BSA_DOCKER_PLATFORM   e.g. linux/amd64 if you want to force an emulated image
   BSA_HEADLESS=0    show a real Chromium window (default is headless + live view)
   BSA_REPO / BSA_REF  source tarball (default GitHub main)
-  BSA_NODE_VERSION  portable Node (default 22.19.0)
+  BSA_NODE_VERSION  portable Node (default 24.1.0)
   BSA_NODE_IMAGE    Docker image if Docker is used
 EOF
 }
@@ -37,7 +37,7 @@ ORIGIN="${BSA_ORIGIN:-https://agent.trustless-commerce.com}"
 HOME_DIR="${BSA_HOME:-${HOME}/.browser-session-agent}"
 REPO="${BSA_REPO:-https://github.com/naiemk/browser-session-agent}"
 REF="${BSA_REF:-main}"
-NODE_VERSION="${BSA_NODE_VERSION:-22.19.0}"
+NODE_VERSION="${BSA_NODE_VERSION:-24.1.0}"
 IMAGE="${BSA_NODE_IMAGE:-ghcr.io/naiemk/browser-session-node:latest}"
 FORCE_NATIVE="${BSA_NATIVE:-}"
 
@@ -166,7 +166,7 @@ node_major() {
 ensure_node() {
   local major
   major="$(node_major || true)"
-  if [[ -n "${major:-}" && "$major" -ge 22 ]]; then
+  if [[ -n "${major:-}" && "$major" -ge 24 ]]; then
     log "Using $(command -v node) ($(node -v))"
     return 0
   fi
