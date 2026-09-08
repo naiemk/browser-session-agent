@@ -4,13 +4,14 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tsxLoader } from "./tsx-loader.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const entry = path.join(here, "../src/cli/run.ts");
 
 const result = spawnSync(
   process.execPath,
-  ["--import", "tsx", entry, ...process.argv.slice(2)],
+  ["--import", tsxLoader, entry, ...process.argv.slice(2)],
   { stdio: "inherit" },
 );
 

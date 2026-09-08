@@ -1,0 +1,116 @@
+name: Release
+
+# Publishes to npm and creates a GitHub Release when package.json version changes
+# on main. Bump the version in the same PR you want shipped; unchanged versions skip.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Detect package.json version change
+        id: version
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          CUR=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          {
+            echo "version=$CUR"
+            echo "name=$NAME"
+            echo "tag=v$CUR"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch: publishing $NAME@$CUR"
+            exit 0
+          fi
+
+          if [ -z "${BEFORE:-}" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "No previous revision; treating $CUR as a new release."
+            exit 0
+          fi
+
+          if ! git fetch --depth=1 origin "$BEFORE"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Could not fetch previous revision; treating $CUR as a new release."
+            exit 0
+          fi
+          PREV=$(git show "$BEFORE:package.json" | node -e "
+            let s = '';
+            process.stdin.on('data', (d) => { s += d; });
+            process.stdin.on('end', () => {
+              console.log(JSON.parse(s).version);
+            });
+          ")
+          if [ "$PREV" = "$CUR" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "package.json version unchanged ($CUR); skipping release."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "package.json version $PREV -> $CUR"
+          fi
+
+      - name: Skip when this version is already on npm
+        id: npm
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          NAME="${{ steps.version.outputs.name }}"
+          CUR="${{ steps.version.outputs.version }}"
+          if npm view "$NAME@$CUR" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$CUR is already on npm."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.version.outputs.changed == 'true' && steps.npm.outputs.published == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::Add an NPM_TOKEN repository secret (npm automation token with publish rights)."
+            exit 1
+          fi
+          npm publish --access public --provenance
+
+      - name: GitHub Release
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists."
+            exit 0
+          fi
+          gh release create "$TAG" --title "$TAG" --generate-notes

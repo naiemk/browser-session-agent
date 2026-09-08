@@ -1,22 +1,42 @@
 {
-  "name": "browser-session-agent",
+  "name": "magpie",
   "version": "0.1.0",
   "description": "Pi-powered persistent browser operator with bounded Playwright tools",
   "type": "module",
   "keywords": [
+    "magpie",
     "pi-package",
     "playwright",
     "browser-agent"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naiemk/browser-session-agent.git"
+  },
+  "homepage": "https://github.com/naiemk/browser-session-agent#readme",
+  "bugs": {
+    "url": "https://github.com/naiemk/browser-session-agent/issues"
+  },
   "main": "./src/index.ts",
   "bin": {
+    "magpie": "./bin/bsa-cli.mjs",
     "browser-agent": "./bin/browser-agent.mjs",
     "bsa": "./bin/bsa-cli.mjs",
     "browser-session-cli": "./bin/bsa-cli.mjs",
     "browser-session-web": "./bin/bsa-web.mjs",
     "browser-session-api": "./bin/browser-session-api.mjs",
     "browser-session-node": "./bin/browser-session-node.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "browser-skills",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "exports": {
     ".": "./src/index.ts"
@@ -62,13 +82,13 @@
     "pi-meter": "^0.1.1",
     "pi-model-auto": "^0.2.2",
     "playwright": "^1.55.0",
+    "tsx": "^4.23.13",
     "typebox": "^1.0.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
     "@types/ws": "^8.18.1",
-    "tsx": "^4.23.13",
     "typescript": "^5.9.0"
   }
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -106,6 +107,7 @@ describe("local CLI (no VPS)", () => {
   it("help describes the local path and leaves VPS as UI-only", () => {
     const text = helpText();
     assert.match(text, /npm run cli/);
+    assert.match(text, /magpie/);
     assert.match(text, /\/browser-start/);
     assert.match(text, /\/login/);
     assert.match(text, /no VPS|Nothing talks to the VPS/i);
@@ -121,6 +123,7 @@ describe("local CLI (no VPS)", () => {
       bin: Record<string, string>;
       scripts: Record<string, string>;
     };
+    assert.equal(pkg.bin.magpie, "./bin/bsa-cli.mjs");
     assert.equal(pkg.bin.bsa, "./bin/bsa-cli.mjs");
     assert.match(pkg.scripts.cli, /bsa-cli/);
     assert.match(pkg.scripts.dev, /bsa-cli/);
@@ -134,6 +137,7 @@ describe("local CLI (no VPS)", () => {
     const help = await runCli(["--help"]);
     assert.equal(help.code, 0);
     assert.match(help.stdout, /npm run cli/);
+    assert.match(help.stdout, /\bmagpie\b/);
     assert.match(help.stdout, /Nothing talks to the VPS/);
 
     const check = await runCli(["--check"]);
@@ -143,5 +147,31 @@ describe("local CLI (no VPS)", () => {
     assert.match(check.stdout, /chromium/);
     assert.doesNotMatch(check.stdout + check.stderr, /connecting to wss:\/\//);
     assert.equal(check.code, 0);
+  });
+
+  it("loads tsx from this package when cwd has no node_modules", async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "magpie-cli-"));
+    try {
+      const help = await new Promise<{ code: number; stdout: string }>((resolve, reject) => {
+        const child = spawn(process.execPath, [BIN, "--help"], {
+          cwd: tmp,
+          env: { ...process.env, NODE_PATH: "" },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+          stdout += String(chunk);
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => resolve({ code: code ?? 1, stdout }));
+      });
+      assert.equal(help.code, 0);
+      assert.match(help.stdout, /\bmagpie\b/);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 });

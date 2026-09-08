@@ -4,11 +4,11 @@ import { fileURLToPath } from "node:url";
 import {
   loadsModelAuto,
   modelAutoExtensionPath,
+  piCliPath,
   rewriteArgvModelFlag,
 } from "../../host/pi-subagent/spawn.ts";
 
 const MIN_NODE_MAJOR = 22;
-const PI_PACKAGE = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
 
 export const LOCAL_CLI_FLAGS = ["--no-builtin-tools", "--no-skills", "--no-context-files"] as const;
 
@@ -21,7 +21,7 @@ export function extensionPath(root: string): string {
 }
 
 export function piEntryPath(root: string): string {
-  return path.join(root, "node_modules", ...PI_PACKAGE.split(path.sep));
+  return piCliPath(root);
 }
 
 export function hasFlag(args: string[], ...names: string[]): boolean {
@@ -72,25 +72,26 @@ export function buildPiArgs(extension: string, extra: string[] = []): string[] {
 }
 
 export function helpText(): string {
-  return `browser-session-agent local CLI
+  return `magpie local CLI
 
 Launch the Pi TUI on this machine with the browser operator extension.
 Chromium runs here. Nothing talks to the VPS or hosted UI.
 
-  npm install
+  npm install -g magpie
   npx playwright install chromium
-  npm run cli
+  magpie
 
 In Pi:
   /login                 once (OpenRouter, Anthropic, OpenAI, or ChatGPT)
   /browser-start <goal>  open the persistent profile and start a run
 
 Commands:
-  npm run cli                 interactive TUI
-  npm run cli -- --check      verify Node, Pi, extension, and Chromium
-  npm run cli -- --headless   headed off (BSA_HEADLESS=1)
-  npm run cli -- [pi args]    forwarded to Pi (e.g. --print, --model)
+  magpie                      interactive TUI
+  magpie --check               verify Node, Pi, extension, and Chromium
+  magpie --headless            headed off (BSA_HEADLESS=1)
+  magpie [pi args]            forwarded to Pi (e.g. --print, --model)
 
+From a git checkout, npm run cli is the same command.
 For the chat UI on this machine instead of the TUI, use npm run web.
 The hosted VPS path stays UI-only for production.
 Do not run npm run web against the same profile while the CLI is open.
