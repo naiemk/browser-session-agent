@@ -23,7 +23,10 @@ describe("V1-01-T03 chat UI sign-in", () => {
       await page.locator("#auth-email").fill(user.email);
       await page.locator("#auth-password").fill(user.password);
       await page.locator("#auth-register").click();
-      await page.locator("#composer").waitFor();
+      // Composer is always in the DOM under the overlay; wait until sign-in
+      // finished and the chat socket has synced (model list is empty until hello).
+      await page.locator("#auth").waitFor({ state: "hidden" });
+      await page.locator("#model option").first().waitFor();
       assert.equal(new URL(page.url()).search.includes("token="), false);
       await page.locator("#input").fill("hello ui");
       await page.locator("#composer button[type=submit]").click();
