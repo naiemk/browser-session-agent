@@ -2,7 +2,7 @@
 
 Status: done  
 Spec: **ADAPTER-01** … **ADAPTER-04**, **DOM-06**, **DOM-07**, **SCHED-02**, **SCHED-08**  
-Evaluation: [`docs/jobs-v2-evaluation.md`](../../docs/jobs-v2-evaluation.md)  
+Evaluation: [`../evaluations/jobs-v2/campaign-04-t01-t03-hardening.md`](../evaluations/jobs-v2/campaign-04-t01-t03-hardening.md)  
 Evidence minimum: **L6**
 
 ## Goal
@@ -13,17 +13,18 @@ Thin adapters over JobApplicationService with truthful statuses and cancel/due b
 
 - All mutations via application service (ADAPTER-01)
 - Honest strings (ADAPTER-02)
-- Explicit bind only (ADAPTER-03)
+- Explicit bind only (ADAPTER-03) — `durableChatBinding().boundJobId` undefined
 - Due tick constructs host or runtime_unavailable nonzero (ADAPTER-04, SCHED-02)
+- Pi adapter: `durable-status` / `durable-tick` / `durable-cancel`
 - Derived display statuses (DOM-06)
 - Cancel commands (DOM-07)
 - Due scan continues past busy (SCHED-08)
 
 ## Tests
 
-- FakePi + CLI process contract suite
+- FakePi + CLI process contract suite (`tests/integration/durable-adapters-kill.test.ts`)
 - Fresh chat does not bind job
-- Due without host ≠ idle exit 0
+- Due without host ≠ idle exit 0 (exit 4)
 
 ## Depends on
 

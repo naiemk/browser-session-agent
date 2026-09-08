@@ -2,7 +2,7 @@
 
 Status: done  
 Spec: **MIGRATE-02** (proof half)  
-Evaluation: [`docs/jobs-v2-evaluation.md`](../../docs/jobs-v2-evaluation.md) §3  
+Evaluation: [`../evaluations/jobs-v2/campaign-04-t01-t03-hardening.md`](../evaluations/jobs-v2/campaign-04-t01-t03-hardening.md)  
 Evidence minimum: **L4**, **L5**, **L6**
 
 ## Goal
@@ -13,15 +13,15 @@ adapter contracts before cutover.
 ## Fix
 
 - Layered test commands L0–L6
-- Kill matrix: before model, between acts, after effect, before commit
-- Persistent profile reconnect + stale ref rejection
-- Adapter contract suite
+- Kill matrix: before model, between acts, after effect, before commit (**real SIGKILL** child)
+- Persistent profile reconnect + stale ref rejection (see CAMPAIGN-02-T04)
+- Adapter contract suite (FakePi + CLI)
 - Label remaining prototype tests as below-boundary where honest
 
 ## Tests
 
-- Every kill boundary → safe Effect/Attempt/WorkItem state
-- Two due jobs contend for one browser safely
+- Every kill boundary → safe Effect/WorkItem state (`durable-adapters-kill.test.ts`)
+- Two due jobs contend for one browser safely (prior suite)
 - Traceability scaffolding toward `results/jobs-v2/traceability.json`
 
 ## Depends on
