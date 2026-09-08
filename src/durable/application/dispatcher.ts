@@ -3,10 +3,23 @@ import { reduceWorkItem } from "../domain/work-item.ts";
 import { DomainError } from "../domain/errors.ts";
 import type { JobRepository } from "../ports/repository.ts";
 import type { ExecutionHost } from "../ports/execution-kernel.ts";
+import type { OperationOutcome } from "../domain/types.ts";
 import { compileAttemptContext, evaluateAttemptOutcome, emptyRetryLedger, allowRetry } from "./context-compiler.ts";
 import { newId } from "./planning.ts";
 import type { DerivedDisplayStatus } from "../domain/types.ts";
 import { deriveDisplayStatus } from "./status.ts";
+import {
+  challengeBehaviorEnabled,
+  challengeTelemetry,
+  detectChallenge,
+} from "../../runtime/challenge-detector.ts";
+import {
+  applyChallengeOutcome,
+  observationFromOutcomeValue,
+  ResourceCoordinator,
+} from "../../runtime/resource-coordinator.ts";
+
+const challengeCoordinator = new ResourceCoordinator();
 
 const DEFAULT_TTL_MS = 120_000;
 
@@ -101,7 +114,53 @@ export async function dispatchDueJob(input: {
       case: caseRecord,
       workflow: approved.workflow,
     });
-    const outcome = await input.host.kernel.execute(compiled);
+    let outcome: OperationOutcome<unknown> = await input.host.kernel.execute(compiled);
+    const obs =
+      outcome.status === "completed"
+        ? observationFromOutcomeValue(outcome.value)
+        : undefined;
+    if (obs) {
+      const detection = detectChallenge(obs);
+      const telemetry = challengeTelemetry(detection, {
+        sessionId: input.host.profileKey,
+        operationId: attemptId,
+        evidenceIds: outcome.evidenceIds,
+        behaviorEnabled: challengeBehaviorEnabled(),
+      });
+      if (telemetry) {
+        // Structured host log — no raw private page body.
+        console.info(JSON.stringify({ channel: "challenge_candidate", ...telemetry }));
+      }
+      if (challengeBehaviorEnabled() && detection.confidence === "high_confidence") {
+        outcome = applyChallengeOutcome({
+          detection,
+          behaviorEnabled: true,
+          coordinator: challengeCoordinator,
+          hostKey: `host:${detection.host}`,
+          sessionKey: `session:${input.host.profileKey}`,
+          profileKey: `profile:${input.host.profileKey}`,
+          workItemKey: `work:${workItemId}`,
+          evidenceIds: outcome.evidenceIds,
+          checkpoint: {
+            intent: compiled.specSlice.objective ?? item.objective ?? "attempt",
+            pageIdentity: detection.host,
+            evidenceIds: outcome.evidenceIds,
+          },
+          completed: outcome.status === "completed" ? outcome : undefined,
+        });
+        if (outcome.status === "blocked" && approved.workflow.challengePolicy.openBreakerOnChallenge) {
+          await input.repo.saveResource({
+            key: `host:${detection.host}`,
+            scope: "host",
+            failures: 1,
+            circuitOpenUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+            windowActions: 0,
+            windowCostUsd: 0,
+            updatedAt: nowIso,
+          });
+        }
+      }
+    }
     const cases = await input.repo.listCases(job.jobId);
     const evaluated = evaluateAttemptOutcome({
       workflow: approved.workflow,

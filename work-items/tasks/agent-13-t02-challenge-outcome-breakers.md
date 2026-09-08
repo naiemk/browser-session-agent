@@ -3,7 +3,7 @@ id: AGENT-13-T02
 title: Add typed challenge outcomes and circuit breakers
 story: AGENT-13
 epic: agent
-status: todo
+status: done
 depends: AGENT-13-T01
 ---
 

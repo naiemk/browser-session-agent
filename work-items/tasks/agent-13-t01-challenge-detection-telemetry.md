@@ -3,7 +3,7 @@ id: AGENT-13-T01
 title: Detect and measure browser challenges
 story: AGENT-13
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-13-T01 — Detect and measure browser challenges
