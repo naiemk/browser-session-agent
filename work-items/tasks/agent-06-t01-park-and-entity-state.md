@@ -11,7 +11,8 @@ status: todo
 ## Spec
 
 - [docs/decisions.md](../../docs/decisions.md) — D31 (three forward-compatibility locks), D32 (help is queued), D27 (session is a within-day optimization)
-- [docs/v2-campaigns.md](../../docs/v2-campaigns.md) — why the campaign layer needs this
+- [docs/long-running-jobs.md](../../docs/long-running-jobs.md) — how the durable-work
+  engine consumes this attempt-level contract
 
 ## Possible
 
@@ -23,8 +24,11 @@ status: todo
 
 1. Add `parked` as a normal task outcome carrying `reason`, `wake` (`timer` | `third_party` | `human`), `perishable: boolean`, and the payload a human would need to act.
 2. Parking is per entity, not per run. A parked entity must not stop other work; today's `awaiting_takeover` whole-run status stays only as a legacy alias.
-3. Durable state becomes entity-oriented: records with a stable entity id and an `idempotencyKey`, so a resume never repeats a contact or a submission.
-4. Cold resume: task state on disk must be sufficient to continue with no session context. Prove it by resuming in a fresh process.
+3. Attempt state becomes entity-oriented with stable identity and an `idempotencyKey`.
+   This suppresses known duplicates but does not claim certainty across an ambiguous
+   external-effect crash window; CAMPAIGN-03 adds that journal and reconciliation.
+4. Cold reconstruction: task input on disk must be sufficient to create a fresh attempt
+   with no session context. Production process/profile recovery is a CAMPAIGN-02/04 gate.
 5. Do not build a scheduler, queue UI, or notification channel. This task is the state shape only.
 
 ## Tests
@@ -34,4 +38,7 @@ status: todo
 
 ## Done when
 
-`parked` is a first-class outcome with wake and perishability, state is entity-oriented with idempotency keys, and a fresh process resumes a partway task from disk without repeating a committing action. Both test files in the `npm test` glob.
+`parked` is a first-class attempt outcome with wake and perishability, state is
+entity-oriented with idempotency keys, and bounded reconstruction tests pass. Production
+exactness claims are deferred to the durable effect/reconciliation tests. Both test files
+are in the `npm test` glob.

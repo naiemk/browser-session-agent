@@ -40,7 +40,11 @@ Holds: repository is to website as files are to pages, as `grep` is to task-scop
 
 Breaks, and these three gaps are the whole design: there is no `git` (D23), no `npm test` (D20), and structure is not present for free but must be learned and revalidated (D25).
 
-Eventual target: a campaign layer managing agent runs over calendar time (`docs/v2-campaigns.md`, D31–D33). Not being built now. It constrains this layer in three ways only: `parked` must be a normal task outcome, durable state must be entity-oriented with idempotency keys, and tasks must resume cold.
+Eventual target: explicit durable jobs over calendar time; a campaign is their recurring
+multi-case mode (`docs/long-running-jobs.md`, `docs/v2-campaigns.md`, D31–D33 and D57).
+The separate durable-work epic owns scheduling and state. This bounded-attempt layer must
+return typed blocked outcomes, keep external criteria immutable, expose effect uncertainty,
+and resume from fresh evidence without session history.
 
 Work breakdown: `work-items/epics/agent.md` (8 stories, 13 tasks). Each task carries a definition of done that can be checked objectively, usually a named test file plus a specific assertion.
 

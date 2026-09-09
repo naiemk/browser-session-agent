@@ -1,0 +1,80 @@
+▶ CAMPAIGN-00-T01 prototype quarantine
+  ✔ returns runtime_unavailable (not idle) when eligible work has no host (111.55ms)
+  ✔ CLI tick exits 4 for runtime_unavailable (27.413667ms)
+  ✔ strips prototype grants unless BSA_JOB_PROTOTYPE_DEV=1 (13.450792ms)
+  ✔ rejects revision after work materialization (14.962292ms)
+  ✔ requires --allow-ephemeral for job run (0.741ms)
+  ✔ HELP labels jobs experimental and does not claim cron safety (0.258417ms)
+  ✔ Pi-facing copy does not claim scheduled execution without a host (0.142666ms)
+✔ CAMPAIGN-00-T01 prototype quarantine (169.289542ms)
+(node:84547) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ STORE-02 node:sqlite canary
+  ✔ passes on Node 24 (0.608209ms)
+✔ STORE-02 node:sqlite canary (0.995333ms)
+▶ CAMPAIGN-01-T03 repository
+  ✔ creates jobs, claims with fencing, rejects stale fence (7.345ms)
+  ✔ enforces unique case identity (3.649791ms)
+✔ CAMPAIGN-01-T03 repository (11.138334ms)
+▶ CAMPAIGN-02 scheduler + context
+  ✔ reports runtime_unavailable not idle when host missing (0.274375ms)
+  ✔ does not timer-wake perishable human-only work (0.140042ms)
+  ✔ rejects identical retry without new evidence (0.16075ms)
+✔ CAMPAIGN-02 scheduler + context (0.707834ms)
+▶ CAMPAIGN-03 effects/challenges/quality + service
+  ✔ runs approve → tick with host → challenge breaker → effect uncertain (11.260042ms)
+  ✔ duplicate discovery does not duplicate cases (4.925542ms)
+✔ CAMPAIGN-03 effects/challenges/quality + service (16.353083ms)
+▶ CAMPAIGN-04 telemetry + prototype validate
+  ✔ attributes models and scopes capabilities by phase (0.543125ms)
+  ✔ prototype validate does not schedule malformed roots (0.729625ms)
+✔ CAMPAIGN-04 telemetry + prototype validate (1.347875ms)
+▶ context compiler
+  ✔ omits transcript authority and rejects DOM refs (0.205334ms)
+✔ context compiler (0.243583ms)
+▶ AGENT-00-T01 new core boundary
+  ✔ imports nothing from the rebuilt old system (3.469583ms)
+  ✔ fails on a deliberate violation (0.128708ms)
+  ✔ allows node builtins and playwright (0.067ms)
+✔ AGENT-00-T01 new core boundary (4.127917ms)
+▶ DOM-02 durable domain import boundary
+  ✔ imports only relative domain/application-free pure modules (0.658083ms)
+  ✔ fails on a deliberate banned import (0.0705ms)
+✔ DOM-02 durable domain import boundary (0.812333ms)
+▶ DOM-03 job lifecycle
+  ✔ allows every matrix edge and rejects all others (0.834667ms)
+  ✔ cancelJob reaches cancelled from non-terminal states (0.094334ms)
+✔ DOM-03 job lifecycle (1.347125ms)
+▶ DOM-04 work item commands
+  ✔ materializes as pending and walks the happy path (0.155958ms)
+  ✔ rejects illegal transitions and supports cancel (0.082292ms)
+  ✔ never accepts a raw status write API (0.054125ms)
+  ✔ enumerates command applicability across statuses (0.304667ms)
+✔ DOM-04 work item commands (0.709625ms)
+▶ DOM-01 vocabulary
+  ✔ does not declare Sprint as an authoritative domain export (3.856167ms)
+✔ DOM-01 vocabulary (3.953917ms)
+▶ DOM-05 case identity
+  ✔ upserts by (jobId, caseKey) without duplicating (0.467667ms)
+✔ DOM-05 case identity (0.512459ms)
+▶ DOM-06 derived display status
+  ✔ computes display without mutating lifecycle (0.105458ms)
+✔ DOM-06 derived display status (0.139042ms)
+▶ DOM-07 cancel command shapes
+  ✔ exposes CancelJob and CancelWorkItem commands (0.073083ms)
+✔ DOM-07 cancel command shapes (0.097834ms)
+▶ CAMPAIGN-01-T02 spec compiler
+  ✔ round-trips hash on canonical bytes (0.971208ms)
+  ✔ rejects wildcard grants and missing neverPreapprove in strict mode (0.134125ms)
+  ✔ requires seed for discovered mode and same-scope deps (0.113875ms)
+  ✔ keeps draft feedback lenient while propose is strict (0.218125ms)
+  ✔ aggregate oracle does not use browser facts (0.123958ms)
+✔ CAMPAIGN-01-T02 spec compiler (2.055084ms)
+ℹ tests 38
+ℹ suites 16
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1955.15925

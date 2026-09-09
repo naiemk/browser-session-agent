@@ -10,7 +10,9 @@ The agent is as effective in a browser as a good coding agent is in a repository
 
 Pi is a turn engine plus a tool surface; coding-agent competence comes from four environment properties: cheap idempotent reads, a deterministic oracle the agent cannot fake, reversible mistakes, and fast in-context failure. **The browser keeps only the fourth.** This epic manufactures the other three and builds the scoreboard that says whether it worked. Planner, memory, and evaluator are deliberately gated behind measurement (AGENT-08).
 
-Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `docs/v2-campaigns.md` and is out of scope; only its three cheap forward-compatibility locks are in (AGENT-06).
+Design context is `docs/autonomous-agent.md`. Durable scheduling and campaigns are a
+separate engine epic in `work-items/epics/v2-campaigns.md`; this epic supplies its bounded
+attempt, challenge, approval, and recovery contracts.
 
 ## Risks
 
@@ -34,6 +36,10 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 - AGENT-08: Gated next layers (blocked by design)
 - AGENT-10: Honest loop after a live run
 - AGENT-11: Hollow pages, fake pages, and a long epoch
+- AGENT-12: Test programmable execution without replacing the browser boundary
+- AGENT-13: Challenges stop safely and resume cleanly
+- AGENT-14: Approval follows effects, not widgets
+- AGENT-15: Browser recovery is bounded
 
 ## Tasks
 
@@ -70,6 +76,16 @@ Design context is `docs/autonomous-agent.md`. The eventual campaign layer is `do
 | [AGENT-11-T03](../tasks/agent-11-t03-expect-note.md) | AGENT-11 | done |
 | [AGENT-11-T04](../tasks/agent-11-t04-clip-failures.md) | AGENT-11 | done |
 | [AGENT-11-T05](../tasks/agent-11-t05-epoch-snapshots.md) | AGENT-11 | done |
+| [AGENT-12-T01](../tasks/agent-12-t01-node24-pi-upgrade.md) | AGENT-12 | done |
+
+| [AGENT-12-T02](../tasks/agent-12-t02-fabric-execution-rd.md) | AGENT-12 | todo — isolated R&D branch |
+| [AGENT-13-T01](../tasks/agent-13-t01-challenge-detection-telemetry.md) | AGENT-13 | done |
+| [AGENT-13-T02](../tasks/agent-13-t02-challenge-outcome-breakers.md) | AGENT-13 | done |
+| [AGENT-13-T03](../tasks/agent-13-t03-challenge-handoff-resume.md) | AGENT-13 | todo |
+| [AGENT-13-T04](../tasks/agent-13-t04-challenge-mitigation-experiment.md) | AGENT-13 | todo |
+| [AGENT-14-T01](../tasks/agent-14-t01-approval-precision.md) | AGENT-14 | done |
+| [AGENT-14-T02](../tasks/agent-14-t02-effect-envelope.md) | AGENT-14 | done |
+| [AGENT-15-T01](../tasks/agent-15-t01-action-failure-budget.md) | AGENT-15 | done |
 
 Also built beyond the original table, because the todo list called for them: the
 independent evaluator (`src/core/evaluator.ts`), the living task graph
@@ -81,18 +97,20 @@ Order: AGENT-01 first and alone. Then AGENT-02, AGENT-03, AGENT-04 in any order.
 
 ## Definition of done
 
-All 13 tasks done, and:
+All listed tasks done, and:
 
 - The suite runs on one command with a baseline plus a row per merged mechanism in the results log.
 - No authorized commit can fire without live criteria and the goal's approval policy.
-- A fresh process resumes a partway task from disk without repeating a committed action.
+- A fresh process reconstructs a partway attempt from durable input; observed effects are
+  not repeated and uncertain effects require reconciliation rather than a blind retry.
 - D27 and the memory half of D28 are no longer `hypothesis`.
 - Every open question in `docs/autonomous-agent.md` is either answered with a results-log row or explicitly deferred with an entry condition.
 
 ## Spec pointers
 
 - `docs/autonomous-agent.md` — living design doc, open questions, results log, lessons
-- `docs/v2-campaigns.md` — the eventual campaign layer, out of scope
+- `docs/v2-campaigns.md` — campaign semantics over the shared durable-job engine
+- `docs/long-running-jobs.md` — durable-work architecture and integration boundary
 - `docs/decisions.md` — D19–D33
 - `docs/architecture.md` — what exists today
 - `docs/test-design.md` — fixture map to extend

@@ -192,11 +192,17 @@ function recoverabilityOf(
   };
 }
 
+function effectAwareAuthorization(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.BSA_GATE_EFFECT_AWARE === "1" || env.BSA_GATE_EFFECT_AWARE === "true";
+}
+
 function authorizationOf(
   request: ActionRequest,
   control: Control | undefined,
 ): Pick<Classification, "authorization" | "authorizationReason" | "authorizationRuleId"> {
   for (const rule of AUTHORIZATION_RULES) {
+    // AGENT-14: submits-form alone is not outbound authorization when effect-aware mode is on.
+    if (rule.id === "submits-form" && effectAwareAuthorization()) continue;
     if (rule.test(request, control)) {
       return {
         authorization: rule.authorization,

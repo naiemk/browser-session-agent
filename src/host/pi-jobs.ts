@@ -27,6 +27,24 @@ function parseFlag(args: string, name: string): { value?: string; rest: string }
   return { value: match[1], rest: args.replace(match[0], "").trim() };
 }
 
+/** Pure operator copy for approved/active jobs (ADAPTER-02). Exported for tests. */
+export function userFacingJobResume(title: string, status: JobDurableStatus, created = false): string {
+  if (created) {
+    return `Started planning "${title}" (experimental jobs prototype). I'll ask a few questions, then show you a summary to confirm before anything is sent.`;
+  }
+  if (status === "planning") {
+    return `Continuing "${title}". Keep talking here — I'll finish the plan and ask you to confirm before anything is sent.`;
+  }
+  if (status === "awaiting_plan_approval") {
+    return `The plan for "${title}" is ready. Please confirm the summary.`;
+  }
+  if (status === "paused") return `"${title}" is paused. Say if you want to continue.`;
+  if (status === "active") {
+    return `"${title}" is approved. The experimental prototype has no attached execution host in this chat — use browser-agent job run <id> --allow-ephemeral only for development, or wait for Jobs V2.`;
+  }
+  return `This is "${title}".`;
+}
+
 export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}): JobBindHandle {
   const service = options.service ?? new JobService({ root: options.root ?? coreRoot() });
   const headless = options.headless ?? process.env.BSA_HEADLESS === "1";
@@ -34,7 +52,12 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   let activeJobId: string | undefined;
 
   const persist = () => {
-    pi.appendEntry?.("active-job", { jobId: activeJobId });
+    // Evidence only — never restored into a fresh Pi session (write-only / non-restorable).
+    pi.appendEntry?.("job-session-evidence", {
+      jobId: activeJobId,
+      restorable: false,
+      note: "session bind evidence; do not treat as durable job selection",
+    });
   };
 
   const notify = (ctx: ExtensionContext, message: string) => ctx.ui.notify(message, "info");
@@ -70,20 +93,8 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     capabilities.release("job-planning");
   };
 
-  const userFacingResume = (title: string, status: JobDurableStatus, created = false): string => {
-    if (created) {
-      return `Started planning "${title}". I'll ask a few questions, then show you a summary to confirm before anything is sent.`;
-    }
-    if (status === "planning") {
-      return `Continuing "${title}". Keep talking here — I'll finish the plan and ask you to confirm before anything is sent.`;
-    }
-    if (status === "awaiting_plan_approval") {
-      return `The plan for "${title}" is ready. Please confirm the summary.`;
-    }
-    if (status === "paused") return `"${title}" is paused. Say if you want to continue.`;
-    if (status === "active") return `"${title}" is approved and ready for its next scheduled step.`;
-    return `This is "${title}".`;
-  };
+  const userFacingResume = (title: string, status: JobDurableStatus, created = false): string =>
+    userFacingJobResume(title, status, created);
 
   const offerPlanApproval = async (ctx: ExtensionContext): Promise<"approved" | "declined" | "not_ready"> => {
     if (!activeJobId) return "not_ready";
@@ -101,12 +112,15 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     }
     const ok = await ctx.ui.confirm("Approve this job plan?", planConfirmMessage(spec));
     if (!ok) {
-      notify(ctx, "Okay — nothing is scheduled until you confirm.");
+      notify(ctx, "Okay — nothing runs until you confirm the plan.");
       return "declined";
     }
     await service.approvePlan(activeJobId, spec.hash!);
     restoreTools();
-    notify(ctx, `Approved "${job.title}". It will run on the next scheduler tick.`);
+    notify(
+      ctx,
+      `Approved "${job.title}". The experimental prototype does not schedule execution from this chat; use CLI with --allow-ephemeral only for development.`,
+    );
     return "approved";
   };
 
@@ -121,7 +135,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   };
 
   pi.registerCommand("jobs", {
-    description: "List durable long-running jobs",
+    description: "List experimental long-running jobs (prototype; not a production scheduler)",
     handler: async (_args, ctx) => {
       const jobs = await service.list();
       if (jobs.length === 0) {
@@ -142,7 +156,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   });
 
   pi.registerCommand("job-new", {
-    description: "Create a long-running job. Usage: /job-new [--title NAME] <objective>",
+    description: "Create an experimental long-running job. Usage: /job-new [--title NAME] <objective>",
     handler: async (args, ctx) => {
       const parsed = parseFlag(args, "title");
       if (!parsed.rest) {
@@ -217,7 +231,7 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   });
 
   pi.registerCommand("job-approve-plan", {
-    description: "Confirm the proposed spec for scheduled execution",
+    description: "Confirm the proposed spec (does not attach an execution host)",
     handler: async (_args, ctx) => {
       if (!activeJobId) {
         notify(ctx, "No job in this session yet.");
@@ -229,13 +243,13 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
   });
 
   pi.registerCommand("job-run", {
-    description: "Run ticks until idle (needs a live model via CLI for now)",
+    description: "Show how to run ephemeral prototype ticks via CLI (requires --allow-ephemeral)",
     handler: async (_args, ctx) => {
       notify(
         ctx,
         activeJobId
-          ? `Run ticks with: browser-agent job run ${activeJobId}`
-          : "Select a job, then run browser-agent job run <id>",
+          ? `Experimental only: browser-agent job run ${activeJobId} --allow-ephemeral (ephemeral browser; no persistent profile)`
+          : "Select a job, then: browser-agent job run <id> --allow-ephemeral",
       );
     },
   });
@@ -309,17 +323,24 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     handler: async (_args, ctx) => {
       if (!activeJobId) return notify(ctx, "Select a job first.");
       await service.resume(activeJobId);
-      notify(ctx, "Resumed. The job is eligible for its next scheduler tick.");
+      notify(
+        ctx,
+        "Resumed. The job is active again, but this chat still has no execution host; prototype ticks without a host return runtime_unavailable.",
+      );
     },
   });
 
   pi.registerCommand("job-revise", {
-    description: "Open a new spec draft and pause execution",
+    description: "Open a new spec draft before work is materialized (rejected afterward)",
     handler: async (_args, ctx) => {
       if (!activeJobId) return notify(ctx, "Select a job first.");
-      const spec = await service.revise(activeJobId);
-      enablePlanningTools();
-      notify(ctx, `Draft spec v${spec.version}. Approve again before running.`);
+      try {
+        const spec = await service.revise(activeJobId);
+        enablePlanningTools();
+        notify(ctx, `Draft spec v${spec.version}. Approve again before running.`);
+      } catch (err) {
+        notify(ctx, err instanceof Error ? err.message : String(err));
+      }
     },
   });
 

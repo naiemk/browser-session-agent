@@ -1,0 +1,58 @@
+runtime_unavailable: eligible work exists but no model/browser host is attached (experimental jobs prototype; not idle)
+▶ job CLI smoke
+  ✔ creates, lists, titles, pauses, resumes, and ticks (45.714833ms)
+  ✔ seeded jobs survive a second process listing them (16.868708ms)
+✔ job CLI smoke (63.16575ms)
+▶ job leases and budgets
+  ✔ returns busy while a job lease is held, then steals an expired one (37.712ms)
+  ✔ fails the job when the cost budget is exhausted (1858.5095ms)
+  ✔ caps attempts and fails the task without looping (1624.547417ms)
+✔ job leases and budgets (3854.348125ms)
+▶ CAMPAIGN-00-T01 prototype quarantine
+  ✔ returns runtime_unavailable (not idle) when eligible work has no host (49.855792ms)
+  ✔ CLI tick exits 4 for runtime_unavailable (31.371875ms)
+  ✔ strips prototype grants unless BSA_JOB_PROTOTYPE_DEV=1 (21.046958ms)
+  ✔ rejects revision after work materialization (28.729666ms)
+  ✔ requires --allow-ephemeral for job run (0.6725ms)
+  ✔ HELP labels jobs experimental and does not claim cron safety (0.230333ms)
+  ✔ Pi-facing copy does not claim scheduled execution without a host (0.143709ms)
+✔ CAMPAIGN-00-T01 prototype quarantine (132.841375ms)
+▶ AGENT-00-T01 new core boundary
+  ✔ imports nothing from the rebuilt old system (3.259167ms)
+  ✔ fails on a deliberate violation (0.17025ms)
+  ✔ allows node builtins and playwright (0.074375ms)
+✔ AGENT-00-T01 new core boundary (3.989ms)
+▶ DOM-02 durable domain import boundary
+  ✔ imports only relative domain/application-free pure modules (0.463583ms)
+  ✔ fails on a deliberate banned import (0.10075ms)
+✔ DOM-02 durable domain import boundary (0.654792ms)
+▶ DOM-03 job lifecycle
+  ✔ allows every matrix edge and rejects all others (0.87ms)
+  ✔ cancelJob reaches cancelled from non-terminal states (0.100875ms)
+✔ DOM-03 job lifecycle (1.404416ms)
+▶ DOM-04 work item commands
+  ✔ materializes as pending and walks the happy path (0.169625ms)
+  ✔ rejects illegal transitions and supports cancel (0.090042ms)
+  ✔ never accepts a raw status write API (0.058583ms)
+  ✔ enumerates command applicability across statuses (0.354792ms)
+✔ DOM-04 work item commands (0.803583ms)
+▶ DOM-01 vocabulary
+  ✔ does not declare Sprint as an authoritative domain export (3.815917ms)
+✔ DOM-01 vocabulary (3.93775ms)
+▶ DOM-05 case identity
+  ✔ upserts by (jobId, caseKey) without duplicating (0.510875ms)
+✔ DOM-05 case identity (0.556417ms)
+▶ DOM-06 derived display status
+  ✔ computes display without mutating lifecycle (0.1225ms)
+✔ DOM-06 derived display status (0.154542ms)
+▶ DOM-07 cancel command shapes
+  ✔ exposes CancelJob and CancelWorkItem commands (0.085166ms)
+✔ DOM-07 cancel command shapes (0.112167ms)
+ℹ tests 27
+ℹ suites 11
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7305.761334

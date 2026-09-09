@@ -57,8 +57,8 @@ describe("job leases and budgets", () => {
 
     clock.advance(2000);
     const stolen = await service.tick({ jobId: store.jobId, owner: "fresh", jitter: ZERO_JITTER });
-    assert.equal(stolen.status, "idle");
-    assert.equal(stolen.detail, "no runtime attached");
+    assert.equal(stolen.status, "runtime_unavailable");
+    assert.match(stolen.detail ?? "", /no model\/browser host/i);
   });
 
   it("fails the job when the cost budget is exhausted", async () => {

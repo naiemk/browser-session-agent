@@ -1,0 +1,589 @@
+{
+  "generatedAt": "2026-09-09",
+  "requirements": [
+    {
+      "id": "DOM-01",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "DOM-02",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "DOM-03",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "DOM-04",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "DOM-05",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "DOM-06",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "DOM-07",
+      "ticket": "CAMPAIGN-01-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-01",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-02",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-03",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-04",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-05",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-06",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SPEC-07",
+      "ticket": "CAMPAIGN-01-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-01",
+      "ticket": "CAMPAIGN-01-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-02",
+      "ticket": "CAMPAIGN-01-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-03",
+      "ticket": "CAMPAIGN-01-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-04",
+      "ticket": "CAMPAIGN-01-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-05",
+      "ticket": "CAMPAIGN-01-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-06",
+      "ticket": "CAMPAIGN-01-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "STORE-07",
+      "ticket": "CAMPAIGN-01-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-01",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-02",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-03",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-04",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-05",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-06",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-07",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "SCHED-08",
+      "ticket": "CAMPAIGN-02-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-01",
+      "ticket": "CAMPAIGN-02-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-02",
+      "ticket": "CAMPAIGN-02-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-03",
+      "ticket": "CAMPAIGN-02-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-04",
+      "ticket": "CAMPAIGN-02-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-05",
+      "ticket": "CAMPAIGN-02-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-06",
+      "ticket": "CAMPAIGN-02-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-07",
+      "ticket": "CAMPAIGN-02-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-08",
+      "ticket": "CAMPAIGN-02-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EXEC-09",
+      "ticket": "CAMPAIGN-02-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "CASE-01",
+      "ticket": "CAMPAIGN-03-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "CASE-02",
+      "ticket": "CAMPAIGN-03-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "CASE-03",
+      "ticket": "CAMPAIGN-03-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "CASE-04",
+      "ticket": "CAMPAIGN-03-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "CASE-05",
+      "ticket": "CAMPAIGN-03-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EFFECT-01",
+      "ticket": "CAMPAIGN-03-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EFFECT-02",
+      "ticket": "CAMPAIGN-03-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EFFECT-03",
+      "ticket": "CAMPAIGN-03-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EFFECT-04",
+      "ticket": "CAMPAIGN-03-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EFFECT-05",
+      "ticket": "CAMPAIGN-03-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "EFFECT-06",
+      "ticket": "CAMPAIGN-03-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "HUMAN-01",
+      "ticket": "CAMPAIGN-03-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "HUMAN-02",
+      "ticket": "CAMPAIGN-03-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "HUMAN-03",
+      "ticket": "CAMPAIGN-03-T03",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "HUMAN-04",
+      "ticket": "CAMPAIGN-03-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "HUMAN-05",
+      "ticket": "CAMPAIGN-03-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "HUMAN-06",
+      "ticket": "CAMPAIGN-03-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "QUALITY-01",
+      "ticket": "CAMPAIGN-03-T05",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "QUALITY-02",
+      "ticket": "CAMPAIGN-03-T05",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "QUALITY-03",
+      "ticket": "CAMPAIGN-03-T05",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "QUALITY-04",
+      "ticket": "CAMPAIGN-03-T05",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "OBS-01",
+      "ticket": "CAMPAIGN-04-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "OBS-02",
+      "ticket": "CAMPAIGN-04-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "OBS-03",
+      "ticket": "CAMPAIGN-04-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "OBS-04",
+      "ticket": "CAMPAIGN-04-T02",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "OBS-05",
+      "ticket": "open-outside-cutover",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "open",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "OBS-06",
+      "ticket": "open-outside-cutover",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "open",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "ADAPTER-01",
+      "ticket": "CAMPAIGN-04-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "ADAPTER-02",
+      "ticket": "CAMPAIGN-04-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "ADAPTER-03",
+      "ticket": "CAMPAIGN-04-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "ADAPTER-04",
+      "ticket": "CAMPAIGN-04-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "MIGRATE-01",
+      "ticket": "CAMPAIGN-00-T01",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "MIGRATE-02",
+      "ticket": "CAMPAIGN-04-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "MIGRATE-03",
+      "ticket": "CAMPAIGN-04-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    },
+    {
+      "id": "MIGRATE-04",
+      "ticket": "CAMPAIGN-04-T04",
+      "code": "src/durable/**",
+      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "status": "implemented",
+      "finalScoreGate": "see evaluation record"
+    }
+  ]
+}

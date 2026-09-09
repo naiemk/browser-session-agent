@@ -4,7 +4,7 @@
 #   $env:BSA_PAIR_CODE = '<code>'
 #   powershell -ExecutionPolicy Bypass -File $env:TEMP\bsa-install.ps1
 #
-# First run installs portable Node 22 + Playwright Chromium (or uses Docker
+# First run installs portable Node 24 + Playwright Chromium (or uses Docker
 # Desktop if `docker info` works). Later runs reuse %APPDATA%\browser-session-agent.
 $ErrorActionPreference = "Stop"
 
@@ -16,7 +16,7 @@ $Origin = $(if ($env:BSA_ORIGIN) { $env:BSA_ORIGIN } else { "https://agent.trust
 $HomeDir = $(if ($env:BSA_HOME) { $env:BSA_HOME } else { Join-Path $env:APPDATA "browser-session-agent" })
 $Repo = $(if ($env:BSA_REPO) { $env:BSA_REPO } else { "https://github.com/naiemk/browser-session-agent" })
 $Ref = $(if ($env:BSA_REF) { $env:BSA_REF } else { "main" })
-$NodeVersion = $(if ($env:BSA_NODE_VERSION) { $env:BSA_NODE_VERSION } else { "22.19.0" })
+$NodeVersion = $(if ($env:BSA_NODE_VERSION) { $env:BSA_NODE_VERSION } else { "24.1.0" })
 $Image = $(if ($env:BSA_NODE_IMAGE) { $env:BSA_NODE_IMAGE } else { "ghcr.io/naiemk/browser-session-node:latest" })
 $ForceNative = $env:BSA_NATIVE -eq "1"
 
@@ -46,7 +46,7 @@ function Install-PortableNode {
   $nodeExe = Join-Path $prefix "node.exe"
   if (Get-Command node -ErrorAction SilentlyContinue) {
     $major = [int](((node -v).TrimStart("v") -split "\.")[0])
-    if ($major -ge 22) {
+    if ($major -ge 24) {
       Write-Log "Using $((Get-Command node).Source) ($(node -v))"
       return
     }
