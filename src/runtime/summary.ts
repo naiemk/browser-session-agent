@@ -166,6 +166,12 @@ function describeTool(tool: string, details: unknown): string {
     }
     case "subagent": {
       const agent = str(get(details, "agent")) ?? "worker";
+      if (get(details, "halt") === true) return `${agent} stopped (no progress)`;
+      if (get(details, "running") === true) {
+        const tool = str(get(details, "latestTool"));
+        const elapsed = get(details, "elapsedMs");
+        return `${agent} running${tool ? ` ${tool}` : ""}${typeof elapsed === "number" ? ` ${Math.round(elapsed / 1000)}s` : ""}`;
+      }
       const exit = get(details, "exitCode");
       const aborted = get(details, "aborted") === true ? ", aborted" : "";
       return `${agent} exit ${exit ?? "?"}${aborted}`;

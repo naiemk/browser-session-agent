@@ -15,6 +15,7 @@ import path from "node:path";
 import { Ledger, type LedgerEvent, type LedgerInput, type LedgerSink } from "../core/ledger.ts";
 import { coreRoot, goalPaths } from "../core/paths.ts";
 import { GoalStore } from "../core/state.ts";
+import { resolveGoalId, type GoalIdRef } from "./pi-session-goal.ts";
 import { factsFrom, type Evidence, type FactStore } from "../runtime/evidence.ts";
 import type { MetricRecord, MetricsSink, PayloadRecord, PayloadSink } from "../runtime/metrics.ts";
 import { FilePayloadLog, FileRecorder } from "../optimize/recorder.ts";
@@ -22,7 +23,8 @@ import { FilePayloadLog, FileRecorder } from "../optimize/recorder.ts";
 export interface FileEvidenceOptions {
   /** Defaults to the core data root, which is what the product uses. */
   root?: string;
-  goalId: string;
+  /** String, or a getter filled on Pi `session_start`. Paths resolve on first write. */
+  goalId: GoalIdRef;
   /** Recorded on the goal the first time it is opened, for a human reading the file. */
   goal?: string;
   entityId?: string;
@@ -36,11 +38,14 @@ function once<T>(open: () => Promise<T>): () => Promise<T> {
 
 export function fileEvidence(options: FileEvidenceOptions): Evidence {
   const root = coreRoot(options.root);
-  const paths = goalPaths(root, options.goalId);
+  const id = () => resolveGoalId(options.goalId);
+  const pathsOf = () => goalPaths(root, id());
 
-  const ledgerOnce = once(() => Ledger.open(root, options.goalId));
+  const ledgerOnce = once(() => Ledger.open(root, id()));
   const ledger: LedgerSink = {
-    artifactsDir: paths.artifactsDir,
+    get artifactsDir() {
+      return pathsOf().artifactsDir;
+    },
     async append(input: LedgerInput): Promise<LedgerEvent> {
       return (await ledgerOnce()).append(input);
     },
@@ -49,14 +54,14 @@ export function fileEvidence(options: FileEvidenceOptions): Evidence {
     },
   };
 
-  const storeOnce = once(() => GoalStore.open(root, options.goalId, options.goal));
+  const storeOnce = once(() => GoalStore.open(root, id(), options.goal));
   const facts: FactStore = {
     async mergeGoalFacts(next: Record<string, unknown>) {
       return (await storeOnce()).mergeGoalFacts(next);
     },
   };
 
-  const recorderOnce = once(() => FileRecorder.open(paths.metricsFile));
+  const recorderOnce = once(() => FileRecorder.open(pathsOf().metricsFile));
   const metrics: MetricsSink = {
     record(record: MetricRecord) {
       // Fire and forget: metering must never be in the way of the work it measures, and
@@ -68,7 +73,7 @@ export function fileEvidence(options: FileEvidenceOptions): Evidence {
     },
   };
 
-  const payloadsOnce = once(() => FilePayloadLog.open(paths.payloadsFile));
+  const payloadsOnce = once(() => FilePayloadLog.open(pathsOf().payloadsFile));
   const payloads: PayloadSink = {
     write(record: PayloadRecord) {
       void payloadsOnce().then((log) => log.write(record));
@@ -83,8 +88,15 @@ export function fileEvidence(options: FileEvidenceOptions): Evidence {
     facts,
     metrics,
     payloads,
-    goal: { root, goalId: options.goalId },
-    screenshotDir: paths.artifactsDir,
+    goal: {
+      root,
+      get goalId() {
+        return id();
+      },
+    },
+    get screenshotDir() {
+      return pathsOf().artifactsDir;
+    },
     ...(options.entityId ? { entityId: options.entityId } : {}),
   };
 }

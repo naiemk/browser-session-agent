@@ -2,6 +2,11 @@ export interface ToolResult {
   content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
   details?: Record<string, unknown>;
   isError?: boolean;
+  /**
+   * Pi stops the agent after this tool batch only when every result in the batch
+   * sets this. Used to hand control back after a stalled coder stream.
+   */
+  terminate?: boolean;
 }
 
 /**
@@ -26,6 +31,8 @@ export interface RegisteredTool {
   parameters: unknown;
   promptSnippet?: string;
   promptGuidelines?: string[];
+  /** Pi sequential/parallel override. Coder children stay sequential. */
+  executionMode?: "sequential" | "parallel";
   execute: (
     toolCallId: string,
     params: Record<string, unknown>,
@@ -33,6 +40,7 @@ export interface RegisteredTool {
     onUpdate: unknown,
     ctx: ExtensionContext,
   ) => Promise<ToolResult>;
+  renderCall?: (args: Record<string, unknown>, theme: unknown, context: unknown) => Component;
   /**
    * How the result is drawn, as opposed to what the model is told.
    *
@@ -87,6 +95,8 @@ export interface ExtensionContext {
     confirm(title: string, message: string): Promise<boolean>;
     select(title: string, options: string[]): Promise<string | undefined>;
     setStatus?(id: string, text: string | undefined): void;
+    /** Pi footer working line while a child is live. Omit to restore the default. */
+    setWorkingMessage?(message?: string): void;
     setWidget?(key: string, content: string[] | undefined): void;
     editor?(title: string, prefill?: string): Promise<string | undefined>;
   };

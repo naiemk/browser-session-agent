@@ -6,10 +6,11 @@ import { meterPiSession, turnClock } from "./host/pi-metering.ts";
 import { shapePiToolResults } from "./host/pi-shape.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
-import { shortId } from "./core/ids.ts";
 import { bindPlanMode } from "./host/pi-plan-mode.ts";
 import { bindJobCommands } from "./host/pi-jobs.ts";
+import { bindSessionGoal, isSubagentProcess } from "./host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
+import { standingLastCoderPrompt, reconstructProgress } from "./host/pi-subagent/progress.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
@@ -23,6 +24,15 @@ import { BrowserSession } from "./session.ts";
  * supplies the agent's tools.
  */
 export default function browserSessionAgent(pi: ExtensionAPI): void {
+  if (isSubagentProcess()) return;
+
+  /*
+   * Bind the goal before any other session_start handler. Resume reads `magpie-goal`
+   * off Pi's session entries; a fresh session mints once. Tools stay registered at load
+   * (Pi's requirement); the directory is still created on first write.
+   */
+  const sessionGoal = bindSessionGoal(pi);
+
   const session = new BrowserSession({
     cwd: process.cwd(),
     headless: process.env.BSA_HEADLESS === "1",
@@ -30,16 +40,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
 
   bindBrowserCommands(pi, session);
 
-  /*
-   * One goal per session, named now and written to on first use.
-   *
-   * A conversation is the unit of work here: the operator's objective spans whatever
-   * runs they start inside it. Naming it at load rather than when a run starts is what
-   * lets the tools be registered once, which is Pi's requirement, without the evidence
-   * being optional - and it is the reason nothing was recorded before.
-   */
-  const goalId = shortId("goal");
-  const evidence = fileEvidence({ goalId, goal: "browser chat session" });
+  const evidence = fileEvidence({ goalId: () => sessionGoal.id(), goal: "browser chat session" });
 
   // Shared with the metering below, so a payload and the context that carried it agree on
   // which turn they belong to. Without it every tool result is stamped turn 0.
@@ -105,7 +106,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   }
 
     names.push(...bindSubagent(pi, {
-      goalId,
+      goalId: () => sessionGoal.id(),
       evidence: {
         metrics: evidence.metrics,
         payloads: evidence.payloads,
@@ -125,7 +126,12 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
    */
   compactPiContext(pi);
   shapePiToolResults(pi);
-  meterPiSession(pi, evidence, { ...fixedOverhead(composed), goalId }, clock);
+  meterPiSession(pi, evidence, {
+    ...fixedOverhead(composed),
+    get goalId() {
+      return sessionGoal.id();
+    },
+  }, clock);
 
   /*
    * Browser tools only, for the whole session.
@@ -145,12 +151,19 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   // Plan-mode and job session_start handlers follow, so they can filter the active set
   // after the browser tools are restored.
   let jobs: ReturnType<typeof bindJobCommands> | undefined;
-  pi.on("before_agent_start", async () => {
+  pi.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
+    const goalId = sessionGoal.id();
+    const ctx = ctxUnknown as ExtensionContext | undefined;
+    const lastCoder = standingLastCoderPrompt(
+      reconstructProgress(ctx?.sessionManager?.getEntries?.() ?? []),
+    );
     const plan = await standingPlanPrompt(goalId);
     const scratch = await standingScratchPrompt(goalId);
     const job = await jobs?.injection();
     return {
-      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan, scratch, job].filter(Boolean).join("\n\n"),
+      systemPrompt: [composed.systemPrompt, CHAT_WORKER_HINT, plan, scratch, lastCoder, job]
+        .filter(Boolean)
+        .join("\n\n"),
     };
   });
 
@@ -160,7 +173,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   pi.registerCommand("browser-evidence", {
     description: "Where this session's evidence, metrics and payloads are written",
     handler: (_args, ctx) => {
-      ctx.ui.notify(`This session: ${goalDir(undefined, goalId)}`);
+      ctx.ui.notify(`This session: ${goalDir(undefined, sessionGoal.id())}`);
     },
   });
 }

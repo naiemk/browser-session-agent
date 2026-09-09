@@ -151,6 +151,15 @@ describe("living task graph", () => {
     assert.equal((await reopened.requireTask(task.id)).approach, "direct");
   });
 
+  it("records a strategy revision without creating a plan from chat", async () => {
+    assert.equal(await PlanStore.tryOpen(root, "missing"), undefined);
+    const plan = await PlanStore.open(root, "g11", "launch Magpi");
+    await plan.recordRevision({ reason: "harvest was not producing pitches", from: "harvest", to: "compose" });
+    const record = await plan.read();
+    assert.equal(record.revisions.length, 1);
+    assert.equal(record.revisions[0]?.to, "compose");
+  });
+
   it("refuses a task with no criteria", async () => {
     const plan = await PlanStore.open(root, "g9");
     await assert.rejects(

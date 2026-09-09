@@ -156,6 +156,9 @@ export function extensionContext(host: OperatorHost, cwd = process.cwd()): Exten
       setStatus: (id, text) => {
         if (text) host.notify(`${id}: ${text}`, "info");
       },
+      setWorkingMessage: (message) => {
+        if (message) host.notify(`working: ${message}`, "info");
+      },
       setWidget: (key, content) => {
         if (content) host.notify(`${key}: ${content.join(" | ")}`, "info");
       },

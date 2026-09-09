@@ -20,8 +20,10 @@ import {
   standingPlanPrompt,
   standingScratchPrompt,
   SUBAGENT_TOOL_NAME,
+  SubagentFailure,
   withScratchInventory,
 } from "../../src/host/pi-subagent/bind.ts";
+import { reconstructProgress, standingLastCoderPrompt } from "../../src/host/pi-subagent/progress.ts";
 import { discoverPackagedAgents, findAgent } from "../../src/host/pi-subagent/discover.ts";
 import {
   buildChildInvocation,
@@ -212,9 +214,9 @@ describe("worker spawn isolation", () => {
   it("spawns with cwd = scratch and the isolated argv", async () => {
     const root = await tempRoot();
     const scratchDir = await ensureScratch("goal_spawn", root);
-    const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const calls: Array<{ command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv }> = [];
     const spawnImpl: SpawnImpl = (command, args, options) => {
-      calls.push({ command, args, cwd: options.cwd });
+      calls.push({ command, args, cwd: options.cwd, env: options.env });
       const payload = {
         type: "message_end",
         message: { role: "assistant", content: [{ type: "text", text: "## Goal\nDo the thing" }] },
@@ -226,6 +228,7 @@ describe("worker spawn isolation", () => {
       agentName: "planner",
       task: "three jobs",
       scratchDir,
+      goalId: "goal_spawn",
       spawnImpl,
       piEntry: "/fake/cli.js",
       extraExtensions: [],
@@ -247,6 +250,8 @@ describe("worker spawn isolation", () => {
     assert.equal(calls[0]?.args.includes("--model"), false);
     assert.ok(calls[0]?.args.includes("Task: three jobs"));
     assert.equal(calls[0]?.args.includes("@ultra"), false);
+    assert.equal(calls[0]?.env.BSA_SUBAGENT, "1");
+    assert.equal(calls[0]?.env.BSA_GOAL_ID, "goal_spawn");
   });
 
   it("passes a Router floor as a @file include, never as a positional @ultra Task", async () => {
@@ -505,8 +510,15 @@ describe("subagent bind", () => {
     assert.equal(result.isError, true);
     assert.match(result.content[0]?.text ?? "", /aborted/);
     assert.match(result.content[0]?.text ?? "", /partial.json/);
+    const tool = pi.tools.get(SUBAGENT_TOOL_NAME)!;
+    await assert.rejects(
+      () => tool.execute("call-2", { agent: "coder", task: "status" }, undefined, undefined, pi.ctx),
+      (error: unknown) => error instanceof SubagentFailure,
+    );
     assert.doesNotMatch(result.content[0]?.text ?? "", /Do not repeat the same harvest/);
     assert.doesNotMatch(result.content[0]?.text ?? "", /name only the gap/);
+    assert.ok(pi.workingMessages.some((line) => line && /coder/.test(line)));
+    assert.equal(pi.workingMessages.at(-1), undefined);
   });
 
   it("records parent-only tools on the payload log", async () => {
@@ -625,6 +637,143 @@ describe("subagent bind", () => {
     assert.equal(withScratchInventory("fresh harvest", []), "fresh harvest");
   });
 
+  it("streams structured live details and dedicated renderers", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    const options = {
+      goalId: "goal_live",
+      root,
+      runtime: {
+        async run(input: { onUpdate?: (update: { content: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> }) => void }) {
+          input.onUpdate?.({
+            content: [{ type: "text", text: "$ curl https://example.com" }],
+            details: { agent: "coder", running: true, elapsedMs: 12_000, latestTool: "$ curl https://example.com" },
+          });
+          return { agent: "coder", text: "ok", exitCode: 0, stderr: "", aborted: false, elapsedMs: 12_000 };
+        },
+      },
+    };
+    bindSubagent(pi, options);
+    const tool = pi.tools.get(SUBAGENT_TOOL_NAME)!;
+    const updates: Array<{ details?: Record<string, unknown> }> = [];
+    const result = await tool.execute(
+      "call-1",
+      { agent: "coder", task: "unzip the download" },
+      undefined,
+      (update: { details?: Record<string, unknown> }) => {
+        updates.push(update);
+      },
+      pi.ctx,
+    );
+    assert.equal(result.isError, false);
+    assert.ok(updates.some((update) => update.details?.latestTool === "$ curl https://example.com"));
+    assert.ok(pi.workingMessages.some((line) => line && /curl/.test(line)));
+    assert.equal(typeof tool.renderCall, "function");
+    assert.equal(typeof tool.renderResult, "function");
+    const call = tool.renderCall!({ agent: "coder", task: "unzip the download" }, undefined, {});
+    assert.match(call.render(80).join("\n"), /unzip the download/);
+  });
+
+  it("puts child usage in the parent-facing reply and the standing prompt", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    bindSubagent(pi, {
+      goalId: "goal_cost",
+      root,
+      runtime: {
+        async run() {
+          return {
+            agent: "coder",
+            text: "wrote site/index.html",
+            exitCode: 0,
+            stderr: "",
+            aborted: false,
+            elapsedMs: 8_000,
+            turns: 3,
+            model: "glm-5.3-flash",
+            usage: {
+              input: 12_000,
+              output: 800,
+              cacheRead: 0,
+              cacheWrite: 0,
+              cost: 0.0123,
+              contextTokens: 0,
+              turns: 3,
+            },
+            toolPreviews: ["write site/index.html"],
+            tools: ["write"],
+          };
+        },
+      },
+    });
+    const result = await runTool(pi, SUBAGENT_TOOL_NAME, {
+      agent: "coder",
+      task: "build the invite site",
+    });
+    assert.equal(result.isError, false);
+    assert.match(result.content[0]?.text ?? "", /\$0\.0123/);
+    assert.match(result.content[0]?.text ?? "", /glm-5.3-flash/);
+    assert.match(result.content[0]?.text ?? "", /write site\/index.html/);
+    const restored = reconstructProgress(pi.ctx.sessionManager!.getEntries());
+    assert.match(standingLastCoderPrompt(restored), /\$0\.0123/);
+    assert.match(standingLastCoderPrompt(restored), /Last coder/);
+  });
+
+  it("refuses a third coder harvest after two consecutive failures", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    pi.ctx.ui.select = async () => undefined;
+    bindSubagent(pi, {
+      goalId: "goal_breaker",
+      root,
+      runtime: {
+        async run() {
+          return {
+            agent: "coder",
+            text: "",
+            exitCode: 143,
+            stderr: "",
+            aborted: true,
+            errorMessage: "aborted",
+          };
+        },
+      },
+    });
+    const first = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "harvest newsletters" });
+    const second = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "find more newsletters" });
+    const third = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "continue newsletter research" });
+    assert.equal(first.isError, true);
+    assert.equal(second.isError, true);
+    assert.equal(third.terminate, true);
+    assert.match(third.content[0]?.text ?? "", /Stopped automatic coder dispatch/);
+    assert.equal(third.details?.halt, true);
+  });
+
+  it("reconstructs the failure streak after session_start", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    pi.ctx.ui.select = async () => undefined;
+    bindSubagent(pi, {
+      goalId: "goal_resume_breaker",
+      root,
+      runtime: {
+        async run() {
+          return { agent: "coder", text: "", exitCode: 143, stderr: "", aborted: true };
+        },
+      },
+    });
+    await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "harvest newsletters" });
+    await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "harvest newsletters again" });
+    await pi.startSession();
+    const third = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "more newsletter research" });
+    assert.equal(third.terminate, true);
+    assert.equal(third.details?.halt, true);
+  });
+
   it("passes existing scratch into the child task on spawn", async () => {
     const root = await tempRoot();
     const pi = createFakePi();
@@ -716,6 +865,11 @@ describe("in-session plan mode", () => {
       pi.customMessages.some((message) => message.content.includes("Execute the plan")) ||
         pi.userMessages.some((text) => text.includes("Execute the plan")),
     );
+    const widget = pi.widgets.get("plan-todos") ?? [];
+    assert.ok(widget.some((line) => /jobs page/i.test(line)));
+    assert.ok(widget.some((line) => /listing/i.test(line)));
+    assert.equal(new Set(widget.map((line) => line.replace(/^[☑☐→]\s+/, ""))).size >= 2, true);
+    assert.match(pi.statuses.get("plan-mode") ?? "", /plan 0\/2/);
   });
 
   it("does not trigger a turn when the session moved during the Execute prompt", async () => {

@@ -1,0 +1,11 @@
+Find 100 popular developer SaaS products offering an API.
+Determine:
+- free trial?
+- credit card required?
+- API key available immediately?
+- SSO?
+- SOC2?
+- pricing?
+- usage-based pricing?
+Do not rely solely on Google snippets. Verify each result on the product itself.
+Sign up for free accounts where necessary, but stop before accepting paid terms.

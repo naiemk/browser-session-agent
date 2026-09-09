@@ -8,6 +8,10 @@ live tasks before accepting a behavioral change. Instrumentation-only changes ma
 earlier when they do not change the agent's prompt, tools, model selection, or browser
 behavior.
 
+Status as of 2026-09-09: additional comparable collection run 1 of 2 is
+`goal_mtu4ujai001` (see `docs/live-run-evidence-log.md`). Berlin checkout and Magpie
+harvest still do not count. Do not accept QUAL/PERF behavioral changes yet.
+
 Related documents:
 
 - `docs/live-run-review-template.md` — fill this in for every new run.

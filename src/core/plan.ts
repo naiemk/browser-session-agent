@@ -129,6 +129,14 @@ export class PlanStore {
     return shortId("goal");
   }
 
+  /** Existing graph only — do not create an empty plan from a chat session. */
+  static async tryOpen(root: string, goalId: string): Promise<PlanStore | undefined> {
+    const paths = goalPaths(root, goalId);
+    const raw = await readFile(planFile(paths), "utf8").catch(() => "");
+    if (!raw.trim()) return undefined;
+    return new PlanStore(goalId, paths);
+  }
+
   private async tryRead(): Promise<PlanRecord | undefined> {
     const raw = await readFile(planFile(this.paths), "utf8").catch(() => "");
     if (!raw.trim()) return undefined;
@@ -326,6 +334,17 @@ export class PlanStore {
       await this.addTask({ ...task, approach: input.adopt!.approach });
     }
     return this.read();
+  }
+
+  /** Record a strategy change without abandoning tasks. Interactive replan uses this. */
+  async recordRevision(input: { reason: string; from?: string; to?: string }): Promise<PlanRecord> {
+    return this.mutate((record) => ({
+      ...record,
+      revisions: [
+        ...record.revisions,
+        { at: now(), reason: input.reason, from: input.from, to: input.to },
+      ],
+    }));
   }
 
   async summary(): Promise<{

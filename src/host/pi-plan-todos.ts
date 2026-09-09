@@ -1,5 +1,9 @@
 /**
  * Numbered Plan: steps and [DONE:n] markers, same extraction Pi's plan-mode example uses.
+ *
+ * Capture the rest of the line. Stopping at the first asterisk turns
+ * `1. **Research** directories` and `2. **Research** newsletters` into the same
+ * widget label, which is how a six-step launch plan collapsed to "Research".
  */
 
 export interface TodoItem {
@@ -8,10 +12,17 @@ export interface TodoItem {
   completed: boolean;
 }
 
-export function cleanStepText(text: string): string {
-  let cleaned = text
-    .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+export function stripMarkdownInline(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*{1,2}/g, "")
+    .trim();
+}
+
+export function cleanStepText(text: string): string {
+  let cleaned = stripMarkdownInline(text)
     .replace(
       /^(Use|Run|Execute|Create|Write|Read|Check|Verify|Update|Modify|Add|Remove|Delete|Install)\s+(the\s+)?/i,
       "",
@@ -22,8 +33,8 @@ export function cleanStepText(text: string): string {
   if (cleaned.length > 0) {
     cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
-  if (cleaned.length > 50) {
-    cleaned = `${cleaned.slice(0, 47)}...`;
+  if (cleaned.length > 72) {
+    cleaned = `${cleaned.slice(0, 69)}...`;
   }
   return cleaned;
 }
@@ -34,19 +45,15 @@ export function extractTodoItems(message: string): TodoItem[] {
   if (!headerMatch) return items;
 
   const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
-  const numberedPattern = /^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
+  const numberedPattern = /^\s*(\d+)[.)]\s+(.+)$/gm;
 
   for (const match of planSection.matchAll(numberedPattern)) {
-    const text = match[2]
-      ?.trim()
-      .replace(/\*{1,2}$/, "")
-      .trim();
+    const text = stripMarkdownInline(match[2] ?? "");
     if (!text) continue;
-    if (text.length > 5 && !text.startsWith("`") && !text.startsWith("/") && !text.startsWith("-")) {
-      const cleaned = cleanStepText(text);
-      if (cleaned.length > 3) {
-        items.push({ step: items.length + 1, text: cleaned, completed: false });
-      }
+    if (text.startsWith("`") || text.startsWith("/") || text.startsWith("-")) continue;
+    const cleaned = cleanStepText(text);
+    if (cleaned.length > 1) {
+      items.push({ step: items.length + 1, text: cleaned, completed: false });
     }
   }
   return items;

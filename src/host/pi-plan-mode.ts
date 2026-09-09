@@ -33,6 +33,7 @@ import {
 } from "./pi-plan-todos.ts";
 import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { clipWidgetLines } from "./pi-tool-view.ts";
+import { reconstructProgress } from "./pi-subagent/progress.ts";
 
 export const PLAN_COMMAND = "plan";
 
@@ -137,19 +138,26 @@ After completing a step, include a [DONE:n] tag in your response.`;
   }
 
   function updateStatus(ctx: ExtensionContext): void {
+    const working = reconstructProgress(ctx.sessionManager?.getEntries?.() ?? []).lastWorking;
     if (executionMode && todoItems.length > 0) {
       const completed = todoItems.filter((todo) => todo.completed).length;
-      ctx.ui.setStatus?.("plan-mode", `plan ${completed}/${todoItems.length}`);
+      const active = todoItems.find((todo) => !todo.completed);
+      ctx.ui.setStatus?.(
+        "plan-mode",
+        `plan ${completed}/${todoItems.length}${active ? ` · ${active.text}` : ""}`,
+      );
+      const lines = todoItems.map((item) => {
+        if (item.completed) return `☑ ${item.text}`;
+        if (item.step === active?.step) return `→ ${item.text}`;
+        return `☐ ${item.text}`;
+      });
+      if (working) lines.push(working);
+      ctx.ui.setWidget?.("plan-todos", clipWidgetLines(lines));
     } else if (planModeEnabled) {
       ctx.ui.setStatus?.("plan-mode", "⏸ plan");
+      ctx.ui.setWidget?.("plan-todos", undefined);
     } else {
       ctx.ui.setStatus?.("plan-mode", undefined);
-    }
-
-    if (executionMode && todoItems.length > 0) {
-      const lines = todoItems.map((item) => (item.completed ? `☑ ${item.text}` : `☐ ${item.text}`));
-      ctx.ui.setWidget?.("plan-todos", clipWidgetLines(lines));
-    } else {
       ctx.ui.setWidget?.("plan-todos", undefined);
     }
   }
