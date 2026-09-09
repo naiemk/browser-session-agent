@@ -133,6 +133,11 @@ export function detectChallenge(evidence: ChallengeEvidence): ChallengeDetection
   };
 }
 
+/** Stable hash for resume: same page + signals must not count as new evidence. */
+export function evidenceHashOf(detection: ChallengeDetection, url?: string): string {
+  return `${detection.host}|${url ?? ""}|${detection.signals.join(",")}|${detection.confidence}`;
+}
+
 export interface ChallengeTelemetryEvent {
   type: "challenge_candidate";
   detectorVersion: string;

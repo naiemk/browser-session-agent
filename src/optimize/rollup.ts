@@ -50,8 +50,20 @@ export interface DuplicateWork {
   zeroChangeObservations: number;
   /** The same URL loaded more than once, from the ledger. */
   repeatNavigations: number;
-  /** Probes issued with a query that had already been answered. */
+  /** Same query on the same page — bought the answer twice. */
   repeatProbes: number;
+  /** Same query on a different page — a repeated recipe, not a wasted duplicate. */
+  repeatedRecipe: number;
+}
+
+export interface ModelUsage {
+  provider?: string;
+  model: string;
+  turns: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  costUsd: number;
 }
 
 export interface Rollup {
@@ -68,6 +80,11 @@ export interface Rollup {
   /** Per-turn overhead that is resent verbatim whether it is read or not. */
   fixedOverheadBytes: { card: number; toolSchemas: number; tools: number };
   attribution: Attribution[];
+  /**
+   * Cost split by the model that billed each turn. Empty when no turn recorded a model
+   * (older metric files). Does not replace `model`, which remains the first-seen run row.
+   */
+  byModel: ModelUsage[];
   duplicates: DuplicateWork;
   /**
    * How often pruning rewrote a message the provider had already seen. A low mean index
@@ -168,6 +185,7 @@ export function rollup(input: RollupInput): Rollup {
       tools: run?.toolCount ?? 0,
     },
     attribution,
+    byModel: modelUsage(turnRecords),
     duplicates: duplicateWork(results, observations, input.events ?? []),
     cache: cacheHealth(contexts),
     observations: {
@@ -245,8 +263,10 @@ function duplicateWork(
 
   const visited = new Set<string>();
   let repeatNavigations = 0;
-  const probed = new Set<string>();
+  const exactProbes = new Set<string>();
+  const recipes = new Set<string>();
   let repeatProbes = 0;
+  let repeatedRecipe = 0;
   for (const event of events) {
     const url = event.action?.url;
     if (url) {
@@ -254,9 +274,21 @@ function duplicateWork(
       visited.add(url);
     }
     if (event.type === "probe" && event.payload?.query) {
-      const key = JSON.stringify(event.payload.query);
-      if (probed.has(key)) repeatProbes += 1;
-      probed.add(key);
+      const query = JSON.stringify(event.payload.query);
+      const page = probePageKey(event);
+      if (page) {
+        const exact = `${page}|${query}`;
+        if (exactProbes.has(exact)) {
+          repeatProbes += 1;
+        } else if (recipes.has(query)) {
+          repeatedRecipe += 1;
+        }
+        exactProbes.add(exact);
+      } else if (recipes.has(query)) {
+        // Missing URL cannot be an exact page duplicate.
+        repeatedRecipe += 1;
+      }
+      recipes.add(query);
     }
   }
 
@@ -266,7 +298,42 @@ function duplicateWork(
     zeroChangeObservations,
     repeatNavigations,
     repeatProbes,
+    repeatedRecipe,
   };
+}
+
+function probePageKey(event: LedgerEvent): string | undefined {
+  const after = event.after?.url;
+  if (after) return after;
+  const before = event.before?.url;
+  if (before) return before;
+  const payloadUrl = event.payload?.url;
+  if (typeof payloadUrl === "string" && payloadUrl.length > 0) return payloadUrl;
+  return undefined;
+}
+
+function modelUsage(turns: readonly TurnRecord[]): ModelUsage[] {
+  const byKey = new Map<string, ModelUsage>();
+  for (const turn of turns) {
+    if (!turn.model) continue;
+    const key = `${turn.provider ?? ""}/${turn.model}`;
+    const current = byKey.get(key) ?? {
+      ...(turn.provider ? { provider: turn.provider } : {}),
+      model: turn.model,
+      turns: 0,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      costUsd: 0,
+    };
+    current.turns += 1;
+    current.input += turn.inputTokens;
+    current.output += turn.outputTokens;
+    current.cacheRead += turn.cacheReadTokens;
+    current.costUsd += turn.costUsd;
+    byKey.set(key, current);
+  }
+  return [...byKey.values()].map((row) => ({ ...row, costUsd: round(row.costUsd, 6) }));
 }
 
 /**
@@ -415,7 +482,20 @@ export function formatRollup(value: Rollup): string {
   );
   lines.push(`  ${value.duplicates.zeroChangeObservations} reads that returned the same page`);
   lines.push(`  ${value.duplicates.repeatNavigations} repeat navigations`);
-  lines.push(`  ${value.duplicates.repeatProbes} repeated probe queries`);
+  lines.push(`  ${value.duplicates.repeatProbes} repeated probe queries on the same page`);
+  lines.push(`  ${value.duplicates.repeatedRecipe} repeated probe recipes on different pages`);
+
+  if (value.byModel.length > 0) {
+    lines.push("");
+    lines.push("by model:");
+    for (const row of value.byModel) {
+      const name = row.provider ? `${row.provider}/${row.model}` : row.model;
+      lines.push(
+        `  ${name}: ${row.turns} turns, ${row.input} fresh input, ${row.cacheRead} cache read, ` +
+          `${row.output} output, $${row.costUsd.toFixed(6)}`,
+      );
+    }
+  }
 
   lines.push("");
   lines.push(

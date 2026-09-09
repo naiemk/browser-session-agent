@@ -78,6 +78,15 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       // Named on the environment because a chat has no flags. The default is the format
       // being measured; this is how an operator puts the baseline back mid-investigation.
       view: viewByName(process.env.BSA_VIEW),
+      onChallengeTakeover: async ({ tabId, host }) => {
+        try {
+          await session.takeover(undefined, tabId);
+        } catch {
+          const id = tabId ?? session.worker.firstTabId();
+          if (id) await session.worker.bringToFront(id).catch(() => undefined);
+        }
+        sessionUi.current?.notify?.(`Challenge on ${host}. Tab is yours — solve or skip, then continue.`, "warning");
+      },
       policy: "ask",
       approve: async (request) => {
         if (!sessionUi.current) return false;

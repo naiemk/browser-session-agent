@@ -370,7 +370,9 @@ Discussion and decision:
 
 ### PERF-01 — Record the actual model on every turn
 
-Status: instrumentation blocker. Jobs V2: OBS-01 / CAMPAIGN-04-T02 (does not close).
+Status: instrumentation landed (turn `provider`/`model`, `model_change`, rollup `byModel`).
+Two switched-model live runs still required before this ticket is accepted. Jobs V2:
+OBS-01 / CAMPAIGN-04-T02 (does not close).
 
 Problem:
 
@@ -675,7 +677,10 @@ Discussion and decision:
 
 ### PERF-10 — Correct duplicate-work metrics
 
-Status: instrumentation issue. Jobs V2: OBS-04 / CAMPAIGN-04-T02 (does not close).
+Status: instrumentation landed (exact duplicates keyed by page URL + query;
+`repeatedRecipe` for the same query on a different or missing URL). Fixture counts
+updated; a manually validated live sample is still required. Jobs V2: OBS-04 /
+CAMPAIGN-04-T02 (does not close).
 
 Problem:
 
@@ -754,8 +759,9 @@ Discussion and decision:
 
 ### PERF-12 — Detect challenges and stop blocked loops
 
-Status: experiment planned. Jobs V2: HUMAN-01..03 / CAMPAIGN-03-T03 + AGENT-13
-(does not close).
+Status: experiment planned. Detector + breakers + gated handoff exist; behavior stays
+off unless `BSA_CHALLENGE_BEHAVIOR` is set. Jobs V2: HUMAN-01..04 / CAMPAIGN-03-T03/T04
++ AGENT-13 (does not close).
 
 Design: `docs/challenge-and-approval-handling.md`.
 Work items: `AGENT-13-T01` through `AGENT-13-T04`.

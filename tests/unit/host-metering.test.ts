@@ -122,4 +122,60 @@ describe("metering a session someone else drives", () => {
     const omitted = empty.metrics.records.find((record) => record.kind === "turn") as { thinkingLevel?: string };
     assert.equal("thinkingLevel" in omitted, false);
   });
+
+  it("records provider and model on every turn that names them", async () => {
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    meterPiSession(pi, evidence, overhead, turnClock());
+
+    await pi.emit(
+      "turn_end",
+      assistant({ input: 1, cost: { total: 0.01 } }, { provider: "acme", model: "acme/1" }),
+    );
+
+    const turn = evidence.metrics.records.find((record) => record.kind === "turn") as {
+      provider?: string;
+      model?: string;
+    };
+    assert.equal(turn.provider, "acme");
+    assert.equal(turn.model, "acme/1");
+  });
+
+  it("omits model on unlabeled turns rather than writing unknown", async () => {
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    meterPiSession(pi, evidence, overhead, turnClock());
+
+    await pi.emit("turn_end", {
+      type: "turn_end",
+      message: { usage: { input: 1, output: 1, cost: { total: 0.01 } } },
+    });
+
+    const turn = evidence.metrics.records.find((record) => record.kind === "turn") as {
+      provider?: string;
+      model?: string;
+    };
+    assert.equal("model" in turn, false);
+    assert.equal("provider" in turn, false);
+  });
+
+  it("emits model_change when the billed identity switches", async () => {
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    meterPiSession(pi, evidence, overhead, turnClock());
+
+    await pi.emit(
+      "turn_end",
+      assistant({ input: 1, cost: { total: 0.01 } }, { provider: "openai", model: "gpt-4.1" }),
+    );
+    await pi.emit(
+      "turn_end",
+      assistant({ input: 1, cost: { total: 0.01 } }, { provider: "anthropic", model: "claude" }),
+    );
+
+    const changes = evidence.metrics.records.filter((record) => record.kind === "model_change");
+    assert.equal(changes.length, 1);
+    assert.equal((changes[0] as { model: string; previousModel?: string }).model, "claude");
+    assert.equal((changes[0] as { previousModel?: string }).previousModel, "gpt-4.1");
+  });
 });

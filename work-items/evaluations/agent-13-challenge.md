@@ -52,5 +52,6 @@ Fixed `tryResume` evidence-hash persistence (was not written on first challenge)
 ## Residual
 
 - Precision/recall on labeled Berlin corpus (T01 evidence thresholds) still need fixture corpus labeling.
-- AGENT-13-T03 handoff/resume UI path not in this commit.
+- AGENT-13-T03 handoff/resume is implemented behind `BSA_CHALLENGE_BEHAVIOR` (default off).
+  See `work-items/evaluations/agent-13-t03-handoff.md`.
 - In-process ResourceCoordinator is not yet the shared durable persistence port across workers.

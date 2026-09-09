@@ -3,23 +3,22 @@ import { reduceWorkItem } from "../domain/work-item.ts";
 import { DomainError } from "../domain/errors.ts";
 import type { JobRepository } from "../ports/repository.ts";
 import type { ExecutionHost } from "../ports/execution-kernel.ts";
-import type { OperationOutcome } from "../domain/types.ts";
+import type { DerivedDisplayStatus, HumanRequest, OperationCheckpoint, OperationOutcome } from "../domain/types.ts";
 import { compileAttemptContext, evaluateAttemptOutcome, emptyRetryLedger, allowRetry } from "./context-compiler.ts";
 import { newId } from "./planning.ts";
-import type { DerivedDisplayStatus } from "../domain/types.ts";
 import { deriveDisplayStatus } from "./status.ts";
 import {
   challengeBehaviorEnabled,
   challengeTelemetry,
   detectChallenge,
+  evidenceHashOf,
+  type ChallengeDetection,
 } from "../../runtime/challenge-detector.ts";
 import {
   applyChallengeOutcome,
   observationFromOutcomeValue,
-  ResourceCoordinator,
+  sharedChallengeCoordinator,
 } from "../../runtime/resource-coordinator.ts";
-
-const challengeCoordinator = new ResourceCoordinator();
 
 const DEFAULT_TTL_MS = 120_000;
 
@@ -119,8 +118,9 @@ export async function dispatchDueJob(input: {
       outcome.status === "completed"
         ? observationFromOutcomeValue(outcome.value)
         : undefined;
+    let detection: ChallengeDetection | undefined;
     if (obs) {
-      const detection = detectChallenge(obs);
+      detection = detectChallenge(obs);
       const telemetry = challengeTelemetry(detection, {
         sessionId: input.host.profileKey,
         operationId: attemptId,
@@ -132,57 +132,110 @@ export async function dispatchDueJob(input: {
         console.info(JSON.stringify({ channel: "challenge_candidate", ...telemetry }));
       }
       if (challengeBehaviorEnabled() && detection.confidence === "high_confidence") {
+        const checkpoint: OperationCheckpoint = {
+          intent: compiled.specSlice.objective ?? item.objective ?? "attempt",
+          pageIdentity: obs.url ?? detection.host,
+          evidenceIds: outcome.evidenceIds,
+        };
         outcome = applyChallengeOutcome({
           detection,
           behaviorEnabled: true,
-          coordinator: challengeCoordinator,
+          coordinator: sharedChallengeCoordinator(),
           hostKey: `host:${detection.host}`,
           sessionKey: `session:${input.host.profileKey}`,
           profileKey: `profile:${input.host.profileKey}`,
           workItemKey: `work:${workItemId}`,
           evidenceIds: outcome.evidenceIds,
-          checkpoint: {
-            intent: compiled.specSlice.objective ?? item.objective ?? "attempt",
-            pageIdentity: detection.host,
-            evidenceIds: outcome.evidenceIds,
-          },
+          evidenceHash: evidenceHashOf(detection, obs.url),
+          checkpoint,
           completed: outcome.status === "completed" ? outcome : undefined,
         });
-        if (outcome.status === "blocked" && approved.workflow.challengePolicy.openBreakerOnChallenge) {
+      }
+    }
+
+    let nextItem = item;
+    if (outcome.status === "blocked") {
+      nextItem = reduceWorkItem(item, { type: "block", checkpoint: outcome.checkpoint }, nowIso);
+      if (outcome.block.kind === "challenge") {
+        const host = outcome.block.host;
+        if (approved.workflow.challengePolicy.openBreakerOnChallenge) {
           await input.repo.saveResource({
-            key: `host:${detection.host}`,
+            key: `host:${host}`,
             scope: "host",
             failures: 1,
-            circuitOpenUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
+            circuitOpenUntil: new Date(Date.parse(nowIso) + 60 * 60_000).toISOString(),
             windowActions: 0,
             windowCostUsd: 0,
             updatedAt: nowIso,
           });
         }
+        await parkChallengeHuman(input.repo, {
+          jobId: job.jobId,
+          workItemId,
+          host,
+          detection,
+          checkpoint: outcome.checkpoint,
+          nowIso,
+        });
+        await input.repo.appendAudit({
+          jobId: job.jobId,
+          at: nowIso,
+          type: "challenge_handoff",
+          payload: { phase: "park", host, workItemId, perishable: true },
+        });
+        await input.repo.commitOutcome({
+          attemptId: attempt.id,
+          fenceToken,
+          workItem: nextItem,
+          job,
+          outcome,
+          finishedAt: nowIso,
+        });
+        return {
+          jobId: job.jobId,
+          status: "waiting_human",
+          workItemId,
+          attemptId: attempt.id,
+        };
       }
+      await input.repo.commitOutcome({
+        attemptId: attempt.id,
+        fenceToken,
+        workItem: nextItem,
+        job,
+        outcome,
+        finishedAt: nowIso,
+      });
+      return {
+        jobId: job.jobId,
+        status: "worked",
+        workItemId,
+        attemptId: attempt.id,
+      };
     }
-    const cases = await input.repo.listCases(job.jobId);
-    const evaluated = evaluateAttemptOutcome({
-      workflow: approved.workflow,
-      workItem: item,
-      output: outcome.status === "completed" ? outcome.value : undefined,
-      claim: outcome.status === "completed" ? { success: true } : undefined,
-      cases,
-      artifacts: input.artifacts ?? [],
-      acceptedOutputs: input.acceptedOutputs ?? [],
-      nowIso,
-    });
 
-    let nextItem = item;
-    if (outcome.status === "blocked") {
-      nextItem = reduceWorkItem(item, { type: "block", checkpoint: outcome.checkpoint }, nowIso);
-    } else if (outcome.status === "cancelled") {
+    if (outcome.status === "cancelled") {
       nextItem = reduceWorkItem(item, { type: "cancel" }, nowIso);
     } else if (outcome.status === "failed") {
       nextItem = reduceWorkItem(item, { type: "fail" }, nowIso);
     } else {
       nextItem = reduceWorkItem(item, { type: "complete" }, nowIso);
     }
+
+    const cases = await input.repo.listCases(job.jobId);
+    const evaluated =
+      outcome.status === "completed"
+        ? evaluateAttemptOutcome({
+            workflow: approved.workflow,
+            workItem: item,
+            output: outcome.value,
+            claim: { success: true },
+            cases,
+            artifacts: input.artifacts ?? [],
+            acceptedOutputs: input.acceptedOutputs ?? [],
+            nowIso,
+          })
+        : { jobComplete: false, workItemStatus: nextItem.status };
 
     let nextJob = job;
     if (evaluated.jobComplete) {
@@ -193,7 +246,7 @@ export async function dispatchDueJob(input: {
     await input.repo.commitOutcome({
       attemptId: attempt.id,
       fenceToken,
-      workItem: { ...nextItem, status: evaluated.workItemStatus === "done" ? nextItem.status : nextItem.status },
+      workItem: nextItem,
       job: nextJob,
       outcome,
       finishedAt: nowIso,
@@ -227,3 +280,31 @@ export async function dispatchDueScan(input: {
 }
 
 export { emptyRetryLedger, allowRetry, DEFAULT_TTL_MS };
+
+async function parkChallengeHuman(
+  repo: JobRepository,
+  input: {
+    jobId: string;
+    workItemId: string;
+    host: string;
+    detection?: ChallengeDetection;
+    checkpoint: OperationCheckpoint;
+    nowIso: string;
+  },
+): Promise<HumanRequest> {
+  return repo.createHumanRequest({
+    id: newId("hum"),
+    jobId: input.jobId,
+    kind: "challenge",
+    status: "waiting",
+    perishable: true,
+    workItemId: input.workItemId,
+    resourceKey: `host:${input.host}`,
+    reason: input.detection?.summary ?? `challenge on ${input.host}`,
+    handoff:
+      "Headed rehydration required; do not complete from UI checkbox alone. Resume takes a fresh observation.",
+    checkpoint: input.checkpoint,
+    createdAt: input.nowIso,
+    updatedAt: input.nowIso,
+  });
+}

@@ -3,7 +3,7 @@ id: AGENT-13-T03
 title: Hand off and resume challenged operations
 story: AGENT-13
 epic: agent
-status: todo
+status: done
 depends: AGENT-13-T02
 ---
 

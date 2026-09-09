@@ -41,6 +41,8 @@ import { hashOf, observationStats } from "./metrics.ts";
 import type { Evidence } from "./evidence.ts";
 import { findWireObservation, wireText } from "./wire.ts";
 import { DEFAULT_VIEW, type ViewStrategy } from "./view/index.ts";
+import { challengeBehaviorEnabled } from "./challenge-detector.ts";
+import { InteractiveChallengeGuard, type ChallengeTakeoverInfo } from "./challenge-handoff.ts";
 
 export interface ReportPayload {
   status: "success" | "blocked" | "failed";
@@ -91,6 +93,12 @@ export interface ToolContext {
     entities: Array<{ label: string; facts?: Record<string, unknown> }>;
   }) => Promise<{ created: number; error?: string }>;
   view?: ViewStrategy;
+  /**
+   * Interactive challenge halt (AGENT-13-T03). Wired by the host to focus the tab.
+   * Behavior stays off unless BSA_CHALLENGE_BEHAVIOR is set.
+   */
+  onChallengeTakeover?: (info: ChallengeTakeoverInfo) => Promise<void>;
+  challengeGuard?: InteractiveChallengeGuard;
 }
 
 export const DEFAULT_STRANGER_VIEW_BUDGET = 3;
@@ -129,12 +137,29 @@ export function safeArtifactName(name: string): string {
  * and it is the same string written to the payload log, which is what makes it safe for
  * a host to show one line instead.
  */
-function measured(tool: RuntimeTool, context: ToolContext, view: ViewStrategy): RuntimeTool {
+function measured(
+  tool: RuntimeTool,
+  context: ToolContext,
+  view: ViewStrategy,
+  guard: InteractiveChallengeGuard,
+): RuntimeTool {
   const { metrics, payloads } = context.evidence;
 
   return {
     ...tool,
     execute: async (toolCallId: string, params: unknown) => {
+      const halted =
+        guard.halted &&
+        challengeBehaviorEnabled() &&
+        tool.name !== TOOL_OBSERVE &&
+        tool.name !== TOOL_PEEK &&
+        tool.name !== TOOL_DONE &&
+        tool.name !== TOOL_ASK;
+      if (halted) {
+        const blocked = guard.blockedReply();
+        return reply(blocked, blocked);
+      }
+
       const result = await tool.execute(toolCallId, params);
       const turn = context.turn?.() ?? 0;
       const text = result.content.map((part) => part.text).join("");
@@ -171,6 +196,16 @@ function measured(tool: RuntimeTool, context: ToolContext, view: ViewStrategy): 
           hash: hashOf(wireText(observation)),
           ...observationStats(observation),
         });
+        const blocked = await guard.afterObservation({
+          observation,
+          intent: tool.name,
+          evidenceIds: [],
+          tabId: context.tabId,
+          ledger: context.evidence.ledger,
+          metrics: context.evidence.metrics,
+          entityId: context.evidence.entityId,
+        });
+        if (blocked) return reply(blocked, blocked);
       }
 
       return result;
@@ -198,6 +233,15 @@ const PredicateSchema = Type.Object({
 
 export function buildTools(context: ToolContext): AgentTool[] {
   const view = context.view ?? DEFAULT_VIEW;
+  const guard =
+    context.challengeGuard ??
+    new InteractiveChallengeGuard(
+      // Lazy: reading goalId at compose time mints a directory before session_start
+      // can restore the id from Pi entries.
+      () => `session:${context.evidence.goal?.goalId ?? "interactive"}`,
+      undefined,
+      context.onChallengeTakeover,
+    );
   let strangerViews = 0;
   let steps = 0;
 
@@ -265,7 +309,11 @@ export function buildTools(context: ToolContext): AgentTool[] {
             type: "probe",
             entityId: context.evidence.entityId,
             intent: `probe ${(query as { kind?: string })?.kind ?? "?"}`,
-            payload: { query, truncated: result.truncated },
+            payload: {
+              query,
+              truncated: result.truncated,
+              url: context.browser.lastObservation(tab())?.url,
+            },
           });
           return reply(result.truncated ? { data: result.data, note: result.note } : result.data);
         } catch (err) {
@@ -798,5 +846,5 @@ export function buildTools(context: ToolContext): AgentTool[] {
   ];
 
   // One cast, at the boundary where the engine takes over.
-  return tools.map((tool) => measured(tool, context, view)) as unknown as AgentTool[];
+  return tools.map((tool) => measured(tool, context, view, guard)) as unknown as AgentTool[];
 }

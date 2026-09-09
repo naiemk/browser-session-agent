@@ -2,6 +2,7 @@ import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntim
 import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
+import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "../../runtime/turn-identity.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
 import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
@@ -100,6 +101,7 @@ export class OperatorRuntime {
    */
   private evidence!: ReturnType<typeof fileEvidence>;
   private readonly clock = turnClock();
+  private lastTurnIdentity: TurnIdentity | undefined;
   model = "auto";
   thinking = "medium";
   private models: Array<{ id: string; label: string }> = [
@@ -525,15 +527,34 @@ export class OperatorRuntime {
     const cost = usage.cost as Record<string, unknown> | undefined;
     const thinkingLevel =
       thinkingOf(value.message) ?? this.pi?.thinkingLevel ?? this.thinking;
+    const identity = turnIdentityFields(value.message);
+    const turn = this.clock.current();
+    if (
+      this.lastTurnIdentity &&
+      turnIdentityKey(identity) !== turnIdentityKey(this.lastTurnIdentity) &&
+      identity.model
+    ) {
+      this.evidence.metrics.record({
+        kind: "model_change",
+        turn,
+        at: new Date().toISOString(),
+        ...(identity.provider ? { provider: identity.provider } : {}),
+        model: identity.model,
+        ...(this.lastTurnIdentity.provider ? { previousProvider: this.lastTurnIdentity.provider } : {}),
+        ...(this.lastTurnIdentity.model ? { previousModel: this.lastTurnIdentity.model } : {}),
+      });
+    }
+    if (identity.model || identity.provider) this.lastTurnIdentity = identity;
     this.evidence.metrics.record({
       kind: "turn",
-      turn: this.clock.current(),
+      turn,
       inputTokens: num(usage.input),
       outputTokens: num(usage.output),
       cacheReadTokens: num(usage.cacheRead),
       cacheWriteTokens: num(usage.cacheWrite),
       costUsd: num(cost?.total),
       ...(thinkingLevel ? { thinkingLevel } : {}),
+      ...identity,
     });
   }
 
@@ -558,6 +579,17 @@ export class OperatorRuntime {
         evidence: this.evidence,
         turn: () => this.clock.current(),
         view: viewByName(process.env.BSA_VIEW),
+        onChallengeTakeover: async ({ tabId, host }) => {
+          try {
+            await this.handle.takeover(undefined, tabId);
+          } catch {
+            // Node may be disconnected; the operator still gets the notice.
+          }
+          this.host.notify(
+            `Challenge on ${host}. Tab is yours — solve or skip, then continue.`,
+            "warning",
+          );
+        },
         policy: "ask",
         approve: async (request) =>
           this.host.confirm(

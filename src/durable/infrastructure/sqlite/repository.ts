@@ -456,7 +456,8 @@ export class SqliteJobRepository implements JobRepository {
         h.kind === "challenge" &&
         (h.status === "waiting" || h.status === "ready" || h.status === "rehydrating") &&
         h.resourceKey === item.resourceKey &&
-        h.workItemId === item.workItemId,
+        h.workItemId === item.workItemId &&
+        (h.checkpoint?.intent ?? "") === (item.checkpoint?.intent ?? ""),
     );
     if (dup && item.kind === "challenge") return dup;
     await this.saveHuman(item);
