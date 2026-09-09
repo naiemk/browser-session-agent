@@ -14,17 +14,21 @@ import {
   piEntryPath,
   repoRootFrom,
   takeHeadless,
+  takeLaunchFlags,
 } from "../../src/hosts/local-cli/launch.ts";
 import { ROUTER_MODEL, modelAutoExtensionPath } from "../../src/host/pi-subagent/spawn.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BIN = path.join(ROOT, "bin", "bsa-cli.mjs");
 
-function runCli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+function runCli(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [BIN, ...args], {
       cwd: ROOT,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -99,9 +103,17 @@ describe("local CLI (no VPS)", () => {
   });
 
   it("strips --headless before forwarding to Pi", () => {
-    const taken = takeHeadless(["--print", "--headless", "hi"]);
+    const taken = takeHeadless(["--print", "--headless", "hi"], {});
     assert.equal(taken.headless, true);
     assert.deepEqual(taken.args, ["--print", "hi"]);
+  });
+
+  it("defaults the CLI to installed Chrome and keeps Chromium behind --chromium", () => {
+    assert.equal(takeLaunchFlags(["--print"], {}).browser, "chrome");
+    const chromium = takeLaunchFlags(["--print", "--chromium", "hi"], { BSA_BROWSER: "chrome" });
+    assert.equal(chromium.browser, "chromium");
+    assert.deepEqual(chromium.args, ["--print", "hi"]);
+    assert.equal(takeLaunchFlags(["--print"], { BSA_BROWSER: "chromium" }).browser, "chromium");
   });
 
   it("help describes the local path and leaves VPS as UI-only", () => {
@@ -112,6 +124,8 @@ describe("local CLI (no VPS)", () => {
     assert.match(text, /\/login/);
     assert.match(text, /no VPS|Nothing talks to the VPS/i);
     assert.match(text, /npm run web|UI-only/);
+    assert.match(text, /--chromium/);
+    assert.match(text, /Chrome/);
     assert.doesNotMatch(text, /BSA_PAIR_CODE/);
     assert.doesNotMatch(text, /install\.sh/);
   });
@@ -130,6 +144,10 @@ describe("local CLI (no VPS)", () => {
     const items = await collectChecks(ROOT);
     assert.ok(items.find((item) => item.name === "pi")?.ok);
     assert.ok(items.find((item) => item.name === "extension")?.ok);
+    assert.ok(items.find((item) => item.name === "chromium"));
+    const chromeItems = await collectChecks(ROOT, { browser: "chrome" });
+    assert.ok(chromeItems.find((item) => item.name === "chrome"));
+    assert.equal(chromeItems.find((item) => item.name === "chromium"), undefined);
     assert.ok(piEntryPath(ROOT).endsWith(path.join("pi-coding-agent", "dist", "cli.js")));
   });
 
@@ -140,13 +158,20 @@ describe("local CLI (no VPS)", () => {
     assert.match(help.stdout, /\bmagpie\b/);
     assert.match(help.stdout, /Nothing talks to the VPS/);
 
-    const check = await runCli(["--check"]);
+    const check = await runCli(["--check", "--chromium"]);
     assert.match(check.stdout, /ok\s+node/);
     assert.match(check.stdout, /ok\s+pi/);
     assert.match(check.stdout, /ok\s+extension/);
     assert.match(check.stdout, /chromium/);
     assert.doesNotMatch(check.stdout + check.stderr, /connecting to wss:\/\//);
     assert.equal(check.code, 0);
+
+    const chromeEnv = { ...process.env };
+    delete chromeEnv.BSA_BROWSER;
+    const chromeCheck = await runCli(["--check"], chromeEnv);
+    assert.match(chromeCheck.stdout, /^\s*(ok|FAIL)\s+chrome\b/m);
+    assert.doesNotMatch(chromeCheck.stdout, /^\s*(ok|FAIL)\s+chromium\b/m);
+    assert.doesNotMatch(chromeCheck.stdout + chromeCheck.stderr, /connecting to wss:\/\//);
   });
 
   it("loads tsx from this package when cwd has no node_modules", async () => {

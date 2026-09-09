@@ -18,6 +18,7 @@ import { RunStore } from "./store/run-store.ts";
 import { KnowledgeStore } from "./store/knowledge-store.ts";
 import { resolveHome } from "./store/paths.ts";
 import { BrowserWorker } from "./worker/browser-worker.ts";
+import type { BrowserChannel } from "./worker/browser-channel.ts";
 import { interpretPagePlan } from "./plan/interpret.ts";
 import { PlaywrightPlanRuntime } from "./plan/playwright-runtime.ts";
 import { validatePagePlan } from "./plan/validate.ts";
@@ -27,6 +28,7 @@ export interface SessionOptions {
   home?: string;
   cwd?: string;
   headless?: boolean;
+  browser?: BrowserChannel;
   askUser?: (question: string) => Promise<string | undefined>;
 }
 
@@ -92,6 +94,7 @@ export class BrowserSession {
     this.worker = new BrowserWorker({
       home: this.home,
       headless: options.headless ?? process.env.BSA_HEADLESS === "1",
+      browser: options.browser,
     });
     this.askUserFn = options.askUser;
   }

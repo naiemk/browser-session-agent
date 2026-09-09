@@ -7,6 +7,11 @@ import {
   piCliPath,
   rewriteArgvModelFlag,
 } from "../../host/pi-subagent/spawn.ts";
+import {
+  chromeExecutable,
+  resolveBrowserChannel,
+  type BrowserChannel,
+} from "../../worker/browser-channel.ts";
 
 const MIN_NODE_MAJOR = 22;
 
@@ -28,9 +33,25 @@ export function hasFlag(args: string[], ...names: string[]): boolean {
   return names.some((name) => args.includes(name));
 }
 
-export function takeHeadless(args: string[]): { args: string[]; headless: boolean } {
-  const headless = hasFlag(args, "--headless") || process.env.BSA_HEADLESS === "1";
-  return { args: args.filter((arg) => arg !== "--headless"), headless };
+export function takeLaunchFlags(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): { args: string[]; headless: boolean; browser: BrowserChannel } {
+  const headless = hasFlag(args, "--headless") || env.BSA_HEADLESS === "1";
+  const explicit = hasFlag(args, "--chromium") ? "chromium" : undefined;
+  return {
+    args: args.filter((arg) => arg !== "--headless" && arg !== "--chromium"),
+    headless,
+    browser: resolveBrowserChannel({ explicit, env, fallback: "chrome" }),
+  };
+}
+
+export function takeHeadless(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): { args: string[]; headless: boolean } {
+  const taken = takeLaunchFlags(args, env);
+  return { args: taken.args, headless: taken.headless };
 }
 
 function extraExtensionPaths(extra: string[]): string[] {
@@ -75,10 +96,9 @@ export function helpText(): string {
   return `magpie local CLI
 
 Launch the Pi TUI on this machine with the browser operator extension.
-Chromium runs here. Nothing talks to the VPS or hosted UI.
+Google Chrome runs here by default. Nothing talks to the VPS or hosted UI.
 
   npm install -g magpie
-  npx playwright install chromium
   magpie
 
 In Pi:
@@ -86,12 +106,14 @@ In Pi:
   /browser-start <goal>  open the persistent profile and start a run
 
 Commands:
-  magpie                      interactive TUI
-  magpie --check               verify Node, Pi, extension, and Chromium
+  magpie                      interactive TUI (installed Chrome)
+  magpie --chromium           Playwright Chromium instead of Chrome
+  magpie --check               verify Node, Pi, extension, and the selected browser
   magpie --headless            headed off (BSA_HEADLESS=1)
   magpie [pi args]            forwarded to Pi (e.g. --print, --model)
 
 From a git checkout, npm run cli is the same command.
+Use npm run cli -- --chromium for Playwright Chromium.
 For the chat UI on this machine instead of the TUI, use npm run web.
 The hosted VPS path stays UI-only for production.
 Do not run npm run web against the same profile while the CLI is open.
@@ -143,11 +165,15 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-export async function collectChecks(root: string): Promise<CheckItem[]> {
+export async function collectChecks(
+  root: string,
+  options: { browser?: BrowserChannel } = {},
+): Promise<CheckItem[]> {
   const nodeOk = nodeMajor() >= MIN_NODE_MAJOR;
   const pi = piEntryPath(root);
   const extension = extensionPath(root);
-  const chrome = await chromiumExecutable();
+  const browser = options.browser ?? "chromium";
+  const browserItem = browser === "chrome" ? await chromeCheckItem() : await chromiumCheckItem();
   return [
     {
       name: "node",
@@ -167,12 +193,7 @@ export async function collectChecks(root: string): Promise<CheckItem[]> {
       required: true,
       detail: extension,
     },
-    {
-      name: "chromium",
-      ok: Boolean(chrome),
-      required: true,
-      detail: chrome ?? "missing — run: npx playwright install chromium",
-    },
+    browserItem,
     {
       name: "model",
       ok: true,
@@ -180,6 +201,26 @@ export async function collectChecks(root: string): Promise<CheckItem[]> {
       detail: providerHint(),
     },
   ];
+}
+
+async function chromeCheckItem(): Promise<CheckItem> {
+  const chrome = await chromeExecutable();
+  return {
+    name: "chrome",
+    ok: Boolean(chrome),
+    required: true,
+    detail: chrome ?? "missing — install Google Chrome, or use --chromium",
+  };
+}
+
+async function chromiumCheckItem(): Promise<CheckItem> {
+  const chrome = await chromiumExecutable();
+  return {
+    name: "chromium",
+    ok: Boolean(chrome),
+    required: true,
+    detail: chrome ?? "missing — run: npx playwright install chromium",
+  };
 }
 
 export function formatChecks(items: CheckItem[]): string {

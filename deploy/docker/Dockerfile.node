@@ -7,6 +7,7 @@ ENV NODE_ENV=production
 ENV BSA_HOME=/data
 # Headless is the easy Docker default. Live view still streams to the web UI.
 ENV BSA_HEADLESS=1
+ENV BSA_BROWSER=chromium
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
