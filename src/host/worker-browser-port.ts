@@ -24,6 +24,7 @@ export class WorkerBrowserPort extends PlaywrightBrowserPort {
 
   private constructor(private readonly worker: BrowserWorker) {
     super(perceiverByName(process.env.BSA_PERCEIVER));
+    this.quietGestures = worker.headed;
   }
 
   /**

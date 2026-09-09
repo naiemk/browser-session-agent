@@ -22,6 +22,29 @@ export function resolveBrowserChannel(options: {
   );
 }
 
+export const BROWSER_LAUNCH_ID = "v2";
+
+export function needsNoSandbox(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return env.BSA_NO_SANDBOX === "1" || env.BSA_NO_SANDBOX === "true" || platform === "linux";
+}
+
+export function persistentContextArgs(options: {
+  port: number;
+  extraArgs?: string[];
+  noSandbox?: boolean;
+}): string[] {
+  const args = [
+    `--remote-debugging-port=${options.port}`,
+    "--remote-debugging-address=127.0.0.1",
+  ];
+  if (options.noSandbox) args.push("--no-sandbox");
+  args.push("--disable-dev-shm-usage", ...(options.extraArgs ?? []));
+  return args;
+}
+
 export function playwrightLaunchOverrides(channel: BrowserChannel): {
   channel?: "chrome";
   ignoreDefaultArgs?: string[];
@@ -39,10 +62,10 @@ export function playwrightLaunchOverrides(channel: BrowserChannel): {
 }
 
 export function shouldReuseAttachedBrowser(
-  existing: { browser?: string } | null | undefined,
-  wanted: BrowserChannel,
+  existing: { browser?: string; launch?: string } | null | undefined,
+  wanted: { browser: BrowserChannel; launch: string },
 ): boolean {
-  return existing?.browser === wanted;
+  return existing?.browser === wanted.browser && existing?.launch === wanted.launch;
 }
 
 export function chromeExecutableCandidates(

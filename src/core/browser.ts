@@ -13,6 +13,12 @@ import { inspectPageDocument } from "./document.ts";
 import { probe, type ProbeResult } from "./probe.ts";
 import { surveyAffordances, type AffordanceSurvey } from "./survey.ts";
 import { CoreError, type Observation, type PageFacts, type WaitSpec } from "./types.ts";
+import {
+  clickWithoutOsFocus,
+  fillWithoutOsFocus,
+  scrollWithoutOsFocus,
+  selectWithoutOsFocus,
+} from "./dom-gestures.ts";
 
 /** Read-only limits a caller may tighten. Serializable, so it can cross a wire. */
 export interface ProbeLimits {
@@ -133,6 +139,12 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   constructor(protected readonly perceiver: Perceiver = DEFAULT_PERCEIVER) {}
 
   /**
+   * Headed operator Chrome: use in-page click/fill instead of CDP mouse/keyboard, which
+   * activate the browser and steal OS focus from the editor.
+   */
+  protected quietGestures = false;
+
+  /**
    * Open a blank tab in the shared session.
    *
    * Deliberately without a URL: this port navigates only after its listeners are
@@ -248,7 +260,12 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   }
 
   async click(tabId: string | undefined, ref: string, timeoutMs: number): Promise<void> {
-    await this.locator(await this.ensurePage(tabId), ref).click({ timeout: timeoutMs });
+    const locator = this.locator(await this.ensurePage(tabId), ref);
+    if (this.quietGestures) {
+      await clickWithoutOsFocus(locator, timeoutMs);
+      return;
+    }
+    await locator.click({ timeout: timeoutMs });
   }
 
   async fill(
@@ -257,7 +274,12 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     text: string,
     timeoutMs: number,
   ): Promise<void> {
-    await this.locator(await this.ensurePage(tabId), ref).fill(text, { timeout: timeoutMs });
+    const locator = this.locator(await this.ensurePage(tabId), ref);
+    if (this.quietGestures) {
+      await fillWithoutOsFocus(locator, text, timeoutMs);
+      return;
+    }
+    await locator.fill(text, { timeout: timeoutMs });
   }
 
   async selectOption(
@@ -266,7 +288,12 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     value: string,
     timeoutMs: number,
   ): Promise<void> {
-    await this.locator(await this.ensurePage(tabId), ref).selectOption(value, { timeout: timeoutMs });
+    const locator = this.locator(await this.ensurePage(tabId), ref);
+    if (this.quietGestures) {
+      await selectWithoutOsFocus(locator, value, timeoutMs);
+      return;
+    }
+    await locator.selectOption(value, { timeout: timeoutMs });
   }
 
   async scroll(
@@ -277,6 +304,11 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
   ): Promise<void> {
     const id = await this.ensurePage(tabId);
     const page = this.pageFor(id);
+    const delta = dy ?? 600;
+    if (this.quietGestures) {
+      await scrollWithoutOsFocus(page, ref ? this.locator(id, ref) : undefined, delta, timeoutMs);
+      return;
+    }
     if (ref && dy) {
       // Scroll *within* the referenced container: hover it, then wheel. This is what a
       // virtualized listbox needs; scrollIntoViewIfNeeded cannot reach unrendered rows.
@@ -288,7 +320,7 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
       await this.locator(id, ref).scrollIntoViewIfNeeded({ timeout: timeoutMs });
       return;
     }
-    await page.mouse.wheel(0, dy ?? 600);
+    await page.mouse.wheel(0, delta);
   }
 
   async setInputFiles(
@@ -402,13 +434,15 @@ export class LocalBrowser extends PlaywrightBrowserPort {
   }
 
   static async launch(
-    options: { headless?: boolean; perceiver?: Perceiver } = {},
+    options: { headless?: boolean; perceiver?: Perceiver; quietGestures?: boolean } = {},
   ): Promise<LocalBrowser> {
     const browser = await chromium.launch({
       headless: options.headless ?? true,
       args: ["--no-sandbox"],
     });
-    return new LocalBrowser(browser, await browser.newContext(), options.perceiver);
+    const port = new LocalBrowser(browser, await browser.newContext(), options.perceiver);
+    port.quietGestures = options.quietGestures ?? false;
+    return port;
   }
 
   protected async acquireTab(): Promise<AcquiredTab> {

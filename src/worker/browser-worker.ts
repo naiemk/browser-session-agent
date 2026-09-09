@@ -7,13 +7,23 @@ import { shortId } from "../domain/ids.ts";
 import { dataPaths, ensureDir } from "../store/paths.ts";
 import { readWorkerInfo, writeWorkerInfo, clearWorkerInfo } from "../store/worker-info.ts";
 import {
+  BROWSER_LAUNCH_ID,
   isMissingChromeError,
+  needsNoSandbox,
+  persistentContextArgs,
   playwrightLaunchOverrides,
   resolveBrowserChannel,
   shouldReuseAttachedBrowser,
   type BrowserChannel,
 } from "./browser-channel.ts";
 import { observePage, visibleText } from "./observe.ts";
+import { openBackgroundPage } from "./background-page.ts";
+import {
+  clickWithoutOsFocus,
+  fillWithoutOsFocus,
+  scrollWithoutOsFocus,
+  selectWithoutOsFocus,
+} from "../core/dom-gestures.ts";
 
 const TAB_PREFIX = "bsa:";
 
@@ -111,6 +121,10 @@ export class BrowserWorker {
     });
   }
 
+  get headed(): boolean {
+    return !this.headless;
+  }
+
   get workerInfo(): WorkerInfo | null {
     return this.info;
   }
@@ -122,7 +136,7 @@ export class BrowserWorker {
     if (existing?.cdpUrl) {
       try {
         await this.attachCdp(existing);
-        if (shouldReuseAttachedBrowser(existing, this.browserChannel)) {
+        if (shouldReuseAttachedBrowser(existing, { browser: this.browserChannel, launch: BROWSER_LAUNCH_ID })) {
           this.launchedHere = false;
           return this.info!;
         }
@@ -283,13 +297,15 @@ export class BrowserWorker {
         if (named.role === "option" && named.name) {
           const option = page.getByRole("option", { name: named.name, exact: true }).first();
           await option.waitFor({ state: "attached", timeout: 2_000 });
-          await option.click({ timeout: 5_000, force: true });
+          if (this.headed) await clickWithoutOsFocus(option, 5_000);
+          else await option.click({ timeout: 5_000, force: true });
           return;
         }
         if (attempt > 0) await this.inspect(this.idOf(page));
         const locator = page.locator(`[data-bsa-ref="${cssEscape(ref)}"]`).first();
         await locator.waitFor({ state: "attached", timeout: 2_000 });
-        await locator.click({ timeout: 5_000, force: true });
+        if (this.headed) await clickWithoutOsFocus(locator, 5_000);
+        else await locator.click({ timeout: 5_000, force: true });
         return;
       } catch (err) {
         lastErr = err;
@@ -312,16 +328,19 @@ export class BrowserWorker {
     const target = locator.first();
     const useFill = control?.tag === "textarea" || control?.tag === "input";
     if (useFill) {
-      await target.fill(text);
+      if (this.headed) await fillWithoutOsFocus(target, text, 5_000);
+      else await target.fill(text);
       return control?.inputType;
     }
 
     await target.scrollIntoViewIfNeeded();
     const box = await target.boundingBox();
     if (box) {
-      await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height * 0.4, 120));
+      if (this.headed) await clickWithoutOsFocus(target, 3_000);
+      else await page.mouse.click(box.x + box.width / 2, box.y + Math.min(box.height * 0.4, 120));
     } else {
-      await target.click({ force: true, timeout: 3_000 });
+      if (this.headed) await clickWithoutOsFocus(target, 3_000);
+      else await target.click({ force: true, timeout: 3_000 });
     }
     let applied = false;
     for (let i = 0; i < 8 && !applied; i++) {
@@ -349,7 +368,9 @@ export class BrowserWorker {
     if ((await locator.count()) === 0) {
       throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
     }
-    await locator.first().selectOption(value);
+    await (this.headed
+      ? selectWithoutOsFocus(locator.first(), value, 5_000)
+      : locator.first().selectOption(value));
   }
 
   async scroll(tabId: string | undefined, ref?: string, dy = 600): Promise<void> {
@@ -361,28 +382,14 @@ export class BrowserWorker {
         throw new AgentError("missing_ref", `No control with ref ${ref}`, { ref });
       }
       if (dy) {
-        await page.evaluate(
-          `(() => {
-            const el = document.querySelector('[data-bsa-ref="${cssEscape(ref)}"]');
-            if (!el) return;
-            const delta = ${Number(dy)};
-            const canScroll = (node) =>
-              node.scrollHeight > node.clientHeight + 2 || node.scrollWidth > node.clientWidth + 2;
-            let target = el;
-            if (!canScroll(target)) {
-              let parent = target.parentElement;
-              while (parent && !canScroll(parent)) parent = parent.parentElement;
-              if (parent) target = parent;
-            }
-            target.scrollTop += delta;
-          })()`,
-        );
+        await scrollWithoutOsFocus(page, locator.first(), Number(dy), 5_000);
         return;
       }
       await locator.first().scrollIntoViewIfNeeded();
       return;
     }
-    await page.mouse.wheel(0, dy);
+    if (this.headed) await scrollWithoutOsFocus(page, undefined, dy, 5_000);
+    else await page.mouse.wheel(0, dy);
   }
 
   async wait(tabId: string | undefined, spec: WaitSpec): Promise<void> {
@@ -416,7 +423,7 @@ export class BrowserWorker {
 
   async openTab(url?: string): Promise<string> {
     const context = this.requireContext();
-    const page = await context.newPage();
+    const page = this.headless ? await context.newPage() : await openBackgroundPage(context);
     const tabId = await this.track(page);
     if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
     return tabId;
@@ -522,13 +529,11 @@ export class BrowserWorker {
         viewport: { width: 1280, height: 720 },
         channel: overrides.channel,
         ignoreDefaultArgs: overrides.ignoreDefaultArgs,
-        args: [
-          `--remote-debugging-port=${port}`,
-          "--remote-debugging-address=127.0.0.1",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          ...(overrides.extraArgs ?? []),
-        ],
+        args: persistentContextArgs({
+          port,
+          extraArgs: overrides.extraArgs,
+          noSandbox: needsNoSandbox(),
+        }),
       });
     } catch (err) {
       if (this.browserChannel === "chrome" && isMissingChromeError(err)) {
@@ -548,6 +553,7 @@ export class BrowserWorker {
       profileDir: paths.profileDir,
       startedAt: new Date().toISOString(),
       browser: this.browserChannel,
+      launch: BROWSER_LAUNCH_ID,
     };
     await writeWorkerInfo(this.home, this.info);
     this.trackedPids = childPids();
