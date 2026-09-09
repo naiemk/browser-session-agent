@@ -7,7 +7,10 @@ import { shortId } from "../domain/ids.ts";
 import { dataPaths, ensureDir } from "../store/paths.ts";
 import { readWorkerInfo, writeWorkerInfo, clearWorkerInfo } from "../store/worker-info.ts";
 import {
+  BROWSER_LAUNCH_ID,
   isMissingChromeError,
+  needsNoSandbox,
+  persistentContextArgs,
   playwrightLaunchOverrides,
   resolveBrowserChannel,
   shouldReuseAttachedBrowser,
@@ -122,7 +125,7 @@ export class BrowserWorker {
     if (existing?.cdpUrl) {
       try {
         await this.attachCdp(existing);
-        if (shouldReuseAttachedBrowser(existing, this.browserChannel)) {
+        if (shouldReuseAttachedBrowser(existing, { browser: this.browserChannel, launch: BROWSER_LAUNCH_ID })) {
           this.launchedHere = false;
           return this.info!;
         }
@@ -522,13 +525,11 @@ export class BrowserWorker {
         viewport: { width: 1280, height: 720 },
         channel: overrides.channel,
         ignoreDefaultArgs: overrides.ignoreDefaultArgs,
-        args: [
-          `--remote-debugging-port=${port}`,
-          "--remote-debugging-address=127.0.0.1",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          ...(overrides.extraArgs ?? []),
-        ],
+        args: persistentContextArgs({
+          port,
+          extraArgs: overrides.extraArgs,
+          noSandbox: needsNoSandbox(),
+        }),
       });
     } catch (err) {
       if (this.browserChannel === "chrome" && isMissingChromeError(err)) {
@@ -548,6 +549,7 @@ export class BrowserWorker {
       profileDir: paths.profileDir,
       startedAt: new Date().toISOString(),
       browser: this.browserChannel,
+      launch: BROWSER_LAUNCH_ID,
     };
     await writeWorkerInfo(this.home, this.info);
     this.trackedPids = childPids();

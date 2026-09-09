@@ -128,6 +128,8 @@ export interface WorkerInfo {
   startedAt: string;
   /** Installed Chrome vs Playwright Chromium. Missing on older worker.json files. */
   browser?: "chrome" | "chromium";
+  /** Bump when launch flags change so an old CDP session is not reused. */
+  launch?: string;
 }
 
 export interface KnowledgeRecord {

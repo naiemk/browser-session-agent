@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BROWSER_LAUNCH_ID,
   chromeExecutableCandidates,
   isMissingChromeError,
+  needsNoSandbox,
+  persistentContextArgs,
   playwrightLaunchOverrides,
   resolveBrowserChannel,
   shouldReuseAttachedBrowser,
@@ -31,10 +34,24 @@ describe("browser channel", () => {
   });
 
   it("does not reconnect to a previous session launched as a different browser", () => {
-    assert.equal(shouldReuseAttachedBrowser({ browser: "chrome" }, "chrome"), true);
-    assert.equal(shouldReuseAttachedBrowser({ browser: "chromium" }, "chrome"), false);
-    assert.equal(shouldReuseAttachedBrowser({}, "chrome"), false);
-    assert.equal(shouldReuseAttachedBrowser(null, "chromium"), false);
+    const wanted = { browser: "chrome" as const, launch: BROWSER_LAUNCH_ID };
+    assert.equal(shouldReuseAttachedBrowser({ browser: "chrome", launch: BROWSER_LAUNCH_ID }, wanted), true);
+    assert.equal(shouldReuseAttachedBrowser({ browser: "chromium", launch: BROWSER_LAUNCH_ID }, wanted), false);
+    assert.equal(shouldReuseAttachedBrowser({ browser: "chrome" }, wanted), false);
+    assert.equal(shouldReuseAttachedBrowser({}, wanted), false);
+    assert.equal(shouldReuseAttachedBrowser(null, { browser: "chromium", launch: BROWSER_LAUNCH_ID }), false);
+  });
+
+  it("passes --no-sandbox only on Linux or when BSA_NO_SANDBOX is set", () => {
+    assert.equal(needsNoSandbox({}, "darwin"), false);
+    assert.equal(needsNoSandbox({}, "win32"), false);
+    assert.equal(needsNoSandbox({}, "linux"), true);
+    assert.equal(needsNoSandbox({ BSA_NO_SANDBOX: "1" }, "darwin"), true);
+    assert.equal(
+      persistentContextArgs({ port: 9, noSandbox: false }).includes("--no-sandbox"),
+      false,
+    );
+    assert.equal(persistentContextArgs({ port: 9, noSandbox: true }).includes("--no-sandbox"), true);
   });
 
   it("looks for Google Chrome, not Chromium, in the usual install locations", () => {
