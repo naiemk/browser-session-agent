@@ -66,9 +66,11 @@ Old system, still the shipping product (see `docs/architecture.md`):
 - Semantic inspect with ref-tagged controls, action harness with read-back and delta postconditions (D17), page-plan DSL, evidence log on disk, knowledge store with candidate/approved states.
 - Desktop node runs Chromium; the VPS never does (D11).
 
-Designed, not built: everything in the plan — task suite, read-only probe, external criteria, richer failure evidence, context pruning, turn cap, commit gate.
+Designed, not built: strategy coach (D58, `docs/coach.md`) — scout → review-phase
+guideline → harvest; `/coach`; job `coaching` policy. AGENT-16.
 
 Deliberately not decided yet: session strategy (D27), planner and graph, memory tiers (D28).
+D58 is the planner's *calibration gate*, not the gated living task graph in AGENT-08.
 
 ## Open questions and how each gets settled
 
@@ -86,6 +88,7 @@ Deliberately not decided yet: session strategy (D27), planner and graph, memory 
 - **Are traversal costs re-paid across tasks?** (COST-02) Memory is worth building only for what a survey cannot reveal — traversal costs, URL schemes, consequences. Instrument whether the same expensive surface is rediscovered before caching anything.
 - **When is a read observable, and does it need confirming?** (COST-01) Peek carries our session, so whoever owns the page may see it, and an agent that views four hundred profiles makes the user look like a bot at no cost to itself. Peek events already record `withSession`, which is what the gate will read.
 - **How often is a decline correct?** (D42) Record every declined run with what the agent had observed at the time. If most declines happen when the agent could not establish its standing, that argues for making the situation available earlier; if most survive the retry with facts attached, they were judgement, and the right response is to stop asking.
+- **Does a planned scout→coach→harvest beat plan-then-execute and unguided GLM on harvest tasks?** (D58) Measure yield per site action and wandering (navigation cycles, zero-yield `ok` clicks) on a comparable party-goer or similar collection run. The merge gate for AGENT-16 is fixtures, not that live run.
 
 ## Results log
 
@@ -118,6 +121,7 @@ Written down so they are not relearned.
 - **Refusal looked like nothing happening.** A model that answers in prose and calls no tools produces a run with no report, which the loop had no way to distinguish from a task that stalled. Silence is a bad summary of "I decided not to". Hence D42.
 - **Six failures in the trace, and not one of them happened.** The Instagram run reported six failed actions. Four were dialogs judged while they were still animating open, one was a dialog judged while it was still closing, one was a typed value checked with a predicate that cannot see field values. Every verdict came from a single read taken the instant the action returned, so the harness was asking whether something had worked before the page had a chance to do it. What made this expensive is downstream: the evaluator counts repeated identical failures as a broken strategy, so an agent that was doing the right thing was told its route did not work and went looking for a worse one. When you find an agent behaving irrationally, check the signal it is reacting to before changing how it reasons. Hence D50.
 - **Aborting a loop you do not own may not stop it.** The turn cap called `abort()` from a `turn_end` listener and the run continued to 51 turns, because the signal only reaches a provider that chooses to honour it. Enforcing the budget at the port instead made it deterministic. Anything that "stops" a third-party loop deserves a test that proves it stopped.
+- **An expensive planner is not a substitute for a route discovered on the site.** The same Minsk party-goer prompt wandered under plan-then-GLM and under all-GLM. It stopped wandering when given a venue → tagged posts → peek guideline. Browser harvests need a strategy critic after a scout, not more up-front tactics. Hence D58.
 
 ## External evidence we are relying on
 

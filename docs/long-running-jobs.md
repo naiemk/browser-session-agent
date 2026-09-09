@@ -123,3 +123,5 @@ implementation tickets: **CAMPAIGN-00-T01** and **CAMPAIGN-01-T01** (parallel).
 - Cold-process recovery and persistent-profile reattachment (CAMPAIGN-02-T04 / 04-T03).
 - Fabric adoption (PERF-03 / AGENT-12-T02) — optional, not a cutover gate.
 - QUAL-01, QUAL-05, PERF-04, PERF-05, PERF-09 remain open outside Jobs V2 cutover.
+- Strategy coach (D58 / `docs/coach.md`) — post-cutover; planner-owned calibration
+  policy; not a cutover gate.

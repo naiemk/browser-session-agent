@@ -993,3 +993,14 @@ application → Playwright/Pi concretions (use ports).
 - Dual-write compatibility layers that preserve prototype stores as authority
 - Pulling PERF-04/05/09 perception work into the scheduler
 - Requiring Fabric for production cutover
+
+---
+
+## 14. Post-cutover extensions
+
+Coaching (scout → strategy critic → harvest) is specified in [`docs/coach.md`](coach.md)
+(D58, AGENT-16). It MUST NOT reopen cutover or silently amend SPEC-01..07 / EXEC-04.
+Optional `coaching` on a spec is a new field implemented under COACH-* tickets. Coach
+attempts use existing `review` phase (OBS-01 / OBS-04) and QUALITY-04's generic review
+operation with a closed strategy schema. Harvest context remains EXEC-04: artifact refs,
+not transcripts.
