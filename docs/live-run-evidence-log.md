@@ -360,6 +360,28 @@ Decision:
   tagged-feed recipe if the goal is to retest the original loose “find 200
   party-goers” prompt.
 
+## 2026-09-09 — Strategy coach recorded from party-goer comparison
+
+Identity:
+
+- Prompt: `docs/example-prompts/party.txt` (Minsk party, invite popular party-goers
+  for posts in exchange for free passes).
+- Comparison (operator-reported, not a third scored `goal_*` in this log): (1) expensive
+  planner then GLM, (2) all GLM, (3) all GLM with an operator-written route (venues →
+  tagged page → peek/qualify profiles).
+
+Observation:
+
+- (1) and (2) wandered. The planner did not know Instagram affordances.
+- (3) wandered much less. The missing artifact was a task-specific acquisition loop,
+  not a better up-front plan.
+
+Decision:
+
+- Recorded as D58 / `docs/coach.md` / AGENT-16.
+- Auto-coach is planner-owned policy (scout → coach → harvest), job-invoked, plus
+  manual `/coach`. Not a wall-clock heuristic. Not a QUAL/PERF package accept.
+
 ## Following live run — pending
 
 - Goal id:

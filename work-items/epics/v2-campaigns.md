@@ -84,5 +84,6 @@ record under `work-items/evaluations/jobs-v2/`.
 - `docs/v2-campaigns.md` — campaign semantics
 - `docs/challenge-and-approval-handling.md` — challenge/approval design
 - `docs/fabric-execution-experiment.md` — optional kernel
-- `docs/decisions.md` — D31–D33, D56, D57
+- `docs/decisions.md` — D31–D33, D56, D57, D58
+- `docs/coach.md` — post-cutover strategy coach (AGENT-16)
 - `docs/live-run-investigation-plan.md` — QUAL/PERF backlog mapping

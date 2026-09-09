@@ -116,6 +116,7 @@ All listed tasks done, and:
 - `docs/autonomous-agent.md` — living design doc, open questions, results log, lessons
 - `docs/v2-campaigns.md` — campaign semantics over the shared durable-job engine
 - `docs/long-running-jobs.md` — durable-work architecture and integration boundary
-- `docs/decisions.md` — D19–D33
+- `docs/coach.md` — strategy coach (D58), AGENT-16
+- `docs/decisions.md` — D19–D33, D58
 - `docs/architecture.md` — what exists today
 - `docs/test-design.md` — fixture map to extend
