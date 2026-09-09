@@ -2,9 +2,10 @@ import { createAgentSession, defineTool, getAgentDir, ModelRegistry, ModelRuntim
 import { bindBrowserCommands } from "../../host/bind-extension.ts";
 import { fileEvidence } from "../../host/evidence.ts";
 import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
-import { shortId } from "../../core/ids.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
+import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
+import { reconstructProgress, standingLastCoderPrompt } from "../../host/pi-subagent/progress.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -87,8 +88,9 @@ export class OperatorRuntime {
    *
    * Separate from `sessionId`, which is reassigned when the operator starts a new
    * session: evidence already written must not be orphaned by a later rename.
+   * Bound to the Pi session via `magpie-goal` entries, same as the local extension.
    */
-  readonly evidenceGoalId = shortId("goal");
+  private sessionGoal!: SessionGoal;
   /*
    * One bundle and one clock for the session, not one per composition.
    *
@@ -96,10 +98,7 @@ export class OperatorRuntime {
    * one), and a bundle built inside it would open a second writer onto the same files
    * while the tools disagreed about which turn they were in.
    */
-  private readonly evidence = fileEvidence({
-    goalId: this.evidenceGoalId,
-    goal: "hosted chat session",
-  });
+  private evidence!: ReturnType<typeof fileEvidence>;
   private readonly clock = turnClock();
   model = "auto";
   thinking = "medium";
@@ -124,11 +123,16 @@ export class OperatorRuntime {
       return startRun(goal, startUrl);
     };
     this.api = createExtensionApi(this.host);
+    this.sessionGoal = bindSessionGoal(this.api);
+    this.evidence = fileEvidence({
+      goalId: () => this.sessionGoal.id(),
+      goal: "hosted chat session",
+    });
     // Product commands, plus the worker tool. Browser tools still come from composeAgent
     // when the session boots; suite/run stay single-agent.
     bindBrowserCommands(this.api, this.handle);
     bindSubagent(this.api, {
-      goalId: this.evidenceGoalId,
+      goalId: () => this.sessionGoal.id(),
       evidence: {
         metrics: this.evidence.metrics,
         payloads: this.evidence.payloads,
@@ -136,13 +140,20 @@ export class OperatorRuntime {
       },
     });
     this.planMode = bindPlanMode(this.api);
-    this.api.on("before_agent_start", async () => {
+    this.api.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
       if (!this.browserPrompt) return undefined;
-      const plan = await standingPlanPrompt(this.evidenceGoalId);
-      const scratch = await standingScratchPrompt(this.evidenceGoalId);
+      const goalId = this.sessionGoal.id();
+      const ctx = ctxUnknown as { sessionManager?: { getEntries(): Array<{ type?: string; customType?: string; data?: unknown }> } };
+      const lastCoder = standingLastCoderPrompt(
+        reconstructProgress(ctx?.sessionManager?.getEntries?.() ?? []),
+      );
+      const plan = await standingPlanPrompt(goalId);
+      const scratch = await standingScratchPrompt(goalId);
       const injection = this.planMode?.injection();
       return {
-        systemPrompt: [this.browserPrompt, plan, scratch, injection].filter(Boolean).join("\n\n"),
+        systemPrompt: [this.browserPrompt, plan, scratch, lastCoder, injection]
+          .filter(Boolean)
+          .join("\n\n"),
       };
     });
     this.host.listeners = {

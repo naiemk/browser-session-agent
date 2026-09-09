@@ -40,6 +40,7 @@ attempt, challenge, approval, and recovery contracts.
 - AGENT-13: Challenges stop safely and resume cleanly
 - AGENT-14: Approval follows effects, not widgets
 - AGENT-15: Browser recovery is bounded
+- AGENT-16: Strategy coach (scout → guideline → harvest)
 
 ## Tasks
 
@@ -86,6 +87,10 @@ attempt, challenge, approval, and recovery contracts.
 | [AGENT-14-T01](../tasks/agent-14-t01-approval-precision.md) | AGENT-14 | done |
 | [AGENT-14-T02](../tasks/agent-14-t02-effect-envelope.md) | AGENT-14 | done |
 | [AGENT-15-T01](../tasks/agent-15-t01-action-failure-budget.md) | AGENT-15 | done |
+| [AGENT-16-T01](../tasks/agent-16-t01-trajectory-digest.md) | AGENT-16 | todo |
+| [AGENT-16-T02](../tasks/agent-16-t02-strategy-artifact.md) | AGENT-16 | todo |
+| [AGENT-16-T03](../tasks/agent-16-t03-interactive-coach.md) | AGENT-16 | todo |
+| [AGENT-16-T04](../tasks/agent-16-t04-job-coaching-policy.md) | AGENT-16 | todo |
 
 Also built beyond the original table, because the todo list called for them: the
 independent evaluator (`src/core/evaluator.ts`), the living task graph
@@ -111,6 +116,7 @@ All listed tasks done, and:
 - `docs/autonomous-agent.md` — living design doc, open questions, results log, lessons
 - `docs/v2-campaigns.md` — campaign semantics over the shared durable-job engine
 - `docs/long-running-jobs.md` — durable-work architecture and integration boundary
-- `docs/decisions.md` — D19–D33
+- `docs/coach.md` — strategy coach (D58), AGENT-16
+- `docs/decisions.md` — D19–D33, D58
 - `docs/architecture.md` — what exists today
 - `docs/test-design.md` — fixture map to extend

@@ -176,18 +176,211 @@ Decision:
 - Do not implement CAPTCHA solving or anti-bot evasion. Test detection, bounded retries,
   takeover/parking, persistent-profile continuity, and pacing instead.
 
-## Next live run — pending
+## 2026-09-09 — Magpie launch research stuck in the coder loop
 
-- Goal id:
-- Date:
-- Task class:
-- Commit:
-- Models:
-- Comparable with baseline: yes / no
-- Review location:
-- Main evidence:
-- Ticket implications:
-- Decision:
+Identity:
+
+- Goal: `goal_mttviohj001`
+- Task: Magpi launch research (directories, newsletters, communities, pitches).
+- Host: local Pi browser chat.
+- Duration: approximately 60 minutes.
+- Session: `2026-09-09T09-05-56-079Z_01a0856a-ad6f-7215-90e8-37b84ed7401b`
+
+What ran:
+
+- 13 sequential `subagent` coder calls; 7 aborted with exit 143 (~3 min wall).
+- Browser peek failed early (persistent profile `SingletonLock`).
+- Almost all remaining work was public-curl harvest. Pitches/submissions were never
+  produced. `goal.json` froze around 09:33 while work continued to ~10:10.
+- `events.jsonl` had 5 note/ask events. The plan widget collapsed distinct phases to
+  "Research".
+
+Root cause (not slow work):
+
+- Returned `isError` is ignored by Pi 0.85.1; aborted children looked successful to the
+  parent, which immediately redispatched.
+- No consecutive-failure or work-stream breaker on interactive `subagent`.
+- Live UI was `(running…)` plus tool names. No task, elapsed time, or timeout in the
+  working line.
+- Prompt rewording (`more newsletters` vs `more communities`) was treated as new work.
+
+Fix (this change): throw on child failure; persist a semantic fingerprint; stop after two
+failed slices or three stagnant harvest attempts; dedicated Pi-style renderers and
+working/status/widget updates. Evaluation:
+`work-items/evaluations/agent-15-operator-observability.md`.
+
+Ticket implications:
+
+- AGENT-15: interactive no-progress breaker, not only durable browser actions.
+- Operator observability: plan-step labels and live child progress.
+
+Decision:
+
+- Do not treat this goal as a result-quality baseline.
+- Ship the host stop before another fruitless harvest dispatch.
+
+## 2026-09-09 — Minsk tagged-feed collection with explicit recipe
+
+Identity:
+
+- Goal: `goal_mtu4ujai001`
+- Session: `2026-09-09T13-27-05-501Z_01a08659-c61b-75d6-925f-6bf61e8b7ccf`
+- Host: local Pi browser chat.
+- Duration: approximately 73 minutes wall (13:27–14:40 UTC). Collection itself was
+  about 44 minutes (13:32–14:16); website build 14:22–14:25; later “give me the link”
+  at 14:40.
+- Models: GLM-5.3 Flash for all 259 turns. No model switch. Aggregate `run.model` is
+  correct for this session (unlike the first two live runs).
+- Commit: workspace was `main` with uncommitted AGENT-15 host work; session started
+  before merge `8494b7f`. Do not treat this as an A/B of that merge.
+
+Task (operator, after abandoning a Google sign-in ask):
+
+- Find popular Minsk party-goers to invite to post in exchange for free passes.
+- Exact loop: open Instagram, search for Minsk clubs in Russian, pick 5 clubs, for
+  each club open Tagged, list 20 users who tagged there, check 100+ followers, keep
+  a record, next venue. Do not roam. Keep the club page open; open people in a
+  side tab.
+
+This is the first additional *result-quality* collection run after
+`goal_mtrvevpq001`. Berlin and Magpie still do not count. It is only partly
+comparable with the Minsk baseline: same domain and host, but the operator supplied
+a mechanical rubric, dropped the target from 200/200-followers to 20×5/100-followers,
+and this session actually used `peek` / side tabs (the baseline used 0 `peek`).
+
+Performance:
+
+- 259 turns; `maxTurns: 0`.
+- Tool results: 39 `act`, 62 `peek`, 56 `probe`, 46 `side_tab_open`, 45
+  `side_tab_close`, 4 `observe`, 2 `report`, 1 `subagent`, 1 `ask_user`.
+- Ledger: 30 successful actions, 8 failures (all in the first ~11 minutes, Instagram
+  search open / no-progress search scroll). Collection after club selection was
+  mechanically clean.
+- 1,176,315 fresh input tokens, 55,784 output, 6,702,656 cache-read, $0.202709.
+- Cache-read share 85.1%.
+- Mean context 470,589 bytes; peak/final 919,400 bytes (472,603 live, 446,797
+  placeholder, 48.6% placeholder).
+- 248 of 259 turns rewrote history; all 248 measured rewrites were near the tail
+  (compaction), not mid-prefix.
+- Fixed attribution still ~55.6% tool schemas and 30.9% agent card.
+- 125 of 194 observations had key collisions; maximum 40 (at the control cap).
+- Rollup `repeatProbes: 45` is again mostly the same `header` text probe on different
+  profile URLs, not exact duplicate work (PERF-10).
+- 37 of 56 probes were `header` text; 13 were link harvests; 62 peeks sat beside them
+  in the ledger as probe-shaped rows.
+
+Outcome and quality:
+
+- First `report` status `success` at 14:16 with 60 tagged posts → 46 tracker rows →
+  44 with 100+ followers. Caveat disclosed: each Tagged grid showed 12 posts, so
+  20 users per club was not met (11 / 8 / 11 / 6 / 10 rows).
+- Second `report` status `success` for the invite-manager HTML: 45 unique handles,
+  43 qualified (`stars.school.by` deduped). Tracker still says 46 distinct / 44
+  qualified.
+- Oracle: top-level cardinality failed (100 requested if 20×5 is read strictly;
+  45 delivered). A useful partial artifact exists. `success` is still the wrong
+  top-level status.
+- Club set is karaoke-heavy (4 of 5). Search for `"ночной клуб минск"` mixed other
+  cities; no-progress scrolls did not load more Minsk clubs; the agent picked what
+  the search panel showed rather than confirming a nightlife population.
+- Interpretation used: post *authors* on the venue Tagged grid, not people tagged
+  *in* those posts. The agent disclosed this. Tagged-at-venue remains a weak proxy
+  for “popular party-goer who would post for a free pass.”
+- Reviewer scoring from the agent’s own notes (not a live Instagram re-check), 43
+  qualified website rows: about 13 strong nightlife/performer fits, 17 weak
+  lifestyle/private/musician, 13 wrong audience (businesses, media, kids animators,
+  cake/seamstress, venue owner/staff/sister company). Strong-only precision ~30%;
+  strong+weak ~70%. Below the 80% QUAL-01 “qualified” threshold.
+- `babyshow_jokers` (kids-party animators) reappears as a high-follower “hit.”
+- One generic invite template with `{name}/{handle}/{followers}/{club}`. Not
+  calibrated, not evidence-grounded per person.
+- No DMs, follows, likes, or payments. One coder subagent verified HTML counts and
+  returned; the Magpie harvest loop did not recur.
+
+Positive evidence:
+
+- D44’s cheap-read bet is no longer falsified by this task class: 0 peek in the
+  baseline versus 62 peek + 46 side-tab opens here, while keeping the club Tagged
+  page in the main tab.
+- Cost per delivered unique handle ≈ $0.0045 versus ≈ $0.022 in the baseline;
+  turns per handle ≈ 5.8 versus ≈ 17.4. Most of that is the operator recipe plus
+  peek/side-tab, not a product change.
+- Follower counts were read from live profiles, not guessed.
+- The agent flagged owner/staff/sister-company rows instead of silently mixing them.
+- Failures clustered in search UX, not in the per-profile loop.
+
+Evidence added to tickets:
+
+- QUAL-01: supports that an explicit loop still admits wrong audience; tagged-at-
+  venue + 100 followers is not a party-goer rubric. Kids-animator false positive
+  replicates.
+- QUAL-02: tracker/HTML have handle, followers, club, free-text notes; no source
+  post URL, observed-at, confidence, or typed fit dimensions.
+- QUAL-03: two `success` reports despite 20-per-club miss and mixed audience. Honest
+  caveats in prose do not change the status.
+- QUAL-04: 46 vs 45 distinct, 44 vs 43 qualified, hand-maintained markdown vs HTML
+  copy of the same list.
+- QUAL-05: customized-invite request produced one template, not grounded drafts.
+- QUAL-06: same model collected, classified, drafted, and declared success.
+- PERF-01: neutral / cannot help; single-model session. Metrics matched the
+  transcript this time.
+- PERF-02: 259 unbounded interactive turns; `maxTurns: 0`.
+- PERF-03: after clubs were chosen, the loop was almost a closed recipe (open side
+  tab → peek post → peek/probe profile header → close). Model still spent one turn
+  per item. Strongest homogeneous-batch evidence yet.
+- PERF-04: 37 header probes after peeks that already had the profile page.
+- PERF-05: three no-progress search scrolls; Tagged grids accepted at 12 tiles
+  without a “scroll until new posts or limit” stop. Directly limited yield.
+- PERF-06: placeholders still ~447KB at the end; growth is slower than the 1.61MB
+  baseline but not rolled over.
+- PERF-07: 16 schemas resent for 259 turns; schemas+card still ~86.5% of attributed
+  bytes.
+- PERF-08: still blocked on PERF-01; this run cannot separate model from rubric.
+- PERF-09: collision rate 64.4% (125/194), max 40, worse than the baseline 26.3%.
+- PERF-10: 45 “repeated probes” are the header recipe on different URLs.
+- PERF-11: no approval prompts (read-only collection). Neutral.
+- PERF-12: no challenge pages. Neutral.
+- PERF-13: 8 failed acts, all search-phase, then stop-and-switch-query rather than
+  a long no-progress budget burn. Weak support compared with Berlin.
+- COST-01: 45 authenticated Instagram profile visits as `naiem6632`. Cheap-read
+  footprint is now a live number, not hypothetical.
+- AGENT-15: one successful coder slice; does not confirm the consecutive-failure
+  breaker or live TUI working line.
+
+Decision:
+
+- Count this as additional comparable collection run 1 of 2 required before the
+  QUAL/PERF decision review.
+- Do not accept the behavioral optimization package. Do not close QUAL-01..06 or
+  PERF-02..10.
+- Instrumentation-only work (PERF-01, PERF-10) may still proceed.
+- Next run should be another scoreable collection task, preferably a different
+  domain (SaaS table, conference CFPs, or apartments) *without* shipping those
+  fixes, so quality tickets can be checked off-Instagram. Do not reuse this exact
+  tagged-feed recipe if the goal is to retest the original loose “find 200
+  party-goers” prompt.
+
+## 2026-09-09 — Strategy coach recorded from party-goer comparison
+
+Identity:
+
+- Prompt: `docs/example-prompts/party.txt` (Minsk party, invite popular party-goers
+  for posts in exchange for free passes).
+- Comparison (operator-reported, not a third scored `goal_*` in this log): (1) expensive
+  planner then GLM, (2) all GLM, (3) all GLM with an operator-written route (venues →
+  tagged page → peek/qualify profiles).
+
+Observation:
+
+- (1) and (2) wandered. The planner did not know Instagram affordances.
+- (3) wandered much less. The missing artifact was a task-specific acquisition loop,
+  not a better up-front plan.
+
+Decision:
+
+- Recorded as D58 / `docs/coach.md` / AGENT-16.
+- Auto-coach is planner-owned policy (scout → coach → harvest), job-invoked, plus
+  manual `/coach`. Not a wall-clock heuristic. Not a QUAL/PERF package accept.
 
 ## Following live run — pending
 

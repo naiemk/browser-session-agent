@@ -92,6 +92,8 @@ describe("one line per tool result", () => {
       /example\.com\/x offers 2 navigation, 1 actions/,
     );
     assert.match(summarizeToolResult("subagent", { agent: "coder", exitCode: 143, aborted: true }), /coder exit 143, aborted/);
+    assert.match(summarizeToolResult("subagent", { agent: "coder", halt: true }), /stopped/);
+    assert.match(summarizeToolResult("subagent", { agent: "coder", running: true, latestTool: "$ curl", elapsedMs: 12_000 }), /running/);
     assert.match(summarizeToolResult("scratch_ls", { count: 3 }), /3 scratch files/);
     assert.match(summarizeToolResult("scratch_read", { path: "notes.md", truncated: true }), /read notes.md \(truncated\)/);
     assert.match(

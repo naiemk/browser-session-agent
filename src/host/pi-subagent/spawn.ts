@@ -45,10 +45,27 @@ export interface WorkerResult {
   aborted: boolean;
   errorMessage?: string;
   stopReason?: string;
+  elapsedMs?: number;
+  tools?: string[];
+  toolPreviews?: string[];
+  turns?: number;
+  model?: string;
+  usage?: WorkerUsage;
+}
+
+export interface WorkerUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
+  contextTokens: number;
+  turns: number;
 }
 
 export type WorkerUpdate = (update: {
   content: Array<{ type: "text"; text: string }>;
+  details?: Record<string, unknown>;
 }) => void;
 
 export type SpawnImpl = (
@@ -188,6 +205,61 @@ export interface JsonCapture {
   errorMessage?: string;
   stopReason?: string;
   tools: string[];
+  toolPreviews: string[];
+  usage: WorkerUsage;
+  model?: string;
+}
+
+function emptyUsage(): WorkerUsage {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
+}
+
+function addUsage(usage: WorkerUsage, extra: unknown): void {
+  if (!extra || typeof extra !== "object") return;
+  const item = extra as Record<string, unknown>;
+  const num = (key: string) => (typeof item[key] === "number" ? (item[key] as number) : 0);
+  usage.input += num("input");
+  usage.output += num("output");
+  usage.cacheRead += num("cacheRead");
+  usage.cacheWrite += num("cacheWrite");
+  const cost = item.cost;
+  if (typeof cost === "number") usage.cost += cost;
+  else if (cost && typeof cost === "object" && typeof (cost as { total?: number }).total === "number") {
+    usage.cost += (cost as { total: number }).total;
+  }
+  if (typeof item.totalTokens === "number") usage.contextTokens = item.totalTokens;
+}
+
+export function formatUsageLine(usage: WorkerUsage, model?: string): string {
+  const parts: string[] = [];
+  if (usage.turns) parts.push(`${usage.turns} turn${usage.turns > 1 ? "s" : ""}`);
+  if (usage.input) parts.push(`↑${usage.input}`);
+  if (usage.output) parts.push(`↓${usage.output}`);
+  if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
+  if (model) parts.push(model);
+  return parts.join(" ");
+}
+
+export function childProcessEnv(
+  goalId: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    BSA_SUBAGENT: "1",
+    ...(goalId ? { BSA_GOAL_ID: goalId } : {}),
+  };
+}
+
+function toolPreview(name: string, args?: Record<string, unknown>): string {
+  if (name === "bash" && typeof args?.command === "string") {
+    const command = args.command.replace(/\s+/g, " ").trim();
+    return `$ ${command.length > 60 ? `${command.slice(0, 60)}...` : command}`;
+  }
+  const file = args && (args.file_path ?? args.path);
+  if (typeof file === "string" && file) return `${name} ${file}`;
+  if (typeof args?.pattern === "string") return `${name} ${args.pattern}`;
+  return name;
 }
 
 function textFromMessages(messages: JsonCapture["messages"]): string {
@@ -211,16 +283,27 @@ function textFromMessages(messages: JsonCapture["messages"]): string {
 
 export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture["messages"]): void {
   const sink: JsonCapture = Array.isArray(capture)
-    ? { messages: capture, tools: [] }
+    ? { messages: capture, tools: [], toolPreviews: [], usage: emptyUsage() }
     : capture;
   sink.tools ??= [];
+  sink.toolPreviews ??= [];
+  sink.usage ??= emptyUsage();
   const trimmed = line.trim();
   if (!trimmed) return;
   let event: {
     type?: string;
     toolName?: string;
     tool_name?: string;
-    message?: { role?: string; content?: unknown; errorMessage?: string; stopReason?: string };
+    args?: Record<string, unknown>;
+    input?: Record<string, unknown>;
+    message?: {
+      role?: string;
+      content?: unknown;
+      errorMessage?: string;
+      stopReason?: string;
+      model?: string;
+      usage?: unknown;
+    };
     messages?: JsonCapture["messages"];
     errorMessage?: string;
     stopReason?: string;
@@ -235,6 +318,7 @@ export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture
   if (event.message?.stopReason) sink.stopReason = event.message.stopReason;
   if (typeof event.errorMessage === "string") sink.errorMessage = event.errorMessage;
   if (typeof event.stopReason === "string") sink.stopReason = event.stopReason;
+  if (event.message?.model) sink.model = event.message.model;
 
   const toolName = event.toolName ?? event.tool_name;
   if (
@@ -242,11 +326,18 @@ export function parsePiJsonLine(line: string, capture: JsonCapture | JsonCapture
     typeof toolName === "string" &&
     toolName.trim()
   ) {
-    sink.tools.push(toolName.trim());
+    const name = toolName.trim();
+    sink.tools.push(name);
+    const args = event.args ?? event.input;
+    sink.toolPreviews.push(toolPreview(name, args && typeof args === "object" ? args : undefined));
   }
 
   if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
     sink.messages.push(event.message);
+    if (event.message.role === "assistant") {
+      sink.usage.turns += 1;
+      addUsage(sink.usage, event.message.usage);
+    }
     return;
   }
   if (event.type === "agent_end") {
@@ -280,12 +371,18 @@ export interface ExtendRequest {
   elapsedMs: number;
   sliceMs: number;
   extensionsUsed: number;
+  taskPreview?: string;
+  latestTool?: string;
 }
+
+export const HEARTBEAT_MS = 5_000;
 
 export interface RunWorkerOptions {
   agentName: string;
   task: string;
   scratchDir: string;
+  /** Parent Magpie goal; stamped on the child as BSA_GOAL_ID. */
+  goalId?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
   confirmExtend?: (request: ExtendRequest) => Promise<boolean>;
@@ -297,6 +394,7 @@ export interface RunWorkerOptions {
   extraExtensions?: string[];
   agents?: AgentConfig[];
   onUpdate?: WorkerUpdate;
+  heartbeatMs?: number;
 }
 
 export function resolveTimeoutMs(
@@ -354,27 +452,59 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
   });
 
   const spawnImpl = options.spawnImpl ?? (spawn as SpawnImpl);
-  const capture: JsonCapture = { messages: [], tools: [] };
+  const capture: JsonCapture = { messages: [], tools: [], toolPreviews: [], usage: emptyUsage() };
   let stderr = "";
   let aborted = false;
   const timeoutMs = resolveTimeoutMs(options.timeoutMs);
   const confirmWaitMs = options.confirmWaitMs ?? CONFIRM_WAIT_MS;
   const maxTotalMs = options.maxTotalMs ?? MAX_TOTAL_TIMEOUT_MS;
   const maxExtensions = options.maxExtensions ?? MAX_EXTENSIONS;
+  const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
+  const started = Date.now();
 
-  const emitUpdate = () => {
+  const snapshotDetails = (running: boolean, extra?: Record<string, unknown>) => {
+    const elapsedMs = Date.now() - started;
+    const latestTool = capture.toolPreviews.at(-1) ?? capture.tools.at(-1);
+    const output = textFromMessages(capture.messages);
+    return {
+      agent: agent.name,
+      task: options.task,
+      running,
+      elapsedMs,
+      timeoutMs,
+      tools: capture.toolPreviews.length > 0 ? capture.toolPreviews : capture.tools,
+      latestTool,
+      turns: capture.usage.turns,
+      model: capture.model,
+      usage: formatUsageLine(capture.usage, capture.model) || undefined,
+      output: output || undefined,
+      errorMessage: capture.errorMessage,
+      ...extra,
+    };
+  };
+
+  const emitUpdate = (running = true, extra?: Record<string, unknown>) => {
     if (!options.onUpdate) return;
-    const text = textFromMessages(capture.messages) || capture.errorMessage || "(running…)";
-    const tools = capture.tools.length > 0 ? `\n${capture.tools.slice(-12).join("\n")}` : "";
-    options.onUpdate({ content: [{ type: "text", text: `${text}${tools}` }] });
+    const details = snapshotDetails(running, extra);
+    const text = extra?.waiting
+      ? "(waiting to extend…)"
+      : details.output
+        || capture.errorMessage
+        || (details.latestTool
+          ? `${details.latestTool} · ${formatDurationMs(details.elapsedMs)}`
+          : "(running…)");
+    options.onUpdate({
+      content: [{ type: "text", text: String(text) }],
+      details,
+    });
   };
 
   try {
-    options.onUpdate?.({ content: [{ type: "text", text: "(running…)" }] });
+    emitUpdate();
     const exitCode = await new Promise<number>((resolve) => {
       const proc = spawnImpl(invocation.command, invocation.args, {
         cwd: options.scratchDir,
-        env: process.env,
+        env: childProcessEnv(options.goalId),
         stdio: ["ignore", "pipe", "pipe"],
       });
       let buffer = "";
@@ -424,10 +554,15 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       void (async () => {
         let sliceMs = timeoutMs;
         let extensions = 0;
-        const started = Date.now();
+        let sliceDeadline = started + sliceMs;
         while (!settled) {
-          await waitMs(sliceMs, clock.signal);
-          if (settled) return;
+          const now = Date.now();
+          if (now < sliceDeadline) {
+            await waitMs(Math.min(heartbeatMs, sliceDeadline - now), clock.signal);
+            if (settled) return;
+            emitUpdate();
+            continue;
+          }
           const elapsed = Date.now() - started;
           const budget = maxTotalMs - elapsed;
           const canAsk =
@@ -436,7 +571,7 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
             killProc();
             return;
           }
-          options.onUpdate?.({ content: [{ type: "text", text: "(waiting to extend…)" }] });
+          emitUpdate(true, { waiting: true });
           const confirmClock = new AbortController();
           const stopConfirm = () => {
             if (!confirmClock.signal.aborted) confirmClock.abort();
@@ -447,6 +582,8 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
             elapsedMs: elapsed,
             sliceMs,
             extensionsUsed: extensions,
+            taskPreview: options.task.replace(/\s+/g, " ").trim().slice(0, 80),
+            latestTool: capture.toolPreviews.at(-1) ?? capture.tools.at(-1),
           }).then((value) => {
             ok = Boolean(value);
           });
@@ -459,6 +596,7 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
           }
           extensions += 1;
           sliceMs = Math.min(timeoutMs, Math.max(1, budget));
+          sliceDeadline = Date.now() + sliceMs;
         }
       })();
     });
@@ -473,6 +611,12 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
       aborted,
       errorMessage: capture.errorMessage,
       stopReason: capture.stopReason,
+      elapsedMs: Date.now() - started,
+      tools: capture.tools,
+      toolPreviews: capture.toolPreviews,
+      turns: capture.usage.turns,
+      model: capture.model,
+      usage: capture.usage,
     };
   } finally {
     await rm(tmp, { recursive: true, force: true });

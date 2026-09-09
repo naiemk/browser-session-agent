@@ -8,6 +8,10 @@ live tasks before accepting a behavioral change. Instrumentation-only changes ma
 earlier when they do not change the agent's prompt, tools, model selection, or browser
 behavior.
 
+Status as of 2026-09-09: additional comparable collection run 1 of 2 is
+`goal_mtu4ujai001` (see `docs/live-run-evidence-log.md`). Berlin checkout and Magpie
+harvest still do not count. Do not accept QUAL/PERF behavioral changes yet.
+
 Related documents:
 
 - `docs/live-run-review-template.md` — fill this in for every new run.
@@ -17,6 +21,7 @@ Related documents:
 - `docs/fabric-execution-experiment.md` — isolated PERF-03 execution-kernel R&D spec.
 - `docs/challenge-and-approval-handling.md` — CAPTCHA/challenge and approval-boundary
   experiment design.
+- `docs/coach.md` — strategy coach (D58); not a QUAL/PERF accept.
 - `docs/jobs-v2-spec.md` — normative Jobs V2 requirements (implementation authority).
 - `docs/jobs-v2-evaluation.md` — evidence levels and per-task review protocol.
 - `docs/long-running-jobs.md` — product/architecture overview; defers to the normative

@@ -594,6 +594,35 @@ The evidence for replacing D56's storage/runtime details is structural, not spec
 the prototype has six overlapping records, multi-file non-atomic transitions, a due-tick
 path with no runtime, an ephemeral CLI browser, unenforced spec fields, no job-level
 oracle, and tests that do not cross the production process/browser boundary.
+
+## D58. Coach the acquisition loop after a scout, do not plan it up front
+
+Status: accepted product direction. Implementation: AGENT-16 / [`docs/coach.md`](coach.md).
+This is not an accept of the QUAL/PERF behavioral package in
+`docs/live-run-investigation-plan.md`.
+
+Browser harvests are high-level algorithms over fuzzy data, looped. An expensive planner
+cannot choose a cheap Instagram route before it has seen tagged posts; a cheap executor
+without a route wanders (Minsk party-goer runs: plan-then-GLM and all-GLM both wandered;
+the same GLM with an operator-written venue → tagged → peek loop did not).
+
+So the missing layer is a **strategy critic**, not a better initial plan:
+
+- The planner classifies the task. If the acquisition loop is unknown, it MUST author
+  scout (tight budget) → coach → harvest, and MUST NOT invent a list of site tactics to
+  exhaust first.
+- Auto-coach is that planned policy, invoked by the job (or `/plan` execution), plus
+  manual `/coach`. It is not a wall-clock host heuristic.
+- Coach reads a compressed trajectory digest (ledger, metrics, yield), never snapshots
+  or transcripts, and writes a capped guideline. Criteria, sources, and effects stay
+  on the spec (D20, D23). The artifact proposes and never authorizes (D25).
+- After coaching, harvest context is spec + facts + artifact + current page (D52 /
+  EXEC-04). The executor does not call the coach model mid-attempt.
+
+Widen cheap actions before coaching them (D44): peek already exists so the guideline
+can name it. Coach does not replace AGENT-15 breakers; those stop no-progress, this
+changes route.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

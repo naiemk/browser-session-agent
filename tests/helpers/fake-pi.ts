@@ -19,6 +19,7 @@ export interface FakePi extends ExtensionAPI {
   entries: Array<{ customType: string; data?: unknown }>;
   widgets: Map<string, string[] | undefined>;
   statuses: Map<string, string | undefined>;
+  workingMessages: Array<string | undefined>;
   ctx: ExtensionContext;
   /**
    * Event handlers, recorded rather than discarded, and many per event.
@@ -46,6 +47,7 @@ export function createFakePi(answers: string[] = []): FakePi {
   const entries: Array<{ customType: string; data?: unknown }> = [];
   const widgets = new Map<string, string[] | undefined>();
   const statuses = new Map<string, string | undefined>();
+  const workingMessages: Array<string | undefined> = [];
   const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
   const pending = [...answers];
   let active = ["read", "bash", "write", "edit"];
@@ -117,6 +119,9 @@ export function createFakePi(answers: string[] = []): FakePi {
       setStatus(id, text) {
         statuses.set(id, text);
       },
+      setWorkingMessage(message) {
+        workingMessages.push(message);
+      },
       setWidget(key, content) {
         widgets.set(key, content);
       },
@@ -142,6 +147,7 @@ export function createFakePi(answers: string[] = []): FakePi {
     entries,
     widgets,
     statuses,
+    workingMessages,
     handlers,
     ctx,
     emit,
@@ -200,5 +206,17 @@ export async function runTool(
 ) {
   const tool = pi.tools.get(name);
   if (!tool) throw new Error(`Missing tool ${name}`);
-  return tool.execute("call-1", params, undefined, undefined, pi.ctx);
+  try {
+    return await tool.execute("call-1", params, undefined, undefined, pi.ctx);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const details = error && typeof error === "object" && "details" in error
+      ? (error as { details?: Record<string, unknown> }).details
+      : undefined;
+    return {
+      content: [{ type: "text" as const, text: message }],
+      details: details ?? { error: message },
+      isError: true,
+    };
+  }
 }
