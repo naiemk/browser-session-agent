@@ -6,12 +6,12 @@ does not support.
 
 ```bash
 npm install -g magpie
-npx playwright install chromium
 magpie
 ```
 
 `magpie` is the same as `npm run cli` in this repo: an interactive Pi TUI with the in-repo
-browser extension, driving Chromium on this machine.
+browser extension, driving installed Google Chrome on this machine. Pass `--chromium` to
+use Playwright Chromium instead (CI does this).
 
 Three local entry points, for three different jobs. None of them need the VPS.
 
@@ -68,18 +68,25 @@ is open.
 
 ## `magpie` — interactive Pi session (dev, no VPS)
 
-An interactive Pi TUI with the in-repo browser extension, driving Chromium on this
-machine. Useful when you want to steer the agent yourself rather than hand it a goal.
+An interactive Pi TUI with the in-repo browser extension, driving installed Google Chrome
+on this machine. Useful when you want to steer the agent yourself rather than hand it a
+goal.
 
 ```bash
 npm install -g magpie
-npx playwright install chromium
 magpie
 ```
 
-From a checkout, `npm run cli` is the same command.
+From a checkout, `npm run cli` is the same command. Playwright Chromium is the CI and
+`--chromium` path:
 
-`magpie --check` verifies Node, Pi, the extension, and Playwright Chromium.
+```bash
+npx playwright install chromium
+npm run cli -- --chromium
+```
+
+`magpie --check` verifies Node, Pi, the extension, and Google Chrome. Add `--chromium` to
+verify Playwright Chromium instead.
 
 In the TUI:
 
@@ -89,7 +96,7 @@ In the TUI:
 ```
 
 `/login` is a one-time Pi provider login (OpenRouter, Anthropic, OpenAI, or ChatGPT), or
-export a key instead. Headed Chromium uses `~/.browser-session-agent/profile`; pass
+export a key instead. Headed Chrome uses `~/.browser-session-agent/profile`; pass
 `--headless` (or `BSA_HEADLESS=1`) to hide the window. Extra args after `--` go to Pi
 (`--print`, `--model`, …).
 

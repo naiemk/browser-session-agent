@@ -198,7 +198,7 @@ export function spawnHelper(
   home: string,
   extraEnv: Record<string, string | undefined> = {},
 ): ChildProcess {
-  const env = { ...process.env, ...extraEnv, BSA_HOME: home, BSA_HEADLESS: "1" };
+  const env = { ...process.env, ...extraEnv, BSA_HOME: home, BSA_HEADLESS: "1", BSA_BROWSER: extraEnv.BSA_BROWSER ?? "chromium" };
   delete env.BSA_TOKEN;
   return spawn(
     process.execPath,

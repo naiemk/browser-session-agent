@@ -6,6 +6,12 @@ import { AgentError, type Observation, type WaitSpec, type WorkerInfo } from "..
 import { shortId } from "../domain/ids.ts";
 import { dataPaths, ensureDir } from "../store/paths.ts";
 import { readWorkerInfo, writeWorkerInfo, clearWorkerInfo } from "../store/worker-info.ts";
+import {
+  isMissingChromeError,
+  playwrightChannelOption,
+  resolveBrowserChannel,
+  type BrowserChannel,
+} from "./browser-channel.ts";
 import { observePage, visibleText } from "./observe.ts";
 
 const TAB_PREFIX = "bsa:";
@@ -14,6 +20,8 @@ export interface WorkerOptions {
   home: string;
   headless?: boolean;
   startUrl?: string;
+  /** Installed Chrome or Playwright Chromium. Default is Chromium unless `BSA_BROWSER` is set. */
+  browser?: BrowserChannel;
 }
 
 /** Pointer/key events from the remote live view. x/y are 0–1 or CSS pixels. */
@@ -82,6 +90,7 @@ async function connectCdp(cdpUrl: string, attempts = 15): Promise<Browser> {
 export class BrowserWorker {
   private readonly home: string;
   private readonly headless: boolean;
+  private readonly browserChannel: BrowserChannel;
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private launchedHere = false;
@@ -95,6 +104,10 @@ export class BrowserWorker {
   constructor(options: WorkerOptions) {
     this.home = options.home;
     this.headless = options.headless ?? false;
+    this.browserChannel = resolveBrowserChannel({
+      explicit: options.browser,
+      fallback: "chromium",
+    });
   }
 
   get workerInfo(): WorkerInfo | null {
@@ -493,17 +506,30 @@ export class BrowserWorker {
     const paths = dataPaths(this.home);
     await ensureDir(paths.profileDir);
     const port = await freePort();
-    this.context = await chromium.launchPersistentContext(paths.profileDir, {
-      headless: this.headless,
-      viewport: { width: 1280, height: 720 },
-      args: [
-        `--remote-debugging-port=${port}`,
-        "--remote-debugging-address=127.0.0.1",
-        "--no-sandbox",
-        "--disable-dev-shm-usage",
-      ],
-    });
-    this.browser = this.context.browser();
+    let context: BrowserContext;
+    try {
+      context = await chromium.launchPersistentContext(paths.profileDir, {
+        headless: this.headless,
+        viewport: { width: 1280, height: 720 },
+        ...playwrightChannelOption(this.browserChannel),
+        args: [
+          `--remote-debugging-port=${port}`,
+          "--remote-debugging-address=127.0.0.1",
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+        ],
+      });
+    } catch (err) {
+      if (this.browserChannel === "chrome" && isMissingChromeError(err)) {
+        throw new AgentError(
+          "chrome_not_found",
+          "Google Chrome is not installed. Install Chrome, or start with --chromium after `npx playwright install chromium`.",
+        );
+      }
+      throw err;
+    }
+    this.context = context;
+    this.browser = context.browser();
     this.info = {
       pid: chromePid(this.browser),
       cdpUrl: `http://127.0.0.1:${port}`,

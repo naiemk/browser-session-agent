@@ -17,6 +17,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      BSA_BROWSER: chromium
     steps:
       - uses: actions/checkout@v4
 
