@@ -35,4 +35,19 @@ describe("headed Chrome gestures that do not steal OS focus", () => {
     const clicked = await act(browser, { kind: "click", tabId: tab, ref: submit });
     assert.equal(clicked.ok, true, JSON.stringify(clicked));
   });
+
+  it("scrolls a virtualized listbox through the DOM", async () => {
+    const tab = await browser.openTab(`${origin}/combobox?mode=scroll-only`);
+    const country = await refFor(tab, "Country");
+    const opened = await act(browser, { kind: "click", tabId: tab, ref: country });
+    assert.equal(opened.ok, true, JSON.stringify(opened));
+    const listbox = (await browser.observe(tab)).controls.find((control) => control.role === "listbox");
+    assert.ok(listbox, "listbox did not open");
+    let found = false;
+    for (let i = 0; i < 8 && !found; i += 1) {
+      await browser.scroll(tab, listbox.ref, 400, 5_000);
+      found = (await browser.observe(tab)).controls.some((control) => /United States/.test(control.name));
+    }
+    assert.ok(found, "United States never appeared after scrolling");
+  });
 });

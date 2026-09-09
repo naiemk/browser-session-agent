@@ -7,6 +7,10 @@ import type { Locator, Page } from "playwright";
  * Headed Chrome treats Input.dispatchMouseEvent / insertText as a reason to become the
  * frontmost app, which yanks OS focus out of the editor. HTMLElement.click() and
  * setting input.value stay inside the page.
+ *
+ * Evaluate callbacks must stay anonymous and must not assign inner functions to names.
+ * tsx/esbuild keepNames wraps those as `__name(fn, "canScroll")`, and Playwright
+ * serializes the callback into the page, where that helper does not exist.
  */
 export async function clickWithoutOsFocus(locator: Locator, timeoutMs: number): Promise<void> {
   await locator.waitFor({ state: "attached", timeout: timeoutMs });
@@ -66,13 +70,13 @@ export async function scrollWithoutOsFocus(
   }
   await locator.waitFor({ state: "attached", timeout: timeoutMs });
   await locator.evaluate((el, delta) => {
-    const canScroll = (node: Element) =>
-      node.scrollHeight > node.clientHeight + 2 || node.scrollWidth > node.clientWidth + 2;
     let target: Element | null = el;
-    if (target && !canScroll(target)) {
-      let parent = target.parentElement;
-      while (parent && !canScroll(parent)) parent = parent.parentElement;
-      if (parent) target = parent;
+    while (
+      target &&
+      target.scrollHeight <= target.clientHeight + 2 &&
+      target.scrollWidth <= target.clientWidth + 2
+    ) {
+      target = target.parentElement;
     }
     if (target) target.scrollTop += delta;
     else window.scrollBy(0, delta);
