@@ -126,6 +126,8 @@ export interface WorkerInfo {
   port: number;
   profileDir: string;
   startedAt: string;
+  /** Installed Chrome vs Playwright Chromium. Missing on older worker.json files. */
+  browser?: "chrome" | "chromium";
 }
 
 export interface KnowledgeRecord {

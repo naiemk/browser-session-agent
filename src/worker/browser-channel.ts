@@ -22,8 +22,27 @@ export function resolveBrowserChannel(options: {
   );
 }
 
-export function playwrightChannelOption(channel: BrowserChannel): { channel: "chrome" } | Record<string, never> {
-  return channel === "chrome" ? { channel: "chrome" } : {};
+export function playwrightLaunchOverrides(channel: BrowserChannel): {
+  channel?: "chrome";
+  ignoreDefaultArgs?: string[];
+  extraArgs?: string[];
+} {
+  if (channel !== "chrome") return {};
+  return {
+    channel: "chrome",
+    // Playwright's test defaults. `--enable-automation` sets navigator.webdriver;
+    // `--disable-sync` breaks Google Account. Without these, accounts.google.com
+    // rejects even installed Chrome ("This browser or app may not be secure").
+    ignoreDefaultArgs: ["--enable-automation", "--disable-sync"],
+    extraArgs: ["--disable-blink-features=AutomationControlled"],
+  };
+}
+
+export function shouldReuseAttachedBrowser(
+  existing: { browser?: string } | null | undefined,
+  wanted: BrowserChannel,
+): boolean {
+  return existing?.browser === wanted;
 }
 
 export function chromeExecutableCandidates(
