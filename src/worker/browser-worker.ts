@@ -8,8 +8,9 @@ import { dataPaths, ensureDir } from "../store/paths.ts";
 import { readWorkerInfo, writeWorkerInfo, clearWorkerInfo } from "../store/worker-info.ts";
 import {
   isMissingChromeError,
-  playwrightChannelOption,
+  playwrightLaunchOverrides,
   resolveBrowserChannel,
+  shouldReuseAttachedBrowser,
   type BrowserChannel,
 } from "./browser-channel.ts";
 import { observePage, visibleText } from "./observe.ts";
@@ -121,11 +122,18 @@ export class BrowserWorker {
     if (existing?.cdpUrl) {
       try {
         await this.attachCdp(existing);
-        this.launchedHere = false;
-        return this.info!;
+        if (shouldReuseAttachedBrowser(existing, this.browserChannel)) {
+          this.launchedHere = false;
+          return this.info!;
+        }
+        await this.browser?.close().catch(() => undefined);
       } catch {
         // relaunch a fresh persistent context
       }
+      this.browser = null;
+      this.context = null;
+      this.info = null;
+      this.pages.clear();
     }
 
     try {
@@ -506,17 +514,20 @@ export class BrowserWorker {
     const paths = dataPaths(this.home);
     await ensureDir(paths.profileDir);
     const port = await freePort();
+    const overrides = playwrightLaunchOverrides(this.browserChannel);
     let context: BrowserContext;
     try {
       context = await chromium.launchPersistentContext(paths.profileDir, {
         headless: this.headless,
         viewport: { width: 1280, height: 720 },
-        ...playwrightChannelOption(this.browserChannel),
+        channel: overrides.channel,
+        ignoreDefaultArgs: overrides.ignoreDefaultArgs,
         args: [
           `--remote-debugging-port=${port}`,
           "--remote-debugging-address=127.0.0.1",
           "--no-sandbox",
           "--disable-dev-shm-usage",
+          ...(overrides.extraArgs ?? []),
         ],
       });
     } catch (err) {
@@ -536,6 +547,7 @@ export class BrowserWorker {
       port,
       profileDir: paths.profileDir,
       startedAt: new Date().toISOString(),
+      browser: this.browserChannel,
     };
     await writeWorkerInfo(this.home, this.info);
     this.trackedPids = childPids();

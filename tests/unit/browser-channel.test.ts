@@ -3,8 +3,9 @@ import { describe, it } from "node:test";
 import {
   chromeExecutableCandidates,
   isMissingChromeError,
-  playwrightChannelOption,
+  playwrightLaunchOverrides,
   resolveBrowserChannel,
+  shouldReuseAttachedBrowser,
 } from "../../src/worker/browser-channel.ts";
 
 describe("browser channel", () => {
@@ -21,8 +22,19 @@ describe("browser channel", () => {
   });
 
   it("only passes Playwright's chrome channel when launching installed Chrome", () => {
-    assert.deepEqual(playwrightChannelOption("chrome"), { channel: "chrome" });
-    assert.deepEqual(playwrightChannelOption("chromium"), {});
+    const chrome = playwrightLaunchOverrides("chrome");
+    assert.equal(chrome.channel, "chrome");
+    assert.ok(chrome.ignoreDefaultArgs?.includes("--enable-automation"));
+    assert.ok(chrome.ignoreDefaultArgs?.includes("--disable-sync"));
+    assert.ok(chrome.extraArgs?.includes("--disable-blink-features=AutomationControlled"));
+    assert.deepEqual(playwrightLaunchOverrides("chromium"), {});
+  });
+
+  it("does not reconnect to a previous session launched as a different browser", () => {
+    assert.equal(shouldReuseAttachedBrowser({ browser: "chrome" }, "chrome"), true);
+    assert.equal(shouldReuseAttachedBrowser({ browser: "chromium" }, "chrome"), false);
+    assert.equal(shouldReuseAttachedBrowser({}, "chrome"), false);
+    assert.equal(shouldReuseAttachedBrowser(null, "chromium"), false);
   });
 
   it("looks for Google Chrome, not Chromium, in the usual install locations", () => {
