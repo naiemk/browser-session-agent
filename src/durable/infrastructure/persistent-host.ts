@@ -4,6 +4,7 @@ import type { OperationOutcome } from "../domain/types.ts";
 import { DirectKernel, type ExecutionHost } from "../ports/execution-kernel.ts";
 import { WorkerBrowserPort } from "../../host/worker-browser-port.ts";
 import type { BrowserWorker } from "../../worker/browser-worker.ts";
+import { challengeEvidenceFromObservation } from "../../runtime/challenge-handoff.ts";
 
 /**
  * CAMPAIGN-02-T04 — persistent Magpie browser as the durable ExecutionHost browser.
@@ -43,6 +44,21 @@ export function createPersistentExecutionHost(options: PersistentHostOptions): E
     headedTakeover: options.headedTakeover,
     nowIso: () => new Date().toISOString(),
     kernel,
+    challenge: {
+      async observe(pageIdentity?: string) {
+        if (pageIdentity && /^https?:\/\//i.test(pageIdentity)) {
+          const current = await port.observe();
+          if (current.url !== pageIdentity) {
+            await port.navigate(undefined, pageIdentity, 30_000);
+          }
+        }
+        return challengeEvidenceFromObservation(await port.observe());
+      },
+      async takeover() {
+        const tabId = options.worker.firstTabId();
+        if (tabId) await options.worker.bringToFront(tabId);
+      },
+    },
     /** Test/ops helper: refresh port after control-process style reconnect. */
     reattach() {
       port = reattachPersistentBrowserPort(options.worker);

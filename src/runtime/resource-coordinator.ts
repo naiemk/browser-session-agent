@@ -40,6 +40,21 @@ export class InMemoryResourceCoordinatorPort implements ResourceCoordinatorPort 
   }
 }
 
+export function emptyChallengeCoordinator(options: ResourceCoordinatorOptions = {}): ResourceCoordinator {
+  return new ResourceCoordinator(undefined, options);
+}
+
+let sharedCoordinator: ResourceCoordinator | undefined;
+
+export function sharedChallengeCoordinator(): ResourceCoordinator {
+  return (sharedCoordinator ??= new ResourceCoordinator());
+}
+
+/** Test-only: swap the process-wide coordinator so fake clocks do not leak. */
+export function resetSharedChallengeCoordinator(next?: ResourceCoordinator): void {
+  sharedCoordinator = next;
+}
+
 export class ResourceCoordinator {
   private readonly hostCooldownMs: number;
   private readonly sessionHostBudget: number;
@@ -168,6 +183,7 @@ export function applyChallengeOutcome<T>(input: {
   profileKey?: string;
   workItemKey?: string;
   evidenceIds: string[];
+  evidenceHash?: string;
   checkpoint: OperationCheckpoint;
   completed?: OperationOutcome<T>;
 }): OperationOutcome<T> {
@@ -189,6 +205,7 @@ export function applyChallengeOutcome<T>(input: {
     workItemKey: input.workItemKey,
     detection: input.detection,
     evidenceIds: input.evidenceIds,
+    evidenceHash: input.evidenceHash,
     checkpoint: input.checkpoint,
   });
 }

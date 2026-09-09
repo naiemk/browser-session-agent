@@ -20,6 +20,8 @@ function records(): MetricRecord[] {
     {
       kind: "turn",
       turn: 1,
+      provider: "openrouter",
+      model: "openrouter/test",
       inputTokens: 2500,
       outputTokens: 60,
       cacheReadTokens: 0,
@@ -42,6 +44,8 @@ function records(): MetricRecord[] {
     {
       kind: "turn",
       turn: 2,
+      provider: "openrouter",
+      model: "openrouter/test",
       inputTokens: 400,
       outputTokens: 40,
       cacheReadTokens: 2600,
@@ -128,7 +132,74 @@ describe("the rollup", () => {
   it("takes repeat visits and repeat probes from the ledger", () => {
     const value = rollup({ records: records(), events, goalId: "g" });
     assert.equal(value.duplicates.repeatNavigations, 1);
+    assert.equal(
+      value.duplicates.repeatProbes,
+      0,
+      "probes without a page URL are recipes, not exact duplicates",
+    );
+    assert.equal(value.duplicates.repeatedRecipe, 1);
+  });
+
+  it("counts the same probe on the same URL as an exact duplicate", () => {
+    const value = rollup({
+      records: records(),
+      events: [
+        {
+          id: "p1",
+          goalId: "g",
+          ts: new Date().toISOString(),
+          type: "probe",
+          after: { url: "https://x.test/a", title: "A", changes: [] },
+          payload: { query: { kind: "links" }, url: "https://x.test/a" },
+        },
+        {
+          id: "p2",
+          goalId: "g",
+          ts: new Date().toISOString(),
+          type: "probe",
+          after: { url: "https://x.test/a", title: "A", changes: [] },
+          payload: { query: { kind: "links" }, url: "https://x.test/a" },
+        },
+      ],
+      goalId: "g",
+    });
     assert.equal(value.duplicates.repeatProbes, 1);
+    assert.equal(value.duplicates.repeatedRecipe, 0);
+  });
+
+  it("counts the same probe on different URLs as a repeated recipe", () => {
+    const value = rollup({
+      records: records(),
+      events: [
+        {
+          id: "p1",
+          goalId: "g",
+          ts: new Date().toISOString(),
+          type: "probe",
+          after: { url: "https://x.test/a", title: "A", changes: [] },
+          payload: { query: { kind: "links" }, url: "https://x.test/a" },
+        },
+        {
+          id: "p2",
+          goalId: "g",
+          ts: new Date().toISOString(),
+          type: "probe",
+          after: { url: "https://x.test/b", title: "B", changes: [] },
+          payload: { query: { kind: "links" }, url: "https://x.test/b" },
+        },
+      ],
+      goalId: "g",
+    });
+    assert.equal(value.duplicates.repeatProbes, 0);
+    assert.equal(value.duplicates.repeatedRecipe, 1);
+  });
+
+  it("attributes tokens by model when turns name one", () => {
+    const value = rollup({ records: records(), goalId: "g" });
+    assert.equal(value.byModel.length, 1);
+    assert.equal(value.byModel[0]?.model, "openrouter/test");
+    assert.equal(value.byModel[0]?.turns, 2);
+    assert.equal(value.byModel[0]?.input, 2900);
   });
 
   it("reports where the prompt cache was invalidated", () => {
@@ -158,6 +229,8 @@ describe("the rollup", () => {
     assert.match(text, /duplicate work/);
     assert.match(text, /prompt cache/);
     assert.match(text, /gate asks/);
+    assert.match(text, /repeated probe recipes on different pages/);
+    assert.match(text, /by model:/);
   });
 
   it("counts operator asks on outbound, not unmatched exploration", () => {

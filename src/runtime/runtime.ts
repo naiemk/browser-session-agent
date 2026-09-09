@@ -25,6 +25,7 @@ import {
   type PruneOptions,
 } from "./prune.ts";
 import type { ReportPayload, ToolContext } from "./tools.ts";
+import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "./turn-identity.ts";
 
 /** Placeholder model descriptor for the mock port, which never calls a provider. */
 export const MOCK_MODEL = {
@@ -186,6 +187,7 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     },
   });
 
+  let lastIdentity: TurnIdentity | undefined;
   const unsubscribe = agent.subscribe((event) => {
     const value = event as {
       type?: string;
@@ -194,6 +196,8 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
         stopReason?: string;
         errorMessage?: string;
         usage?: unknown;
+        model?: unknown;
+        provider?: unknown;
         content?: Array<{ type?: string; text?: string }>;
       };
     };
@@ -207,7 +211,26 @@ export async function runTask(options: RuntimeOptions): Promise<RunOutcome> {
     }
     if (value.type === "message_end" && value.message) {
       const split = meter.add(value.message as never);
-      if (split) metrics.record({ kind: "turn", turn: currentTurn, ...splitFields(split) });
+      if (split) {
+        const identity = turnIdentityFields(value.message);
+        if (
+          lastIdentity &&
+          turnIdentityKey(identity) !== turnIdentityKey(lastIdentity) &&
+          identity.model
+        ) {
+          metrics.record({
+            kind: "model_change",
+            turn: currentTurn,
+            at: new Date().toISOString(),
+            ...(identity.provider ? { provider: identity.provider } : {}),
+            model: identity.model,
+            ...(lastIdentity.provider ? { previousProvider: lastIdentity.provider } : {}),
+            ...(lastIdentity.model ? { previousModel: lastIdentity.model } : {}),
+          });
+        }
+        if (identity.model || identity.provider) lastIdentity = identity;
+        metrics.record({ kind: "turn", turn: currentTurn, ...splitFields(split), ...identity });
+      }
       if (value.message.errorMessage) modelErrors.push(value.message.errorMessage);
       else if (value.message.stopReason === "error") {
         modelErrors.push("model returned an error with no message");

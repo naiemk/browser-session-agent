@@ -13,6 +13,7 @@
 import type { ExtensionAPI } from "../pi-api.ts";
 import type { Evidence } from "../runtime/evidence.ts";
 import { measureContext, type PrunableMessage } from "../runtime/prune.ts";
+import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "../runtime/turn-identity.ts";
 
 export interface SessionOverhead {
   goalId: string;
@@ -57,10 +58,9 @@ function usageOf(message: unknown): Record<string, unknown> | undefined {
 }
 
 function modelOf(message: unknown): string {
-  const model = (message as { model?: unknown })?.model;
-  if (typeof model === "string") return model;
-  const nested = (model as { id?: unknown })?.id;
-  return typeof nested === "string" ? nested : "unknown";
+  const identity = turnIdentityFields(message);
+  if (identity.provider && identity.model) return `${identity.provider}/${identity.model}`;
+  return identity.model ?? "unknown";
 }
 
 /**
@@ -90,6 +90,7 @@ export function meterPiSession(
   let recordedRun = false;
   // Last turn's messages, so a rewrite is visible as a changed prefix.
   let previous: PrunableMessage[] = [];
+  let lastIdentity: TurnIdentity | undefined;
 
   const recordRun = (model: string, level: string | undefined) => {
     if (recordedRun) return;
@@ -133,15 +134,30 @@ export function meterPiSession(
     const usage = usageOf(message);
     if (!usage) return;
     const cost = usage.cost as Record<string, unknown> | undefined;
+    const identity = turnIdentityFields(message);
+    const turn = clock.current();
+    if (lastIdentity && turnIdentityKey(identity) !== turnIdentityKey(lastIdentity) && identity.model) {
+      evidence.metrics.record({
+        kind: "model_change",
+        turn,
+        at: new Date().toISOString(),
+        ...(identity.provider ? { provider: identity.provider } : {}),
+        model: identity.model,
+        ...(lastIdentity.provider ? { previousProvider: lastIdentity.provider } : {}),
+        ...(lastIdentity.model ? { previousModel: lastIdentity.model } : {}),
+      });
+    }
+    if (identity.model || identity.provider) lastIdentity = identity;
     evidence.metrics.record({
       kind: "turn",
-      turn: clock.current(),
+      turn,
       inputTokens: num(usage.input),
       outputTokens: num(usage.output),
       cacheReadTokens: num(usage.cacheRead),
       cacheWriteTokens: num(usage.cacheWrite),
       costUsd: num(cost?.total),
       ...(level ? { thinkingLevel: level } : {}),
+      ...identity,
     });
   });
 

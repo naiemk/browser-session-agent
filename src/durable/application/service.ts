@@ -1,7 +1,7 @@
 import { transitionJobLifecycle } from "../domain/job-lifecycle.ts";
 import { reduceWorkItem } from "../domain/work-item.ts";
 import { DomainError } from "../domain/errors.ts";
-import type { Job, SpecVersion } from "../domain/types.ts";
+import type { HumanRequest, Job, OperationOutcome, SpecVersion } from "../domain/types.ts";
 import type { JobRepository } from "../ports/repository.ts";
 import type { ExecutionHost } from "../ports/execution-kernel.ts";
 import { proposeStrict, draftFeedback, newId, hashCanonicalBytes } from "./planning.ts";
@@ -13,6 +13,12 @@ import type { CancelJobCommand, CancelWorkItemCommand } from "./commands.ts";
 import { createEffect, reduceEffect } from "../domain/effect.ts";
 import { decideEffectAuthorization } from "../domain/effect-envelope.ts";
 import type { EffectIntent } from "../domain/effect-envelope.ts";
+import {
+  detectChallenge,
+  evidenceHashOf,
+  type ChallengeDetection,
+} from "../../runtime/challenge-detector.ts";
+import { sharedChallengeCoordinator } from "../../runtime/resource-coordinator.ts";
 
 export class JobApplicationService {
   constructor(
@@ -265,6 +271,111 @@ export class JobApplicationService {
     }
   }
 
+  async skipHuman(jobId: string, humanId: string): Promise<HumanRequest> {
+    const humans = await this.repo.listHumans(jobId);
+    const item = humans.find((h) => h.id === humanId);
+    if (!item) throw new DomainError("missing_human", humanId);
+    const now = new Date().toISOString();
+    const next: HumanRequest = {
+      ...item,
+      status: "skipped",
+      resolution: "skipped",
+      resolvedAt: now,
+      updatedAt: now,
+    };
+    await this.repo.saveHuman(next);
+    await this.repo.appendAudit({
+      jobId,
+      at: now,
+      type: "challenge_handoff",
+      payload: {
+        phase: "skip",
+        humanId,
+        blockedMs: blockedMsSince(item.createdAt, now),
+      },
+    });
+    return next;
+  }
+
+  async prepareHuman(jobId: string, itemId?: string): Promise<HumanRequest> {
+    const humans = await this.repo.listHumans(jobId);
+    const open = humans.filter((h) => h.status === "waiting" || h.status === "expired" || h.status === "ready");
+    const item = itemId ? open.find((h) => h.id === itemId) : open[0];
+    if (!item) throw new DomainError("missing_human", itemId ?? "next");
+    const now = new Date().toISOString();
+    const next: HumanRequest = { ...item, status: "rehydrating", updatedAt: now };
+    await this.repo.saveHuman(next);
+
+    const host = this.hostFactory();
+    if (item.perishable && host?.challenge) {
+      const obs = await host.challenge.observe(item.checkpoint?.pageIdentity).catch(() => undefined);
+      if (obs) {
+        const detection = detectChallenge(obs);
+        if (detection.confidence === "high_confidence") {
+          await host.challenge.takeover?.({ host: detection.host }).catch(() => undefined);
+        }
+      }
+    }
+    return next;
+  }
+
+  async resumeChallenge(jobId: string, humanId: string): Promise<ChallengeResumeResult> {
+    const humans = await this.repo.listHumans(jobId);
+    const item = humans.find((h) => h.id === humanId);
+    if (!item) throw new DomainError("missing_human", humanId);
+    if (item.kind !== "challenge") throw new DomainError("not_challenge", humanId);
+
+    const host = this.hostFactory();
+    const obs = await host?.challenge?.observe(item.checkpoint?.pageIdentity);
+    if (!obs || (typeof obs.url !== "string" && typeof obs.title !== "string")) {
+      return { status: "expired_tab", human: item };
+    }
+
+    const detection = detectChallenge(obs);
+    if (detection.confidence === "high_confidence") {
+      await host?.challenge?.takeover?.({ host: detection.host }).catch(() => undefined);
+      return { status: "still_blocked", human: item, detection };
+    }
+
+    const hash = evidenceHashOf(detection, obs.url);
+    const resume = sharedChallengeCoordinator().tryResume(item.resourceKey, hash);
+    if (!resume.ok) {
+      return { status: "still_blocked", human: item, detection };
+    }
+
+    const checkpoint = item.checkpoint ?? { intent: "attempt", evidenceIds: [] };
+    let redrive: OperationOutcome<unknown> | undefined;
+    if (host?.challenge?.redrive) {
+      redrive = await host.challenge.redrive({ intent: checkpoint.intent, checkpoint });
+      if (redrive.status === "blocked") {
+        return { status: "still_blocked", human: item, detection, redrive };
+      }
+    }
+
+    const now = new Date().toISOString();
+    const blockedMs = blockedMsSince(item.createdAt, now);
+    await this.repo.saveHuman({
+      ...item,
+      status: "resolved",
+      resolution: "fresh observation; challenge cleared",
+      resolvedAt: now,
+      updatedAt: now,
+    });
+    if (item.workItemId) {
+      const work = await this.repo.getWorkItem(item.workItemId);
+      if (work && work.status === "blocked") {
+        await this.repo.saveWorkItem(reduceWorkItem(work, { type: "retry" }, now));
+      }
+    }
+    await this.repo.appendAudit({
+      jobId,
+      at: now,
+      type: "challenge_handoff",
+      payload: { phase: "resume", humanId, blockedMs },
+    });
+    return { status: "resumed", human: { ...item, status: "resolved" }, detection, redrive };
+  }
+
   private async requireJob(jobId: string): Promise<Job> {
     const job = await this.repo.getJob(jobId);
     if (!job) throw new DomainError("missing_job", jobId);
@@ -276,4 +387,16 @@ function asObject(draft: unknown): Record<string, unknown> {
   return draft && typeof draft === "object" && !Array.isArray(draft) ? (draft as Record<string, unknown>) : {};
 }
 
+function blockedMsSince(fromIso: string, toIso: string): number | undefined {
+  const from = Date.parse(fromIso);
+  const to = Date.parse(toIso);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return undefined;
+  return to - from;
+}
+
 export { hashCanonicalBytes };
+
+export type ChallengeResumeResult =
+  | { status: "resumed"; human: HumanRequest; detection: ChallengeDetection; redrive?: OperationOutcome<unknown> }
+  | { status: "still_blocked"; human: HumanRequest; detection: ChallengeDetection; redrive?: OperationOutcome<unknown> }
+  | { status: "expired_tab"; human: HumanRequest };

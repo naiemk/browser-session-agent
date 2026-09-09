@@ -47,6 +47,23 @@ export interface TurnRecord {
    * not invent `"medium"` for old files or for a host that never told us.
    */
   thinkingLevel?: string;
+  /**
+   * The model that billed this turn. Optional so older metric files still roll up.
+   * The session `run.model` field is only the first model seen, which is PERF-01.
+   */
+  provider?: string;
+  model?: string;
+}
+
+/** Emitted when the provider/model identity changes mid-session. */
+export interface ModelChangeRecord {
+  kind: "model_change";
+  turn: number;
+  at: string;
+  provider?: string;
+  model: string;
+  previousProvider?: string;
+  previousModel?: string;
 }
 
 /**
@@ -105,13 +122,24 @@ export interface GateAskRecord {
   ruleId: string;
 }
 
+/** AGENT-13-T03 — park/resume timestamps so blocked duration is not inferred from neighbors. */
+export interface ChallengeHandoffRecord {
+  kind: "challenge_handoff";
+  at: string;
+  phase: "park" | "takeover" | "resume" | "skip";
+  host: string;
+  blockedMs?: number;
+}
+
 export type MetricRecord =
   | RunRecord
   | TurnRecord
   | ContextRecord
   | ToolResultRecord
   | ObservationRecord
-  | GateAskRecord;
+  | GateAskRecord
+  | ModelChangeRecord
+  | ChallengeHandoffRecord;
 
 /**
  * Where records go. The runtime holds one of these and never asks what it is, so

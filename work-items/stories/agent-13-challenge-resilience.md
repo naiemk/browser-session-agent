@@ -1,6 +1,6 @@
 # AGENT-13: Challenges stop safely and resume cleanly
 
-Status: in_progress — T01/T02 landed; T03/T04 open
+Status: in_progress — T01/T02/T03 landed; T04 open
 
 As an operator, I get one clear handoff when a site blocks automation, while the agent
 stops wasting actions and can resume the exact intent after the block is resolved.
