@@ -3,7 +3,7 @@ id: AGENT-16-T02
 title: Strategy artifact schema
 story: AGENT-16
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-16-T02 — Strategy artifact schema

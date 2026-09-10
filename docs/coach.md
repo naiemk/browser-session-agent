@@ -7,13 +7,18 @@ extend them only via the COACH-* requirements below.
 Normative for AGENT-16. A cheaper model implementing a ticket MUST cite requirement IDs
 and MUST NOT invent architecture. If a requirement is ambiguous, stop and escalate.
 
+Release order (tick as work lands): [`docs/release-roadmap.md`](release-roadmap.md) R1
+(interactive `/coach`, then Magpie Execute auto-invoke) then R3 (job-invoked). Do not
+treat T04 as R1. T05 is R1.
+
 Related:
 
 - `docs/decisions.md` D12, D25, D26, D28, D29, D44, D52, D58
 - `docs/autonomous-agent.md` — environment diagnosis; this is the missing strategy layer
 - `docs/jobs-v2-spec.md` — EXEC-04 context, QUALITY-04 review op, OBS-04 phase routing
 - `docs/example-prompts/party.txt` — motivating task
-- Live evidence: `goal_mtrvevpq001` and the operator-guided Instagram rerun in
+- Live evidence: `goal_mtrvevpq001`, operator-guided Instagram rerun, and
+  `goal_mtumeewm001` (Execute did not invoke `/coach`; see AGENT-16-T05) in
   `docs/live-run-evidence-log.md`
 
 ---
@@ -104,7 +109,9 @@ For `calibration_required`:
 1. **Scout** — small budget (candidates, site actions, or one completed sample of the
    suspected loop). Record yield. Stop even if the list is incomplete.
 2. **Coach** — read-only, expensive model, digest in, strategy artifact out. Browser
-   mutations off.
+   mutations off. In Magpie chat, `/plan` Execute SHALL invoke the same `/coach`
+   handler after pre-coach plan steps complete (AGENT-16-T05). The executor MUST NOT
+   be given the coach-role todo as remaining work.
 3. **Harvest** — blocked on a valid strategy artifact. Cheap model. Repeated loop.
    Same qualification criteria as the spec.
 
@@ -292,8 +299,8 @@ the operator (same spirit as AGENT-15 / EXEC-07).
 as a checkpoint, and inject only the rendered artifact into the executing session.
 Switching model class is the operator's Ctrl+P / Pi router (D12); the host MAY request
 a high/ultra class for the coach turn but MUST NOT invent a second router.
-- Owner: `src/host/pi-coach.ts`
-- Ticket: AGENT-16-T03
+- Owner: `src/host/pi-coach.ts`, Magpie Execute trigger in `src/host/pi-plan-mode.ts`
+- Ticket: AGENT-16-T03, AGENT-16-T05
 
 **COACH-13.** Coach is a compaction boundary (D52). After a successful coach, harvest
 context is: spec slice / criteria, facts, strategy artifact, budgets, current page —
@@ -311,7 +318,10 @@ into later harvest CompiledAttempts (EXEC-04).
 **COACH-15.** The executor MUST NOT call the coach model from inside an execution
 attempt. Scout stops, commits digest inputs + yield, then the scheduler (or `/coach`)
 leases the review. Mid-turn “maybe I should think harder” is not a coach invocation.
-- Ticket: AGENT-16-T03, AGENT-16-T04
+In Magpie chat, `/plan` Execute is the scheduler analogue: the host leases review
+when every pre-coach plan todo is complete. Remaining-steps injected for Execute
+MUST omit the coach-role todo.
+- Ticket: AGENT-16-T03, AGENT-16-T05, AGENT-16-T04
 
 **COACH-16.** Manual `/coach` during harvest is allowed. It creates a new checkpoint.
 In-flight harvest SHOULD finish the current entity, then reload the artifact — do not
@@ -339,8 +349,9 @@ not the merge gate.
 
 ## 4. Implementation guideline
 
-Implement tickets in order. T01 and T02 have no host. T03 is the interactive product.
-T04 is the durable-job wiring. Do not start T04 by rewriting Jobs V2 cutover tickets.
+Implement tickets in order. T01 and T02 have no host. T03 is the slash command.
+T05 is Magpie Execute invoking that command. T04 is the durable-job wiring. Do not
+start T04 by rewriting Jobs V2 cutover tickets.
 
 ### 4.1 Shared module layout
 
@@ -349,7 +360,8 @@ src/runtime/coach/
   digest.ts       # COACH-01..04 — pure
   strategy.ts     # COACH-05..08 — parse/validate/render
   yield.ts        # yield event helpers used by tools + digest
-src/host/pi-coach.ts                  # /coach command, plan-mode copy, checkpoint
+src/host/pi-coach.ts                  # /coach command, checkpoint, startReview
+src/host/pi-plan-mode.ts              # Execute remaining-steps; auto-invoke startReview
 src/durable/domain/spec-types.ts      # optional CoachingPolicy
 src/durable/domain/spec-compiler.ts   # accept/reject policy
 src/durable/application/materialize.ts
@@ -380,6 +392,7 @@ See `work-items/stories/agent-16-strategy-coach.md` and the task files. Summary:
 | AGENT-16-T01 | Digest + yield events | Unit tests: wandering Instagram-like fixture vs guided fixture; digest has no snapshot dump; size cap |
 | AGENT-16-T02 | Artifact schema | Accept a venue→tagged→peek guideline; reject criteria rewrite; render ≤ card budget |
 | AGENT-16-T03 | `/coach` + plan-mode policy text | FakePi: `/coach` disables act; plan context mentions scout/coach/harvest; checkpoint restores |
+| AGENT-16-T05 | Magpie Execute invokes `/coach` | FakePi: Execute omits coach from remaining steps; pre-coach `[DONE:n]` runs T03 handler; harvest sees artifact |
 | AGENT-16-T04 | Job policy + scheduler | Spec with `coaching.mode=calibration` materializes three items; harvest context has artifact not transcript; rescue does not fire on time alone |
 
 ### 4.3 Hard rules for the coding agent
@@ -391,7 +404,8 @@ See `work-items/stories/agent-16-strategy-coach.md` and the task files. Summary:
 3. Do not teach the planner Instagram tactics. Teach it to schedule calibration.
 4. Do not send transcripts to the coach. If a test does, it fails COACH-01.
 5. Do not let the executor `subagent` a “coach” coder. Coach is review-phase Magpie,
-   not a coding child.
+   not a coding child. Magpie Execute MUST NOT inject the coach-role todo as remaining
+   work (AGENT-16-T05).
 6. Do not store DOM refs in the artifact or digest (EXEC checkpoint rule).
 7. Prefer extending `PLAN_MODE_CONTEXT` over adding a second plan-mode.
 8. If plan-mode and jobs disagree, the spec/job policy is authority for jobs; plan-mode
@@ -401,7 +415,8 @@ See `work-items/stories/agent-16-strategy-coach.md` and the task files. Summary:
 
 - `tests/unit/coach-digest.test.ts`
 - `tests/unit/coach-strategy.test.ts`
-- `tests/unit/pi-coach.test.ts` (follow `tests/unit/pi-subagent.test.ts` plan-mode cases)
+- `tests/unit/pi-coach.test.ts` (follow `tests/unit/pi-subagent.test.ts` plan-mode cases;
+  T05: Execute omits coach todo, pre-coach `[DONE:n]` starts review)
 - `tests/unit/durable-coaching.test.ts` (compiler + materialize + context compiler)
 
 Fixture sketch for T01: a synthetic ledger of list → profile navigate → back → lost

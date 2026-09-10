@@ -115,6 +115,9 @@ Every task follows the mandatory discovery → evidence → senior review → **
 pass** protocol in [`jobs-v2-evaluation.md`](jobs-v2-evaluation.md). First safe
 implementation tickets: **CAMPAIGN-00-T01** and **CAMPAIGN-01-T01** (parallel).
 
+Release order for hard cutover and job-invoked coach:
+[`docs/release-roadmap.md`](release-roadmap.md) (R2, then R3).
+
 ## Open evidence-dependent items (not claimed done)
 
 - Cron / calendar scheduling until a real execution host is attached.

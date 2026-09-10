@@ -3,7 +3,7 @@ id: AGENT-16-T01
 title: Trajectory digest and yield events
 story: AGENT-16
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-16-T01 — Trajectory digest and yield events

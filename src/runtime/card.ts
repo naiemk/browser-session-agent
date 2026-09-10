@@ -8,6 +8,7 @@
 import { describePredicate } from "../core/predicates.ts";
 import type { Predicate } from "../core/types.ts";
 import { renderSiteSkill, siteSkillFromFacts } from "./site-skill.ts";
+import { renderStrategyArtifact, strategyFromFacts } from "./coach/strategy.ts";
 import {
   TOOL_ACT,
   TOOL_ASK,
@@ -46,8 +47,15 @@ export function buildTaskCard(input: TaskCardInput): string {
     .join("\n");
 
   const skill = siteSkillFromFacts(input.knownFacts);
+  const strategy = strategyFromFacts(input.knownFacts);
   const factEntries = input.knownFacts
-    ? Object.entries(input.knownFacts).filter(([key]) => key !== "siteSkill" && key !== "site_skill")
+    ? Object.entries(input.knownFacts).filter(
+        ([key]) =>
+          key !== "siteSkill" &&
+          key !== "site_skill" &&
+          key !== "strategyArtifact" &&
+          key !== "strategy_artifact",
+      )
     : [];
   const facts = factEntries.length > 0
     ? `\nKnown already (do not ask again):\n${factEntries
@@ -55,6 +63,7 @@ export function buildTaskCard(input: TaskCardInput): string {
         .join("\n")}\n`
     : "";
   const skillBlock = skill ? `\n${renderSiteSkill(skill)}\n` : "";
+  const strategyBlock = strategy ? `\n${renderStrategyArtifact(strategy)}\n` : "";
 
   const commit =
     input.policy === "never"
@@ -78,7 +87,7 @@ ${input.objective}
 ${input.startUrl ? `Start at ${input.startUrl}\n` : ""}
 SUCCESS (checked against the live page by code you do not control; claiming success does not make it so)
 ${criteria}
-${facts}${skillBlock}
+${facts}${skillBlock}${strategyBlock}
 RULES
 ${input.format ? `- ${input.format}\n` : ""}- Refs stay valid while the element is on the page, so ${TOOL_OBSERVE} when you arrive somewhere new or a ref is reported gone, not between every action.
 - ${TOOL_PROBE} when you do not understand a form or widget. It cannot change anything, so prefer it over a hopeful click.
@@ -102,6 +111,7 @@ CHOOSING WHAT TO DO, AND HOW
 Two different questions. What counts as the answer is the operator's to settle; how you go and get it is yours.
 - ${TOOL_SURVEY} before committing to a route, so you weigh what this page offers instead of taking the first thing that could work.
 - Check each word of the task against what you can see. If one of them matches more than one thing here, that changes the answer and is not yours to decide: ${TOOL_FORK}. Cover every branch and label results by source when that is cheap and bounded, otherwise ${TOOL_ASK}.
-- The route is yours, so take the cheap one and do not ask about it. To inspect items in a list, ${TOOL_PEEK}: navigating away loses your place and you may not get it back, and peeking does not. If a name or id is all you have, build the URL or search for it, and pass expect so landing on the wrong thing is caught rather than believed. Do not peek file://; use scratch_ls / scratch_read for this goal's scratch. scratch_read is capped; pass offset to continue a truncated read.
+- The route is yours, so take the cheap one and do not ask about it. To inspect items in a list, ${TOOL_PEEK}: navigating away loses your place; peeking does not. If a name or id is all you have, build the URL or search for it, and pass expect so a wrong landing is caught. Do not peek file://; use scratch_ls / scratch_read for this goal's scratch. scratch_read is capped; pass offset to continue a truncated read.
+- Clicks that return ok are not progress. Record yield on ${TOOL_REMEMBER}: accepted, rejected, duplicate, fact_established, route_affordance, lost_place.
 ${input.maxTurns ? `\nBudget: about ${input.maxTurns} turns. Spend them understanding the page, not retrying.` : ""}`;
 }

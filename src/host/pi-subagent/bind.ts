@@ -72,6 +72,7 @@ export const DIGEST_MAX_CHARS = 2000;
 
 export const CHAT_WORKER_HINT =
   "/plan toggles read-only plan mode in this session (same model; Ctrl+P to change). " +
+  "/coach reviews a scout as a guideline (mutations off; Ctrl+P for a stronger class). " +
   "For code, files, unzip, or public curl, call subagent with agent=coder. " +
   `That child is a real Pi coding agent in this goal's scratch directory. ` +
   `Default wall ${formatDurationMs(DEFAULT_TIMEOUT_MS)} (cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
@@ -386,6 +387,17 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       const task = typeof params.task === "string" ? params.task.trim() : "";
       if (!agent || !task) {
         return finish(options, SUBAGENT_TOOL_NAME, textResult("Need agent and task.", { error: "bad_args" }, true));
+      }
+      if (agent.toLowerCase() === "coach") {
+        return finish(
+          options,
+          SUBAGENT_TOOL_NAME,
+          textResult(
+            "Coach is the /coach command (review phase), not a subagent. The executor must not spawn a coach.",
+            { error: "coach_not_a_worker", agent },
+            true,
+          ),
+        );
       }
 
       const progress = options.progress ?? (options.progress = emptyProgressState());

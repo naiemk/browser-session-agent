@@ -4,6 +4,7 @@ import { fileEvidence } from "../../host/evidence.ts";
 import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "../../runtime/turn-identity.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
+import { bindCoach, type CoachHandle } from "../../host/pi-coach.ts";
 import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
 import { reconstructProgress, standingLastCoderPrompt } from "../../host/pi-subagent/progress.ts";
@@ -71,6 +72,7 @@ export class OperatorRuntime {
   readonly handle: RpcSessionHandle;
   private pi: PiLike | null = null;
   private planMode: PlanModeHandle | null = null;
+  private coach: CoachHandle | null = null;
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
   private send: (message: ChatServerMessage) => void;
@@ -141,7 +143,13 @@ export class OperatorRuntime {
         turn: () => this.clock.current(),
       },
     });
-    this.planMode = bindPlanMode(this.api);
+    this.coach = bindCoach(this.api, {
+      evidence: this.evidence,
+      objective:
+        "Help the operator with what they ask, in their browser. They judge whether it " +
+        "worked, so report truthfully and never claim more than you verified.",
+    });
+    this.planMode = bindPlanMode(this.api, { coach: this.coach });
     this.api.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
       if (!this.browserPrompt) return undefined;
       const goalId = this.sessionGoal.id();
@@ -152,8 +160,9 @@ export class OperatorRuntime {
       const plan = await standingPlanPrompt(goalId);
       const scratch = await standingScratchPrompt(goalId);
       const injection = this.planMode?.injection();
+      const coach = this.coach?.injection();
       return {
-        systemPrompt: [this.browserPrompt, plan, scratch, lastCoder, injection]
+        systemPrompt: [this.browserPrompt, plan, scratch, lastCoder, injection, coach]
           .filter(Boolean)
           .join("\n\n"),
       };
@@ -445,7 +454,7 @@ export class OperatorRuntime {
     }
     try {
       this.capPiModel();
-      const extra = this.planMode?.injection();
+      const extra = [this.planMode?.injection(), this.coach?.injection()].filter(Boolean).join("\n\n");
       await this.pi.prompt(extra ? `${extra}\n\n${trimmed}` : trimmed);
     } catch (err) {
       this.send({

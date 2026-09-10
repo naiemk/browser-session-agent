@@ -38,6 +38,7 @@ import {
   TOOL_SURVEY,
 } from "./names.ts";
 import { hashOf, observationStats } from "./metrics.ts";
+import { isYieldKind, yieldInput } from "./coach/yield.ts";
 import type { Evidence } from "./evidence.ts";
 import { findWireObservation, wireText } from "./wire.ts";
 import { DEFAULT_VIEW, type ViewStrategy } from "./view/index.ts";
@@ -510,20 +511,30 @@ export function buildTools(context: ToolContext): AgentTool[] {
       parameters: Type.Object({
         key: Type.String({ description: "Short name, e.g. operating-identity" }),
         value: Type.String({ description: "What you established, and what you saw" }),
+        yield: Type.Optional(
+          Type.String({
+            description:
+              "Yield kind: candidate_accepted | candidate_rejected | candidate_duplicate | fact_established | route_affordance | lost_place",
+          }),
+        ),
       }),
       execute: async (_id: string, params: unknown) => {
-        const raw = params as { key?: unknown; value?: unknown };
+        const raw = params as { key?: unknown; value?: unknown; yield?: unknown };
         const key = String(raw.key ?? "").trim();
         const value = String(raw.value ?? "").trim();
         if (!key || !value) return reply({ error: "remember needs a key and a value" });
 
-        // The ledger event is the provenance: the fact points at what established it.
-        const event = await context.evidence.ledger.append({
-          type: "note",
-          entityId: context.evidence.entityId,
-          intent: `established: ${key}`,
-          outcome: { ok: true, detail: value },
-        });
+        const kind = isYieldKind(raw.yield) ? raw.yield : undefined;
+        const event = await context.evidence.ledger.append(
+          kind
+            ? yieldInput({ kind, summary: key, reason: value, entityId: context.evidence.entityId })
+            : {
+                type: "note",
+                entityId: context.evidence.entityId,
+                intent: `established: ${key}`,
+                outcome: { ok: true, detail: value },
+              },
+        );
         await context.evidence.facts.mergeGoalFacts({
           [key]: { value, evidence: event?.id, at: new Date().toISOString() },
         });

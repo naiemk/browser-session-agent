@@ -26,9 +26,13 @@ import {
 import type { CustomSessionMessage, ExtensionAPI, ExtensionContext } from "../pi-api.ts";
 import {
   assistantText,
+  coachStepNumber,
+  executorRemaining,
   extractTodoItems,
   isAssistantMessage,
+  markCoachRoleComplete,
   markCompletedSteps,
+  preCoachComplete,
   type TodoItem,
 } from "./pi-plan-todos.ts";
 import { capabilityCoordinator } from "./pi-capabilities.ts";
@@ -66,7 +70,7 @@ export const PLAN_MODE_CAPABILITY_DISABLED = new Set<string>([
   ...PLAN_MODE_DISABLED_TOOLS,
 ]);
 
-const PLAN_MODE_CONTEXT = `[PLAN MODE ACTIVE]
+export const PLAN_MODE_CONTEXT = `[PLAN MODE ACTIVE]
 You are in plan mode: look at the page, do not change it.
 
 Restrictions:
@@ -75,6 +79,11 @@ Restrictions:
 - This session's model is unchanged. The operator can Ctrl+P to pick a stronger class for these turns.
 
 Ask with ask_user when a personal fact is missing. Do not invent defaults.
+
+Classify the objective before you write the plan:
+- calibration_required: many similar entities, fuzzy qualification, unknown acquisition loop. You MUST NOT author a long harvest. You MUST author scout (tight budget) → coach → harvest blocked on the coach artifact. You MUST NOT invent a list of site tactics to exhaust before coaching. Coach is a guideline generator, not a second planner. Numbered steps MUST be recognizable as scout, then coach, then harvest.
+- known_flow: a short reversible flow you can already script. No coach step.
+- criteria_unsettled: success, sources, or outreach still undefined. Ask the operator. Do not plan a harvest.
 
 Create a detailed numbered plan under a "Plan:" header:
 
@@ -85,6 +94,18 @@ Plan:
 
 Do NOT attempt to make changes — just describe what you would do.`;
 
+/** Magpie Execute hook: same `/coach` handler, not a harvest tool (COACH-15). */
+export interface PlanExecuteCoach {
+  enabled(): boolean;
+  hasArtifact(): boolean;
+  startReview(ctx: ExtensionContext): Promise<boolean>;
+  onArtifact(handler: (ctx: ExtensionContext) => void): void;
+}
+
+export interface PlanModeBindOptions {
+  coach?: PlanExecuteCoach;
+}
+
 export interface PlanModeHandle {
   enabled(): boolean;
   executing(): boolean;
@@ -92,6 +113,34 @@ export interface PlanModeHandle {
   injection(): string | undefined;
   /** After the parent tool list is known (hosted compose / resume). */
   adoptParentTools(names: string[]): void;
+}
+
+export const SCOUT_EXECUTE_HINT =
+  "After the last of these steps, stop. Do not harvest. Do not call subagent for coaching.";
+
+export function formatExecuteMessage(
+  remaining: readonly TodoItem[],
+  phase: "scout" | "harvest" | "all",
+): string {
+  const list = remaining.map((todo) => `${todo.step}. ${todo.text}`).join("\n");
+  const first = remaining[0]?.text ?? "";
+  if (phase === "scout") {
+    return `Execute the plan.
+
+Remaining steps (scout only — the host will run /coach after these; do not harvest and do not spawn planner, reviewer, or coder as a coach):
+${list}
+
+Start with: ${first}
+After completing a step, include a [DONE:n] tag in your response.
+${SCOUT_EXECUTE_HINT}`;
+  }
+  return `Execute the plan.
+
+Remaining steps:
+${list}
+
+Start with: ${first}
+After completing a step, include a [DONE:n] tag in your response.`;
 }
 
 export function parentSafeTools(names: readonly string[]): string[] {
@@ -115,17 +164,41 @@ export function sessionTurnCount(
   return count;
 }
 
-export function bindPlanMode(pi: ExtensionAPI): PlanModeHandle {
+export function bindPlanMode(pi: ExtensionAPI, options: PlanModeBindOptions = {}): PlanModeHandle {
   const capabilities = capabilityCoordinator(pi);
   let planModeEnabled = false;
   let executionMode = false;
   let todoItems: TodoItem[] = [];
+  let autoCoachStarted = false;
+
+  function hasArtifact(): boolean {
+    return Boolean(options.coach?.hasArtifact());
+  }
+
+  function remainingForExecutor(): TodoItem[] {
+    return executorRemaining(todoItems, hasArtifact());
+  }
+
+  function awaitingHostCoach(): boolean {
+    return Boolean(options.coach) && coachStepNumber(todoItems) !== undefined && !hasArtifact();
+  }
 
   function injection(): string | undefined {
     if (planModeEnabled) return PLAN_MODE_CONTEXT;
     if (executionMode && todoItems.length > 0) {
-      const remaining = todoItems.filter((todo) => !todo.completed);
+      const remaining = remainingForExecutor();
+      if (remaining.length === 0) return undefined;
       const todoList = remaining.map((todo) => `${todo.step}. ${todo.text}`).join("\n");
+      if (awaitingHostCoach()) {
+        return `[EXECUTING PLAN - Full tool access enabled]
+
+Remaining steps (scout only — the host will run /coach after these):
+${todoList}
+
+Execute each step in order.
+After completing a step, include a [DONE:n] tag in your response.
+${SCOUT_EXECUTE_HINT}`;
+      }
       return `[EXECUTING PLAN - Full tool access enabled]
 
 Remaining steps:
@@ -135,6 +208,16 @@ Execute each step in order.
 After completing a step, include a [DONE:n] tag in your response.`;
     }
     return undefined;
+  }
+
+  async function maybeStartCoach(ctx: ExtensionContext): Promise<void> {
+    const coach = options.coach;
+    if (!executionMode || !coach) return;
+    if (autoCoachStarted || coach.enabled() || coach.hasArtifact()) return;
+    if (!preCoachComplete(todoItems)) return;
+    autoCoachStarted = true;
+    const started = await coach.startReview(ctx);
+    if (!started) autoCoachStarted = false;
   }
 
   function updateStatus(ctx: ExtensionContext): void {
@@ -187,6 +270,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     planModeEnabled = true;
     executionMode = false;
     todoItems = [];
+    autoCoachStarted = false;
     enablePlanModeTools();
     ctx.ui.notify(
       "Plan mode on. Act, coder, and other mutations are off. Same model as this session — Ctrl+P to change.",
@@ -203,6 +287,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     planModeEnabled = false;
     executionMode = false;
     todoItems = [];
+    autoCoachStarted = false;
     restoreNormalModeTools();
     if (notify) ctx.ui.notify("Plan mode off. Browser tools restored.");
     updateStatus(ctx);
@@ -283,6 +368,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
   pi.on("agent_end", async (event: unknown, ctxUnknown: unknown) => {
     const ctx = ctxUnknown as ExtensionContext;
     if (executionMode && todoItems.length > 0) {
+      await maybeStartCoach(ctx);
       if (todoItems.every((todo) => todo.completed)) {
         const completedList = todoItems.map((todo) => `~~${todo.text}~~`).join("\n");
         pi.sendMessage?.(
@@ -295,6 +381,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
         );
         executionMode = false;
         todoItems = [];
+        autoCoachStarted = false;
         updateStatus(ctx);
         persistState();
       }
@@ -331,26 +418,23 @@ After completing a step, include a [DONE:n] tag in your response.`;
     const sessionMoved = sessionTurnCount(ctx.sessionManager?.getEntries?.() ?? []) > turnsBefore;
 
     if (choice?.startsWith("Execute")) {
-      const first = todoItems[0];
+      const remaining = remainingForExecutor();
+      const first = remaining[0] ?? todoItems[0];
       if (!first) return;
       planModeEnabled = false;
       executionMode = true;
+      autoCoachStarted = false;
       restoreNormalModeTools();
       updateStatus(ctx);
       persistState();
-      const remainingList = todoItems.map((todo) => `${todo.step}. ${todo.text}`).join("\n");
-      const execMessage = `Execute the plan.
-
-Remaining steps:
-${remainingList}
-
-Start with: ${first.text}
-After completing a step, include a [DONE:n] tag in your response.`;
+      const phase = awaitingHostCoach() ? "scout" : hasArtifact() ? "harvest" : "all";
+      const execMessage = formatExecuteMessage(remaining.length > 0 ? remaining : [first], phase);
       pi.sendMessage?.(planTodoListMessage, { deliverAs: "followUp" });
       pi.sendMessage?.(
         { customType: "plan-mode-execute", content: execMessage, display: true },
         { triggerTurn: !sessionMoved, deliverAs: "followUp" },
       );
+      await maybeStartCoach(ctx);
     } else if (choice === "Refine the plan") {
       const refinement = ctx.ui.editor
         ? await ctx.ui.editor("Refine the plan:", "")
@@ -402,9 +486,28 @@ After completing a step, include a [DONE:n] tag in your response.`;
       }
       markCompletedSteps(texts.join("\n"), todoItems);
     }
+    if (hasArtifact()) markCoachRoleComplete(todoItems);
 
     if (planModeEnabled) enablePlanModeTools();
     updateStatus(ctx);
+    if (executionMode) void maybeStartCoach(ctx);
+  });
+
+  options.coach?.onArtifact((ctx) => {
+    if (!executionMode) return;
+    markCoachRoleComplete(todoItems);
+    updateStatus(ctx);
+    persistState();
+    const remaining = remainingForExecutor();
+    if (remaining.length === 0) return;
+    pi.sendMessage?.(
+      {
+        customType: "plan-mode-execute",
+        content: formatExecuteMessage(remaining, "harvest"),
+        display: true,
+      },
+      { triggerTurn: true, deliverAs: "followUp" },
+    );
   });
 
   return {

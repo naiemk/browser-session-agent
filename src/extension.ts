@@ -7,6 +7,7 @@ import { shapePiToolResults } from "./host/pi-shape.ts";
 import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { bindPlanMode } from "./host/pi-plan-mode.ts";
+import { bindCoach } from "./host/pi-coach.ts";
 import { bindJobCommands } from "./host/pi-jobs.ts";
 import { bindSessionGoal, isSubagentProcess } from "./host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
@@ -176,7 +177,13 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     };
   });
 
-  bindPlanMode(pi);
+  const coach = bindCoach(pi, {
+    evidence,
+    objective:
+      "Help the operator with what they ask, in their browser. They judge whether it " +
+      "worked, so report truthfully and never claim more than you verified.",
+  });
+  bindPlanMode(pi, { coach });
   jobs = bindJobCommands(pi, { headless: process.env.BSA_HEADLESS === "1" });
 
   pi.registerCommand("browser-evidence", {
