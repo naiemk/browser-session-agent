@@ -6,8 +6,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import browserSessionAgent from "../../src/extension.ts";
-import { bindCoach, COACH_CHECKPOINT_ENTRY, COACH_COMMAND } from "../../src/host/pi-coach.ts";
-import { PLAN_COMMAND, PLAN_MODE_CONTEXT, SCOUT_EXECUTE_HINT } from "../../src/host/pi-plan-mode.ts";
+import { bindCoach, COACH_CHECKPOINT_ENTRY, COACH_COMMAND, COACH_REVIEW_THINKING } from "../../src/host/pi-coach.ts";
+import { MAGPIE_CHAT_OBJECTIVE } from "../../src/host/pi-operator-goal.ts";
+import { fileEvidence } from "../../src/host/evidence.ts";
+import { MAGPIE_GOAL_ENTRY } from "../../src/host/pi-session-goal.ts";
+import { MAGPIE_RESCUE_ACTIONS_WITHOUT_YIELD } from "../../src/runtime/coach/rescue.ts";
+import { TOOL_REMEMBER } from "../../src/runtime/names.ts";
+import { PLACEHOLDER } from "../../src/runtime/prune.ts";
+import { PLAN_COMMAND, PLAN_MODE_CONTEXT, SCOUT_EXECUTE_HINT, HARVEST_EXECUTE_HINT } from "../../src/host/pi-plan-mode.ts";
 import {
   coachStepNumber,
   executorRemaining,
@@ -275,6 +281,24 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     assert.doesNotMatch(text, /Harvest \(blocked/);
   });
 
+  it("Execute starts one scout-only turn, not a full todo list that includes Coach", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    const todoLists = pi.customMessages.filter((message) => message.customType === "plan-todo-list");
+    const executes = pi.customMessages.filter((message) => message.customType === "plan-mode-execute");
+    assert.equal(todoLists.length, 0);
+    assert.equal(executes.length, 1);
+    assert.match(executes[0]?.content ?? "", /scout only/i);
+    assert.doesNotMatch(executes[0]?.content ?? "", /Coach: Submit/);
+    assert.equal(pi.userMessages.filter((text) => text.includes("Execute the plan")).length, 1);
+    const widget = pi.widgets.get("plan-todos") ?? [];
+    assert.ok(widget.some((line) => /Coach:/i.test(line)));
+    assert.ok(widget.some((line) => /Harvest/i.test(line)));
+  });
+
   it("pre-coach [DONE:n] then agent_end runs the T03 coach handler", async () => {
     await tempCore();
     const pi = createFakePi();
@@ -332,6 +356,7 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     assert.equal(coachTodo?.completed, true);
     const harvestExec = pi.customMessages.filter((message) => message.customType === "plan-mode-execute").at(-1);
     assert.match(harvestExec?.content ?? "", /Harvest \(blocked/);
+    assert.match(harvestExec?.content ?? "", new RegExp(HARVEST_EXECUTE_HINT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(harvestExec?.content ?? "", /Coach: Submit/);
     assert.doesNotMatch(harvestExec?.content ?? "", /scout only/i);
     const reviewStarts = pi.userMessages.filter((text) => text.includes("[COACH REVIEW]"));
@@ -367,5 +392,186 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     });
     assert.equal(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")), false);
     assert.equal(pi.getActiveTools().includes("act"), true);
+  });
+});
+
+function magpieGoalId(pi: ReturnType<typeof createFakePi>): string {
+  const entry = [...pi.entries].reverse().find((item) => item.customType === MAGPIE_GOAL_ENTRY);
+  const goalId = (entry?.data as { goalId?: string } | undefined)?.goalId;
+  assert.ok(goalId);
+  return goalId;
+}
+
+async function appendHarvestActions(pi: ReturnType<typeof createFakePi>, count: number): Promise<void> {
+  const evidence = fileEvidence({ goalId: () => magpieGoalId(pi), goal: "t06" });
+  for (let i = 0; i < count; i++) {
+    await evidence.ledger.append({
+      type: "action",
+      intent: `harvest hop ${i}`,
+      action: { kind: "click" },
+      outcome: { ok: true },
+      after: { url: `https://example.test/u/${i}`, title: "profile", changes: ["navigated"] },
+    });
+  }
+}
+
+async function runCalibrationToArtifact(pi: ReturnType<typeof createFakePi>): Promise<void> {
+  pi.userMessages.push("Collect nightlife candidates; person not brand; do not help the operator.");
+  await executeNumberedPlan(pi, CALIBRATION_PLAN);
+  await pi.emit("turn_end", {
+    message: { role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" },
+  });
+  await pi.emit("agent_end", {
+    messages: [{ role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" }],
+  });
+  await pi.emit("turn_end", {
+    message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+  });
+}
+
+describe("AGENT-16-T06 Magpie closed-loop coach", () => {
+  it("removes subagent while awaiting host coach and restores it after the artifact", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    assert.equal(pi.getActiveTools().includes("subagent"), false);
+    assert.equal(pi.getActiveTools().includes("act"), true);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" },
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" }],
+    });
+    assert.equal(pi.getActiveTools().includes("subagent"), false);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.equal(pi.getActiveTools().includes("subagent"), true);
+    assert.equal(pi.getActiveTools().includes("act"), true);
+  });
+
+  it("coaches after scout remember yield without [DONE:n], not after an empty puff", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "Looking around." }],
+    });
+    assert.equal(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")), false);
+    await runTool(pi, TOOL_REMEMBER, {
+      key: "list-exists",
+      value: "source list is scrollable",
+      yield: "route_affordance",
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "Scout notes recorded." }],
+    });
+    assert.ok(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")));
+  });
+
+  it("requests a stronger thinking class for review and restores it after accept", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" },
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" }],
+    });
+    assert.equal(pi.thinkingLog.includes(COACH_REVIEW_THINKING), true);
+    assert.equal(pi.thinkingLevel, COACH_REVIEW_THINKING);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.equal(pi.thinkingLevel, "medium");
+    assert.equal(pi.thinkingLog.at(-1), "medium");
+  });
+
+  it("puts the plan objective in the digest, not the generic Magpie card", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCalibrationToArtifact(pi);
+    const review = pi.userMessages.find((text) => text.includes("[COACH REVIEW]")) ?? "";
+    assert.match(review, /Collect nightlife candidates/);
+    assert.match(review, /person not brand/);
+    assert.doesNotMatch(review, new RegExp(MAGPIE_CHAT_OBJECTIVE.slice(0, 40)));
+  });
+
+  it("drops scout snapshots at the coach boundary and keeps STRATEGY", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCalibrationToArtifact(pi);
+    const injected = await pi.emit("before_agent_start", {});
+    const text = JSON.stringify(injected);
+    assert.match(text, /STRATEGY/);
+    assert.doesNotMatch(text, /"controls":/);
+    const [compacted] = (await pi.emit("context", {
+      messages: [
+        {
+          role: "toolResult",
+          toolName: "act",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                url: "https://example.test/list",
+                controls: [{ ref: "e1", role: "link", name: "Tagged" }],
+              }),
+            },
+          ],
+        },
+        { role: "user", content: "[COACH REVIEW]\n{}" },
+        { role: "assistant", content: "STRATEGY (untrusted guidance; the live page is the authority)" },
+      ],
+    })) as [{ messages?: Array<{ content?: unknown }> } | undefined];
+    assert.ok(compacted?.messages);
+    assert.doesNotMatch(JSON.stringify(compacted.messages[0]?.content), /controls/);
+    assert.match(JSON.stringify(compacted.messages), /STRATEGY \(untrusted/);
+    assert.match(
+      JSON.stringify(compacted.messages[0]?.content),
+      new RegExp(PLACEHOLDER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+  });
+
+  it("rescues after N actions without candidate yield; elapsed-ms-only does not; second empty rescue halts", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCalibrationToArtifact(pi);
+    const digestReviews = () =>
+      pi.userMessages.filter((text) => text.includes("Trajectory digest (not the session transcript)"));
+    assert.equal(digestReviews().length, 1);
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "harvesting without new actions" }],
+    });
+    assert.equal(digestReviews().length, 1);
+    await appendHarvestActions(pi, MAGPIE_RESCUE_ACTIONS_WITHOUT_YIELD);
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "still hopping" }],
+    });
+    assert.equal(digestReviews().length, 2);
+    assert.match(digestReviews()[1] ?? "", /"followed":false/);
+    await pi.emit("turn_end", { message: { role: "assistant", content: "not-json-1" } });
+    await pi.emit("turn_end", { message: { role: "assistant", content: "not-json-2" } });
+    await pi.emit("turn_end", { message: { role: "assistant", content: "not-json-3" } });
+    assert.match(pi.notifications.join("\n"), /Coach review ended/i);
+    await appendHarvestActions(pi, MAGPIE_RESCUE_ACTIONS_WITHOUT_YIELD);
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "still hopping after empty rescue" }],
+    });
+    assert.equal(digestReviews().length, 2);
+    assert.match(pi.notifications.join("\n"), /Stopping for the operator/i);
   });
 });

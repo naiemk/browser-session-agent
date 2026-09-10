@@ -239,6 +239,20 @@ describe("dropping superseded snapshots", () => {
     const messages = [{ role: "user", content: "hi" }, look("observe", "https://example.com")];
     assert.equal(compactFinishedWork(messages), messages);
   });
+
+  it("drops scout snapshots after a coach checkpoint and keeps the STRATEGY message", () => {
+    const scout = look("act", "https://example.test/list");
+    const messages: PrunableMessage[] = [
+      { role: "user", content: "collect" },
+      scout,
+      { role: "user", content: "[COACH REVIEW]\nTrajectory digest" },
+      { role: "assistant", content: "STRATEGY (untrusted guidance; the live page is the authority)" },
+    ];
+    const compacted = compactFinishedWork(messages);
+    assert.equal(isPlaceholder(compacted[1]?.content), true);
+    assert.match(extractText(compacted[3]?.content) ?? "", /STRATEGY \(untrusted/);
+    assert.doesNotMatch(JSON.stringify(compacted[1]?.content), /controls/);
+  });
 });
 
 describe("compaction in the session Pi drives", () => {

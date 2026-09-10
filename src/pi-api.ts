@@ -112,6 +112,9 @@ export interface ExtensionAPI {
   sendMessage?(message: CustomSessionMessage, options?: SendMessageOptions): void;
   sendUserMessage?(content: string, options?: SendUserMessageOptions): void;
   appendEntry?(customType: string, data?: unknown): void;
+  /** Pi thinking selector (D12). Coach requests a stronger class; it does not catalog models. */
+  thinkingLevel?: string;
+  setThinkingLevel?: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
 }
 
 export function textResult(text: string, details: Record<string, unknown> = {}, isError = false): ToolResult {

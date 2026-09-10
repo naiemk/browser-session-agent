@@ -1,12 +1,18 @@
 /**
  * Interactive `/coach`: review-phase digest in, strategy artifact out (COACH-09, 12–13, 15–18).
  *
- * Does not invent a model router (D12). The operator may Ctrl+P to a stronger class.
+ * Stronger thinking class for the review turn (COACH-12). Does not invent a model router (D12).
  */
 
 import { coreRoot, goalPaths } from "../core/paths.ts";
 import type { Evidence } from "../runtime/evidence.ts";
 import { compileDigest, type CompiledDigest } from "../runtime/coach/digest.ts";
+import {
+  harvestFollowed,
+  hasScoutYield,
+  magpieRescueDecision,
+  siteActionsWithoutCandidateYield,
+} from "../runtime/coach/rescue.ts";
 import {
   assertStrategyArtifact,
   renderStrategyArtifact,
@@ -20,11 +26,12 @@ import type { CustomSessionMessage, ExtensionAPI, ExtensionContext } from "../pi
 import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { PLAN_MODE_DISABLED_TOOLS } from "./pi-plan-mode.ts";
 import { assistantText, isAssistantMessage } from "./pi-plan-todos.ts";
+import { firstOperatorGoal, isOperatorGoalText, MAGPIE_CHAT_OBJECTIVE } from "./pi-operator-goal.ts";
 
 export const COACH_COMMAND = "coach";
 export const COACH_CHECKPOINT_ENTRY = "coach-checkpoint";
 export const COACH_CONTEXT_TYPE = "coach-review-context";
-
+export const COACH_REVIEW_THINKING = "high" as const;
 export const COACH_DISABLED_TOOLS = PLAN_MODE_DISABLED_TOOLS;
 
 const COACH_RETRY_MAX = 2;
@@ -37,8 +44,10 @@ const COACH_INSTRUCTIONS =
   "\n" +
   STRATEGY_REQUIRED_HINT +
   "\nDo not rewrite qualification criteria, grants, send, or follow policy. Do not skip approval. " +
-  "Coach is a guideline generator, not a second planner.\n" +
-  "This session's model is unchanged. The operator can Ctrl+P to pick a stronger class for this turn.\n\n" +
+  "Coach is a guideline generator, not a second planner. The loop is a trial, not a lock: " +
+  "doNot may name wasted routes already in this digest; do not forbid untested pools. " +
+  "If yield counts are zero, say so and demand recording — do not lock a pool. " +
+  "This turn uses a stronger thinking class; it is restored after the artifact.\n\n" +
   "Trajectory digest (not the session transcript):\n";
 
 export interface CoachCheckpointData {
@@ -51,18 +60,34 @@ export interface CoachCheckpointData {
   replacedPrevious?: boolean;
 }
 
+export interface PlanSlice {
+  objective?: string;
+  criteria?: readonly string[];
+}
+
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface CoachThinking {
+  get(): string | undefined;
+  set(level: ThinkingLevel): void;
+}
+
 export interface CoachHandle {
   enabled(): boolean;
   injection(): string | undefined;
   hasArtifact(): boolean;
   startReview(ctx: ExtensionContext): Promise<boolean>;
   onArtifact(handler: (ctx: ExtensionContext) => void): void;
+  setPlanSlice(slice: PlanSlice): void;
+  hasScoutYield(): Promise<boolean>;
+  considerRescue(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
 }
 
 export interface CoachBindOptions {
   evidence: Evidence;
-  objective: string;
-  criteria?: readonly string[];
+  objective: string | (() => string);
+  criteria?: readonly string[] | (() => readonly string[]);
+  thinking?: CoachThinking;
 }
 
 function restoreCheckpoint(
@@ -76,10 +101,32 @@ function restoreCheckpoint(
   return record as CoachCheckpointData;
 }
 
+function resolveBoundText(value: string | (() => string) | undefined): string {
+  const raw = typeof value === "function" ? value() : value;
+  return raw?.trim() ?? "";
+}
+
+function resolveBoundList(
+  value: readonly string[] | (() => readonly string[]) | undefined,
+): string[] {
+  const raw = typeof value === "function" ? value() : value;
+  return [...(raw ?? [])];
+}
+
+function thinkingControl(pi: ExtensionAPI, options: CoachBindOptions): CoachThinking | undefined {
+  if (options.thinking) return options.thinking;
+  if (typeof pi.setThinkingLevel !== "function") return undefined;
+  return {
+    get: () => pi.thinkingLevel,
+    set: (level) => pi.setThinkingLevel?.(level),
+  };
+}
+
 async function compileSessionDigest(
   options: CoachBindOptions,
-  checkpoint?: CoachCheckpointData,
-  ctx?: ExtensionContext,
+  checkpoint: CoachCheckpointData | undefined,
+  ctx: ExtensionContext | undefined,
+  planSlice: PlanSlice,
 ): Promise<CompiledDigest> {
   const events = (await options.evidence.ledger.read?.()) ?? [];
   await options.evidence.metrics.flush();
@@ -89,46 +136,67 @@ async function compileSessionDigest(
   if (goalId) {
     metrics = await readMetrics(goalPaths(root, goalId).metricsFile);
   }
+  const since = checkpoint
+    ? events.filter((event) => {
+        const ts = Date.parse(event.ts);
+        const at = Date.parse(checkpoint.at);
+        return !Number.isFinite(ts) || !Number.isFinite(at) || ts >= at;
+      })
+    : events;
+  const boundObjective = resolveBoundText(options.objective);
+  const goalText =
+    (planSlice.objective && isOperatorGoalText(planSlice.objective) ? planSlice.objective : undefined) ||
+    firstOperatorGoal(ctx?.sessionManager?.getEntries?.() ?? []) ||
+    (isOperatorGoalText(boundObjective) ? boundObjective : undefined) ||
+    boundObjective ||
+    MAGPIE_CHAT_OBJECTIVE;
+  const criteria = planSlice.criteria?.length
+    ? [...planSlice.criteria]
+    : resolveBoundList(options.criteria);
   return compileDigest({
     events,
     metrics,
-    goalText: userGoalFromSession(ctx, options.objective),
-    criteria: [...(options.criteria ?? [])],
+    goalText,
+    criteria,
     checkpoint: checkpoint ? { at: checkpoint.at } : undefined,
     previousArtifact: checkpoint
-      ? { summary: checkpoint.artifact.summary, followed: true }
+      ? { summary: checkpoint.artifact.summary, followed: harvestFollowed(since) }
       : undefined,
   });
 }
 
-function userGoalFromSession(ctx: ExtensionContext | undefined, fallback: string): string {
-  const entries = ctx?.sessionManager?.getEntries?.() ?? [];
-  for (const entry of [...entries].reverse()) {
-    if (entry.type !== "message") continue;
-    const message = entry.message;
-    if (!message || typeof message !== "object") continue;
-    if ((message as { role?: unknown }).role !== "user") continue;
-    const text = assistantText(message).trim();
-    if (!text) continue;
-    if (text.includes("[COACH REVIEW]")) continue;
-    if (text.startsWith("/")) continue;
-    return text.length > 800 ? `${text.slice(0, 797)}...` : text;
-  }
-  return fallback;
-}
-
 export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHandle {
   const capabilities = capabilityCoordinator(pi);
+  const thinking = thinkingControl(pi, options);
   let reviewing = false;
   let digestJson = "";
   let latest: CoachCheckpointData | undefined;
   let artifactListener: ((ctx: ExtensionContext) => void) | undefined;
   let lastAttemptText = "";
   let rejectCount = 0;
+  let planSlice: PlanSlice = {};
+  let savedThinking: string | undefined;
+  let rescueInFlight = false;
+  let emptyRescues = 0;
+  let halted = false;
 
   function persist(data: CoachCheckpointData): void {
     latest = data;
     pi.appendEntry?.(COACH_CHECKPOINT_ENTRY, data);
+  }
+
+  function requestReviewClass(): boolean {
+    if (!thinking) return false;
+    savedThinking = thinking.get() ?? "medium";
+    thinking.set(COACH_REVIEW_THINKING);
+    return true;
+  }
+
+  function restoreReviewClass(): void {
+    if (!thinking || savedThinking === undefined) return;
+    const previous = savedThinking as ThinkingLevel;
+    savedThinking = undefined;
+    thinking.set(previous);
   }
 
   function enableReview(ctx: ExtensionContext): void {
@@ -139,12 +207,20 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     ctx.ui.setStatus?.("coach", "coach review");
   }
 
-  function disableReview(ctx: ExtensionContext, notify = false): void {
+  function disableReview(ctx: ExtensionContext, notify = false, reason: "accept" | "abort" | "session" = "session"): void {
+    const wasRescue = rescueInFlight;
     reviewing = false;
     digestJson = "";
     lastAttemptText = "";
     rejectCount = 0;
+    rescueInFlight = false;
     capabilities.release("coach");
+    restoreReviewClass();
+    if (reason === "abort" && wasRescue) emptyRescues += 1;
+    if (reason === "accept") {
+      emptyRescues = 0;
+      halted = false;
+    }
     ctx.ui.setStatus?.("coach", latest ? "coached" : undefined);
     if (notify) ctx.ui.notify("Coach review ended. Browser tools restored.");
   }
@@ -154,9 +230,14 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
       return `${COACH_INSTRUCTIONS}${digestJson}`;
     }
     if (!latest) return undefined;
+    const trial =
+      "\nThis STRATEGY is a trial loop. Try it until it is falsified. Record candidate_accepted, " +
+      "candidate_rejected, or candidate_duplicate after every candidate. Clicks that return ok are not " +
+      "progress. If the named route is falsified, stop — do not invent a second plan. Magpie will run " +
+      "/coach again. Do not treat Do-not as covering lists the scout never tried.\n";
     const swap = latest.replacedPrevious
       ? "\nA new guideline replaces the previous one. Finish the current entity before switching loops.\n"
-      : "\n";
+      : trial;
     return `${latest.rendered}${swap}`;
   }
 
@@ -165,19 +246,25 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
       ctx.ui.notify("Coach review is already running.");
       return false;
     }
+    if (!requestReviewClass()) {
+      ctx.ui.notify(
+        "Coach needs Pi thinking-level control for a stronger review class (COACH-12).",
+        "error",
+      );
+      return false;
+    }
     const previous = latest;
     let compiled: CompiledDigest;
     try {
-      compiled = await compileSessionDigest(options, previous, ctx);
+      compiled = await compileSessionDigest(options, previous, ctx, planSlice);
     } catch (error) {
+      restoreReviewClass();
       ctx.ui.notify(`Could not compile digest: ${error instanceof Error ? error.message : String(error)}`, "error");
       return false;
     }
     digestJson = compiled.json;
     enableReview(ctx);
-    ctx.ui.notify(
-      "Coach review: mutations off. Digest only — not the transcript. Ctrl+P if you want a stronger class.",
-    );
+    ctx.ui.notify("Coach review: mutations off. Digest only. Stronger thinking class for this turn.");
     const content = `${COACH_INSTRUCTIONS}${compiled.json}`;
     if (pi.sendUserMessage) {
       pi.sendUserMessage(content, { deliverAs: "followUp" });
@@ -204,7 +291,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
         replacedPrevious: Boolean(latest),
       });
       await options.evidence.facts.mergeGoalFacts({ strategyArtifact: artifact });
-      disableReview(ctx);
+      disableReview(ctx, false, "accept");
       pi.sendMessage?.(
         {
           customType: "coach-artifact",
@@ -226,6 +313,8 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
               `Output one JSON object only:\n${STRATEGY_JSON_EXAMPLE}`,
             { deliverAs: "followUp" },
           );
+        } else if (rejectCount > COACH_RETRY_MAX) {
+          disableReview(ctx, true, "abort");
         }
         return false;
       }
@@ -283,6 +372,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     reviewing = false;
     digestJson = "";
     capabilities.release("coach");
+    restoreReviewClass();
     ctx.ui.setStatus?.("coach", latest ? "coached" : undefined);
   });
 
@@ -293,6 +383,51 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     startReview: (ctx) => handleCoach("", ctx),
     onArtifact(handler) {
       artifactListener = handler;
+    },
+    setPlanSlice(slice) {
+      planSlice = { ...planSlice, ...slice };
+    },
+    async hasScoutYield() {
+      const events = (await options.evidence.ledger.read?.()) ?? [];
+      return hasScoutYield(events);
+    },
+    async considerRescue(ctx) {
+      if (halted) return "none";
+      if (reviewing || !latest) return "none";
+      let compiled: CompiledDigest;
+      try {
+        compiled = await compileSessionDigest(options, latest, ctx, planSlice);
+      } catch {
+        return "none";
+      }
+      const events = (await options.evidence.ledger.read?.()) ?? [];
+      const since = events.filter((event) => {
+        const ts = Date.parse(event.ts);
+        const at = Date.parse(latest!.at);
+        return !Number.isFinite(ts) || !Number.isFinite(at) || ts >= at;
+      });
+      const decision = magpieRescueDecision({
+        siteActionsWithoutCandidateYield: siteActionsWithoutCandidateYield(since),
+        navigationCycles: compiled.digest.navigationCycles.length,
+        lostPlace: compiled.digest.lostPlace,
+        wallMs: compiled.digest.wallMs,
+        emptyRescues,
+      });
+      if (decision === "halt") {
+        halted = true;
+        ctx.ui.notify(
+          "Harvest produced no yield after a rescue coach. Stopping for the operator.",
+          "warning",
+        );
+        return "halted";
+      }
+      if (decision === "review") {
+        rescueInFlight = true;
+        const started = await handleCoach("", ctx);
+        if (!started) rescueInFlight = false;
+        return started ? "started" : "none";
+      }
+      return "none";
     },
   };
 }

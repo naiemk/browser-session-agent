@@ -183,6 +183,15 @@ export function epochStart(messages: readonly PrunableMessage[]): number {
   return 0;
 }
 
+/** Last user/custom message that starts harvest after /coach (COACH-13). */
+export function coachEpochStart(messages: readonly PrunableMessage[]): number {
+  for (let index = messages.length - 1; index > 0; index--) {
+    const text = extractText(messages[index]?.content) ?? "";
+    if (text.includes("[COACH REVIEW]") || text.includes("STRATEGY (untrusted")) return index;
+  }
+  return -1;
+}
+
 /**
  * Drop superseded snapshots from finished work, and from the current piece of work.
  *
@@ -206,17 +215,20 @@ export function compactFinishedWork<T extends PrunableMessage>(
   messages: T[],
   options: PruneOptions = {},
 ): T[] {
-  const boundary = epochStart(messages);
+  const coachBoundary = coachEpochStart(messages);
+  const boundary = coachBoundary >= 0 ? coachBoundary : epochStart(messages);
+  const finishedKeep = coachBoundary >= 0 ? 0 : (options.keepLatest ?? 1);
   const pruneOpts: PruneOptions = {
     ...options,
     keepLatest: options.keepLatest ?? 1,
     group: options.group ?? "any",
   };
+  const finishedOpts: PruneOptions = { ...pruneOpts, keepLatest: finishedKeep };
   const compacted =
     boundary === 0
       ? pruneMessages(messages, pruneOpts)
       : [
-          ...pruneMessages(messages.slice(0, boundary), pruneOpts),
+          ...pruneMessages(messages.slice(0, boundary), finishedOpts),
           ...pruneMessages(messages.slice(boundary), pruneOpts),
         ];
   // After dropping snapshots, and also when there is nothing to drop: every tool

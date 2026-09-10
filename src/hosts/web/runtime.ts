@@ -5,6 +5,7 @@ import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "../../runtime/turn-identity.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
 import { bindCoach, type CoachHandle } from "../../host/pi-coach.ts";
+import { MAGPIE_CHAT_OBJECTIVE } from "../../host/pi-operator-goal.ts";
 import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
 import { reconstructProgress, standingLastCoderPrompt } from "../../host/pi-subagent/progress.ts";
@@ -145,9 +146,14 @@ export class OperatorRuntime {
     });
     this.coach = bindCoach(this.api, {
       evidence: this.evidence,
-      objective:
-        "Help the operator with what they ask, in their browser. They judge whether it " +
-        "worked, so report truthfully and never claim more than you verified.",
+      objective: MAGPIE_CHAT_OBJECTIVE,
+      thinking: {
+        get: () => this.pi?.thinkingLevel ?? this.thinking,
+        set: (level) => {
+          this.thinking = level;
+          this.pi?.setThinkingLevel(level);
+        },
+      },
     });
     this.planMode = bindPlanMode(this.api, { coach: this.coach });
     this.api.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {

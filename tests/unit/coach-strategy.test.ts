@@ -68,6 +68,14 @@ describe("AGENT-16-T02 strategy artifact", () => {
     );
   });
 
+  it("accepts assumptions that mention a follower threshold without rewriting it", () => {
+    const artifact = assertStrategyArtifact({
+      ...GUIDELINE,
+      assumptions: ["no explicit follower threshold", "do not change the follower threshold"],
+    });
+    assert.match(artifact.assumptions.join(" "), /follower threshold/);
+  });
+
   it("drops unknown keys and truncates over-long lists", () => {
     const parsed = parseStrategyArtifact({
       schemaVersion: 1,

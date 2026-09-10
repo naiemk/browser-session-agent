@@ -164,7 +164,7 @@ describe("AGENT-16-T01 trajectory digest", () => {
   });
 
   it("is pure: no Pi, Playwright, or node:fs in the coach digest modules", () => {
-    for (const name of ["digest.ts", "yield.ts", "strategy.ts"]) {
+    for (const name of ["digest.ts", "yield.ts", "strategy.ts", "rescue.ts"]) {
       const source = readFileSync(path.join(COACH_DIR, name), "utf8");
       for (const specifier of importSpecifiers(source)) {
         assert.doesNotMatch(specifier, /playwright/i);

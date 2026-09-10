@@ -8,8 +8,8 @@ Normative for AGENT-16. A cheaper model implementing a ticket MUST cite requirem
 and MUST NOT invent architecture. If a requirement is ambiguous, stop and escalate.
 
 Release order (tick as work lands): [`docs/release-roadmap.md`](release-roadmap.md) R1
-(interactive `/coach`, then Magpie Execute auto-invoke) then R3 (job-invoked). Do not
-treat T04 as R1. T05 is R1.
+(interactive `/coach`, Magpie Execute auto-invoke, then T06 closed loop) then R3
+(job-invoked). Do not treat T04 as R1. T05 invocation is not R1.E2. T06 is R1.
 
 Related:
 
@@ -17,8 +17,9 @@ Related:
 - `docs/autonomous-agent.md` — environment diagnosis; this is the missing strategy layer
 - `docs/jobs-v2-spec.md` — EXEC-04 context, QUALITY-04 review op, OBS-04 phase routing
 - `docs/example-prompts/party.txt` — motivating task
-- Live evidence: `goal_mtrvevpq001`, operator-guided Instagram rerun, and
-  `goal_mtumeewm001` (Execute did not invoke `/coach`; see AGENT-16-T05) in
+- Live evidence: `goal_mtrvevpq001`, operator-guided Instagram rerun,
+  `goal_mtumeewm001` (Execute did not invoke `/coach`; AGENT-16-T05), and
+  `goal_mtvqt1a6001` (host `/coach` fired, harvest ignored; AGENT-16-T06) in
   `docs/live-run-evidence-log.md`
 
 ---
@@ -113,11 +114,16 @@ For `calibration_required`:
    handler after pre-coach plan steps complete (AGENT-16-T05). The executor MUST NOT
    be given the coach-role todo as remaining work.
 3. **Harvest** — blocked on a valid strategy artifact. Cheap model. Repeated loop.
-   Same qualification criteria as the spec.
+   Same qualification criteria as the spec. The first artifact is a **trial**: harvest
+   MUST try it until `falsify` or a yield breaker, record `candidate_*`, and MUST NOT
+   invent a second plan. Magpie Execute then leases `/coach` again (rescue).
 
 Optional later **rescue** coach: the spec names yield breakers (actions without a new
 qualified candidate, navigation cycles, repeated observation hashes). Wall-clock alone
-MUST NOT fire a coach.
+MUST NOT fire a coach. In Magpie chat, Execute is the scheduler analogue (AGENT-16-T06):
+`MAGPIE_RESCUE_ACTIONS_WITHOUT_YIELD` (12) site actions without a new `candidate_*`,
+or `MAGPIE_RESCUE_NAVIGATION_CYCLES` (2), or `lost_place`. A second empty rescue
+halts for the operator. Jobs rescue stays AGENT-16-T04.
 
 ### 2.3 Manual `/coach`
 
@@ -230,16 +236,18 @@ Prose MAY be shown to the operator. Only the parsed artifact is prompt state for
 **COACH-06.** A strategy artifact MUST NOT change qualification criteria, in-scope /
 out-of-scope sources, effect envelope, or approval policy. A validator SHALL reject
 output that tries (explicit `criteria:`, `grant:`, `send:`, `follow:`, or rewritten
-success predicates). Route changes only.
+success predicates). Route changes only. Mentioning an existing follower threshold
+without lowering it is not a rewrite (AGENT-16-T06).
 - Rationale: QUALITY-01 / D20 / D23 — coach is not the spec author
 - Owner: `src/runtime/coach/strategy.ts`
-- Ticket: AGENT-16-T02
+- Ticket: AGENT-16-T02, AGENT-16-T06
 
 **COACH-07.** The artifact is untrusted guidance (D25). It MAY seed peek/survey/order of
 reads. It MUST NOT skip postconditions, authorize commits, or be used as a selector.
 Harvest still obeys D17 / D44 (`peek` for list items, do not navigate away and lose
-place).
-- Ticket: AGENT-16-T02
+place). Magpie harvest copy requires trying the trial loop until falsify, then stopping
+for host `/coach` — not treating STRATEGY as authority that bypasses the live page.
+- Ticket: AGENT-16-T02, AGENT-16-T06
 
 **COACH-08.** Rendering onto the harvest card SHALL be short and once-per-task (D29),
 in the same consume-only style as site skill. Do not paste the digest into harvest
@@ -289,8 +297,8 @@ interface CoachingPolicy {
 pause harvest on that stream. They MUST NOT fire on elapsed wall-clock alone. They MUST
 NOT rewrite the spec. A second rescue without new yield or a new artifact MUST halt for
 the operator (same spirit as AGENT-15 / EXEC-07).
-- Owner: scheduler + yield counters
-- Ticket: AGENT-16-T04
+- Owner: scheduler + yield counters (jobs); Magpie Execute analogue in `src/runtime/coach/rescue.ts` + `src/host/pi-coach.ts`
+- Ticket: AGENT-16-T04 (jobs), AGENT-16-T06 (Magpie)
 
 ### Invocation (COACH-12 … COACH-16)
 
@@ -298,15 +306,18 @@ the operator (same spirit as AGENT-15 / EXEC-07).
 `save`, no side-tab mutations, no `subagent` coder), validate the artifact, persist it
 as a checkpoint, and inject only the rendered artifact into the executing session.
 Switching model class is the operator's Ctrl+P / Pi router (D12); the host MAY request
-a high/ultra class for the coach turn but MUST NOT invent a second router.
+a high/ultra class for the coach turn but MUST NOT invent a second router. Magpie
+SHALL request Pi thinking level `high` for the review turn and restore the previous
+level after accept or abort (AGENT-16-T06).
 - Owner: `src/host/pi-coach.ts`, Magpie Execute trigger in `src/host/pi-plan-mode.ts`
-- Ticket: AGENT-16-T03, AGENT-16-T05
+- Ticket: AGENT-16-T03, AGENT-16-T05, AGENT-16-T06
 
 **COACH-13.** Coach is a compaction boundary (D52). After a successful coach, harvest
 context is: spec slice / criteria, facts, strategy artifact, budgets, current page —
 not the scout transcript. Dropping snapshots at this boundary is required; dropping the
-artifact is forbidden.
-- Ticket: AGENT-16-T03, AGENT-16-T04
+artifact is forbidden. Magpie reuses `compactFinishedWork`: keepLatest 0 on messages
+before the last `[COACH REVIEW]` / STRATEGY user message (AGENT-16-T06).
+- Ticket: AGENT-16-T03, AGENT-16-T06, AGENT-16-T04
 
 **COACH-14.** Jobs invoke coach as a work item in phase `review` (OBS-01 / OBS-04).
 Capabilities: digest read, strategy write, job_read. Not `act`. ContextCompiler SHALL
@@ -320,8 +331,10 @@ attempt. Scout stops, commits digest inputs + yield, then the scheduler (or `/co
 leases the review. Mid-turn “maybe I should think harder” is not a coach invocation.
 In Magpie chat, `/plan` Execute is the scheduler analogue: the host leases review
 when every pre-coach plan todo is complete. Remaining-steps injected for Execute
-MUST omit the coach-role todo.
-- Ticket: AGENT-16-T03, AGENT-16-T05, AGENT-16-T04
+MUST omit the coach-role todo. While awaiting that review, `subagent` MUST be absent
+from the active set (not only `agent=coach` refused). Scout `route_affordance` /
+`fact_established` plus `agent_end` MAY start review without `[DONE:n]`.
+- Ticket: AGENT-16-T03, AGENT-16-T05, AGENT-16-T06, AGENT-16-T04
 
 **COACH-16.** Manual `/coach` during harvest is allowed. It creates a new checkpoint.
 In-flight harvest SHOULD finish the current entity, then reload the artifact — do not
@@ -393,6 +406,7 @@ See `work-items/stories/agent-16-strategy-coach.md` and the task files. Summary:
 | AGENT-16-T02 | Artifact schema | Accept a venue→tagged→peek guideline; reject criteria rewrite; render ≤ card budget |
 | AGENT-16-T03 | `/coach` + plan-mode policy text | FakePi: `/coach` disables act; plan context mentions scout/coach/harvest; checkpoint restores |
 | AGENT-16-T05 | Magpie Execute invokes `/coach` | FakePi: Execute omits coach from remaining steps; pre-coach `[DONE:n]` runs T03 handler; harvest sees artifact |
+| AGENT-16-T06 | Magpie closed-loop coach | FakePi: one Execute message; no subagent while awaiting coach; stronger class for review; yield-breaker rescue; harvest context has artifact not scout dump. Live R1.E2 |
 | AGENT-16-T04 | Job policy + scheduler | Spec with `coaching.mode=calibration` materializes three items; harvest context has artifact not transcript; rescue does not fire on time alone |
 
 ### 4.3 Hard rules for the coding agent
@@ -405,7 +419,8 @@ See `work-items/stories/agent-16-strategy-coach.md` and the task files. Summary:
 4. Do not send transcripts to the coach. If a test does, it fails COACH-01.
 5. Do not let the executor `subagent` a “coach” coder. Coach is review-phase Magpie,
    not a coding child. Magpie Execute MUST NOT inject the coach-role todo as remaining
-   work (AGENT-16-T05).
+   work (AGENT-16-T05). While awaiting the first artifact, `subagent` MUST be absent
+   (AGENT-16-T06).
 6. Do not store DOM refs in the artifact or digest (EXEC checkpoint rule).
 7. Prefer extending `PLAN_MODE_CONTEXT` over adding a second plan-mode.
 8. If plan-mode and jobs disagree, the spec/job policy is authority for jobs; plan-mode
@@ -416,7 +431,8 @@ See `work-items/stories/agent-16-strategy-coach.md` and the task files. Summary:
 - `tests/unit/coach-digest.test.ts`
 - `tests/unit/coach-strategy.test.ts`
 - `tests/unit/pi-coach.test.ts` (follow `tests/unit/pi-subagent.test.ts` plan-mode cases;
-  T05: Execute omits coach todo, pre-coach `[DONE:n]` starts review)
+  T05: Execute omits coach todo, pre-coach `[DONE:n]` starts review; T06: one Execute
+  message, Magpie rescue, stronger class restore)
 - `tests/unit/durable-coaching.test.ts` (compiler + materialize + context compiler)
 
 Fixture sketch for T01: a synthetic ledger of list → profile navigate → back → lost

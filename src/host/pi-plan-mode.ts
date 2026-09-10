@@ -38,6 +38,7 @@ import {
 import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { clipWidgetLines } from "./pi-tool-view.ts";
 import { reconstructProgress } from "./pi-subagent/progress.ts";
+import { firstOperatorGoal } from "./pi-operator-goal.ts";
 
 export const PLAN_COMMAND = "plan";
 
@@ -100,6 +101,9 @@ export interface PlanExecuteCoach {
   hasArtifact(): boolean;
   startReview(ctx: ExtensionContext): Promise<boolean>;
   onArtifact(handler: (ctx: ExtensionContext) => void): void;
+  setPlanSlice?(slice: { objective?: string; criteria?: readonly string[] }): void;
+  hasScoutYield?(): Promise<boolean>;
+  considerRescue?(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
 }
 
 export interface PlanModeBindOptions {
@@ -118,6 +122,16 @@ export interface PlanModeHandle {
 export const SCOUT_EXECUTE_HINT =
   "After the last of these steps, stop. Do not harvest. Do not call subagent for coaching.";
 
+export const HARVEST_EXECUTE_HINT =
+  "This STRATEGY is a trial. Stay on the named list, peek, and record remember yield " +
+  "candidate_accepted, candidate_rejected, or candidate_duplicate after every candidate. " +
+  "Clicks that return ok are not progress. If the named route is falsified, stop — do not " +
+  "invent a second plan. Magpie will run /coach again. Do not treat Do-not as covering " +
+  "lists the scout never tried.";
+
+/** While scout is waiting for host /coach, planner/coder cannot stand in as a critic. */
+export const AWAITING_COACH_DISABLED_TOOLS = new Set<string>(["subagent", "scratch_write"]);
+
 export function formatExecuteMessage(
   remaining: readonly TodoItem[],
   phase: "scout" | "harvest" | "all",
@@ -133,6 +147,16 @@ ${list}
 Start with: ${first}
 After completing a step, include a [DONE:n] tag in your response.
 ${SCOUT_EXECUTE_HINT}`;
+  }
+  if (phase === "harvest") {
+    return `Execute the plan.
+
+Remaining steps:
+${list}
+
+Start with: ${first}
+After completing a step, include a [DONE:n] tag in your response.
+${HARVEST_EXECUTE_HINT}`;
   }
   return `Execute the plan.
 
@@ -199,6 +223,16 @@ Execute each step in order.
 After completing a step, include a [DONE:n] tag in your response.
 ${SCOUT_EXECUTE_HINT}`;
       }
+      if (hasArtifact()) {
+        return `[EXECUTING PLAN - Full tool access enabled]
+
+Remaining steps:
+${todoList}
+
+Execute each step in order.
+After completing a step, include a [DONE:n] tag in your response.
+${HARVEST_EXECUTE_HINT}`;
+      }
       return `[EXECUTING PLAN - Full tool access enabled]
 
 Remaining steps:
@@ -214,10 +248,23 @@ After completing a step, include a [DONE:n] tag in your response.`;
     const coach = options.coach;
     if (!executionMode || !coach) return;
     if (autoCoachStarted || coach.enabled() || coach.hasArtifact()) return;
-    if (!preCoachComplete(todoItems)) return;
+    if (!awaitingHostCoach()) return;
+    const coachStep = coachStepNumber(todoItems);
+    const anyPreDone =
+      coachStep !== undefined && todoItems.some((item) => item.step < coachStep && item.completed);
+    const scoutYield = (await coach.hasScoutYield?.()) ?? false;
+    if (!preCoachComplete(todoItems) && !anyPreDone && !scoutYield) return;
     autoCoachStarted = true;
     const started = await coach.startReview(ctx);
     if (!started) autoCoachStarted = false;
+  }
+
+  function constrainAwaitingCoach(): void {
+    if (awaitingHostCoach()) {
+      capabilities.constrain("awaiting-coach", { disable: AWAITING_COACH_DISABLED_TOOLS });
+    } else {
+      capabilities.release("awaiting-coach");
+    }
   }
 
   function updateStatus(ctx: ExtensionContext): void {
@@ -369,6 +416,9 @@ After completing a step, include a [DONE:n] tag in your response.`;
     const ctx = ctxUnknown as ExtensionContext;
     if (executionMode && todoItems.length > 0) {
       await maybeStartCoach(ctx);
+      if (hasArtifact() && !options.coach?.enabled()) {
+        await options.coach?.considerRescue?.(ctx);
+      }
       if (todoItems.every((todo) => todo.completed)) {
         const completedList = todoItems.map((todo) => `~~${todo.text}~~`).join("\n");
         pi.sendMessage?.(
@@ -425,11 +475,16 @@ After completing a step, include a [DONE:n] tag in your response.`;
       executionMode = true;
       autoCoachStarted = false;
       restoreNormalModeTools();
+      constrainAwaitingCoach();
+      const goal = firstOperatorGoal(ctx.sessionManager?.getEntries?.() ?? []);
+      if (goal) options.coach?.setPlanSlice?.({ objective: goal });
       updateStatus(ctx);
       persistState();
       const phase = awaitingHostCoach() ? "scout" : hasArtifact() ? "harvest" : "all";
       const execMessage = formatExecuteMessage(remaining.length > 0 ? remaining : [first], phase);
-      pi.sendMessage?.(planTodoListMessage, { deliverAs: "followUp" });
+      // One follow-up only. A prior plan-todo-list (full scout → coach → harvest)
+      // starts the Pi turn; the scout-only execute text then queues until the
+      // agent stops — live GLM never saw it and spawned planner as coach.
       pi.sendMessage?.(
         { customType: "plan-mode-execute", content: execMessage, display: true },
         { triggerTurn: !sessionMoved, deliverAs: "followUp" },
@@ -489,12 +544,14 @@ After completing a step, include a [DONE:n] tag in your response.`;
     if (hasArtifact()) markCoachRoleComplete(todoItems);
 
     if (planModeEnabled) enablePlanModeTools();
+    else if (executionMode) constrainAwaitingCoach();
     updateStatus(ctx);
     if (executionMode) void maybeStartCoach(ctx);
   });
 
   options.coach?.onArtifact((ctx) => {
     if (!executionMode) return;
+    capabilities.release("awaiting-coach");
     markCoachRoleComplete(todoItems);
     updateStatus(ctx);
     persistState();

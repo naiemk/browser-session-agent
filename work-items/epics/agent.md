@@ -91,6 +91,7 @@ attempt, challenge, approval, and recovery contracts.
 | [AGENT-16-T02](../tasks/agent-16-t02-strategy-artifact.md) | AGENT-16 | done |
 | [AGENT-16-T03](../tasks/agent-16-t03-interactive-coach.md) | AGENT-16 | done |
 | [AGENT-16-T05](../tasks/agent-16-t05-plan-execute-coach.md) | AGENT-16 | done |
+| [AGENT-16-T06](../tasks/agent-16-t06-closed-loop-coach.md) | AGENT-16 | done — FakePi closed loop; live is R1.E2 |
 | [AGENT-16-T04](../tasks/agent-16-t04-job-coaching-policy.md) | AGENT-16 | todo |
 
 Also built beyond the original table, because the todo list called for them: the

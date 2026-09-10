@@ -20,6 +20,7 @@ export interface FakePi extends ExtensionAPI {
   widgets: Map<string, string[] | undefined>;
   statuses: Map<string, string | undefined>;
   workingMessages: Array<string | undefined>;
+  thinkingLog: string[];
   ctx: ExtensionContext;
   /**
    * Event handlers, recorded rather than discarded, and many per event.
@@ -48,7 +49,9 @@ export function createFakePi(answers: string[] = []): FakePi {
   const widgets = new Map<string, string[] | undefined>();
   const statuses = new Map<string, string | undefined>();
   const workingMessages: Array<string | undefined> = [];
+  const thinkingLog: string[] = [];
   const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
+  let thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" = "medium";
   const pending = [...answers];
   let active = ["read", "bash", "write", "edit"];
   let loading = true;
@@ -96,11 +99,16 @@ export function createFakePi(answers: string[] = []): FakePi {
     hasUI: true,
     sessionManager: {
       getEntries() {
-        return entries.map((entry) => ({
-          type: "custom",
+        const messages = userMessages.map((content) => ({
+          type: "message" as const,
+          message: { role: "user" as const, content },
+        }));
+        const custom = entries.map((entry) => ({
+          type: "custom" as const,
           customType: entry.customType,
           data: entry.data,
         }));
+        return [...messages, ...custom];
       },
     },
     ui: {
@@ -148,6 +156,14 @@ export function createFakePi(answers: string[] = []): FakePi {
     widgets,
     statuses,
     workingMessages,
+    thinkingLog,
+    get thinkingLevel() {
+      return thinkingLevel;
+    },
+    setThinkingLevel(level) {
+      thinkingLevel = level;
+      thinkingLog.push(level);
+    },
     handlers,
     ctx,
     emit,
