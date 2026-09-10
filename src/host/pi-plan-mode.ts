@@ -32,6 +32,7 @@ import {
   isAssistantMessage,
   markCoachRoleComplete,
   markCompletedSteps,
+  markPreCoachComplete,
   preCoachComplete,
   type TodoItem,
 } from "./pi-plan-todos.ts";
@@ -39,6 +40,7 @@ import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { clipWidgetLines } from "./pi-tool-view.ts";
 import { reconstructProgress } from "./pi-subagent/progress.ts";
 import { firstOperatorGoal } from "./pi-operator-goal.ts";
+import { modelKey, type MagpieModelHost } from "./pi-models.ts";
 
 export const PLAN_COMMAND = "plan";
 
@@ -77,7 +79,7 @@ You are in plan mode: look at the page, do not change it.
 Restrictions:
 - act, downloads-to-scratch, side tabs, report, and subagent/coder are disabled
 - observe, probe, survey, peek, check, ask_user, remember, scratch_ls, and scratch_read stay available
-- This session's model is unchanged. The operator can Ctrl+P to pick a stronger class for these turns.
+- This session's model is unchanged unless Magpie /models pinned plan. Ctrl+P still works.
 
 Ask with ask_user when a personal fact is missing. Do not invent defaults.
 
@@ -102,12 +104,14 @@ export interface PlanExecuteCoach {
   startReview(ctx: ExtensionContext): Promise<boolean>;
   onArtifact(handler: (ctx: ExtensionContext) => void): void;
   setPlanSlice?(slice: { objective?: string; criteria?: readonly string[] }): void;
+  setScoutEpoch?(iso: string | undefined): void;
   hasScoutYield?(): Promise<boolean>;
   considerRescue?(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
 }
 
 export interface PlanModeBindOptions {
   coach?: PlanExecuteCoach;
+  models?: MagpieModelHost;
 }
 
 export interface PlanModeHandle {
@@ -194,6 +198,10 @@ export function bindPlanMode(pi: ExtensionAPI, options: PlanModeBindOptions = {}
   let executionMode = false;
   let todoItems: TodoItem[] = [];
   let autoCoachStarted = false;
+  /** True after a successful models.enter("plan"); Execute and /plan off must leave once. */
+  let planHeld = false;
+  /** ISO time Execute began; plan-mode ledger yields before this must not trip coach. */
+  let executeStartedAt: string | undefined;
 
   function hasArtifact(): boolean {
     return Boolean(options.coach?.hasArtifact());
@@ -255,6 +263,10 @@ After completing a step, include a [DONE:n] tag in your response.`;
     const scoutYield = (await coach.hasScoutYield?.()) ?? false;
     if (!preCoachComplete(todoItems) && !anyPreDone && !scoutYield) return;
     autoCoachStarted = true;
+    // Widget: leave Scout → freeze; show Coach as the active step until the artifact.
+    markPreCoachComplete(todoItems);
+    updateStatus(ctx);
+    persistState();
     const started = await coach.startReview(ctx);
     if (!started) autoCoachStarted = false;
   }
@@ -309,24 +321,36 @@ After completing a step, include a [DONE:n] tag in your response.`;
       enabled: planModeEnabled,
       todos: todoItems,
       executing: executionMode,
+      executeStartedAt,
     });
   }
 
-  function enablePlanMode(ctx: ExtensionContext): void {
+  async function enablePlanMode(ctx: ExtensionContext): Promise<void> {
     if (planModeEnabled) return;
     planModeEnabled = true;
     executionMode = false;
     todoItems = [];
     autoCoachStarted = false;
+    executeStartedAt = undefined;
+    options.coach?.setScoutEpoch?.(undefined);
     enablePlanModeTools();
+    if (options.models) {
+      const modelError = await options.models.enter("plan", ctx);
+      if (modelError) ctx.ui.notify(modelError, "error");
+      else planHeld = true;
+    }
+    const pin = await options.models?.resolved("plan");
+    const using = pin && modelKey(ctx.model) === pin ? pin : undefined;
     ctx.ui.notify(
-      "Plan mode on. Act, coder, and other mutations are off. Same model as this session — Ctrl+P to change.",
+      using
+        ? `Plan mode on. Act, coder, and other mutations are off. Model ${using} for these turns.`
+        : "Plan mode on. Act, coder, and other mutations are off. Same model as this session — Ctrl+P to change.",
     );
     updateStatus(ctx);
     persistState();
   }
 
-  function disablePlanMode(ctx: ExtensionContext, notify: boolean): void {
+  async function disablePlanMode(ctx: ExtensionContext, notify: boolean): Promise<void> {
     if (!planModeEnabled && !executionMode) {
       if (notify) ctx.ui.notify("Plan mode is already off.");
       return;
@@ -335,24 +359,30 @@ After completing a step, include a [DONE:n] tag in your response.`;
     executionMode = false;
     todoItems = [];
     autoCoachStarted = false;
+    executeStartedAt = undefined;
+    options.coach?.setScoutEpoch?.(undefined);
     restoreNormalModeTools();
+    if (planHeld) {
+      await options.models?.leave(ctx);
+      planHeld = false;
+    }
     if (notify) ctx.ui.notify("Plan mode off. Browser tools restored.");
     updateStatus(ctx);
     persistState();
   }
 
-  function togglePlanMode(ctx: ExtensionContext): void {
-    if (planModeEnabled) disablePlanMode(ctx, true);
-    else enablePlanMode(ctx);
+  async function togglePlanMode(ctx: ExtensionContext): Promise<void> {
+    if (planModeEnabled) await disablePlanMode(ctx, true);
+    else await enablePlanMode(ctx);
   }
 
   async function handlePlanCommand(args: string, ctx: ExtensionContext): Promise<void> {
     const task = args.trim();
     if (!task) {
-      togglePlanMode(ctx);
+      await togglePlanMode(ctx);
       return;
     }
-    enablePlanMode(ctx);
+    await enablePlanMode(ctx);
     if (pi.sendUserMessage) {
       pi.sendUserMessage(task, { deliverAs: "followUp" });
     } else {
@@ -474,7 +504,13 @@ After completing a step, include a [DONE:n] tag in your response.`;
       planModeEnabled = false;
       executionMode = true;
       autoCoachStarted = false;
+      executeStartedAt = new Date().toISOString();
+      options.coach?.setScoutEpoch?.(executeStartedAt);
       restoreNormalModeTools();
+      if (planHeld) {
+        await options.models?.leave(ctx);
+        planHeld = false;
+      }
       constrainAwaitingCoach();
       const goal = firstOperatorGoal(ctx.sessionManager?.getEntries?.() ?? []);
       if (goal) options.coach?.setPlanSlice?.({ objective: goal });
@@ -485,11 +521,12 @@ After completing a step, include a [DONE:n] tag in your response.`;
       // One follow-up only. A prior plan-todo-list (full scout → coach → harvest)
       // starts the Pi turn; the scout-only execute text then queues until the
       // agent stops — live GLM never saw it and spawned planner as coach.
+      // Do NOT call maybeStartCoach here: plan-mode route_affordance remembers
+      // would skip scout (goal_mtvx69qt001). Coach starts on scout agent_end.
       pi.sendMessage?.(
         { customType: "plan-mode-execute", content: execMessage, display: true },
         { triggerTurn: !sessionMoved, deliverAs: "followUp" },
       );
-      await maybeStartCoach(ctx);
     } else if (choice === "Refine the plan") {
       const refinement = ctx.ui.editor
         ? await ctx.ui.editor("Refine the plan:", "")
@@ -503,7 +540,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     }
   });
 
-  pi.on("session_start", (_event: unknown, ctxUnknown: unknown) => {
+  pi.on("session_start", async (_event: unknown, ctxUnknown: unknown) => {
     const ctx = ctxUnknown as ExtensionContext;
     const entries = ctx?.sessionManager?.getEntries?.() ?? [];
     const planModeEntry = [...entries]
@@ -522,6 +559,11 @@ After completing a step, include a [DONE:n] tag in your response.`;
       planModeEnabled = planModeEntry.data.enabled ?? planModeEnabled;
       todoItems = planModeEntry.data.todos ?? todoItems;
       executionMode = planModeEntry.data.executing ?? executionMode;
+      executeStartedAt =
+        typeof (planModeEntry.data as { executeStartedAt?: unknown }).executeStartedAt === "string"
+          ? (planModeEntry.data as { executeStartedAt: string }).executeStartedAt
+          : executeStartedAt;
+      if (executeStartedAt) options.coach?.setScoutEpoch?.(executeStartedAt);
     }
 
     if (planModeEntry && executionMode && todoItems.length > 0) {
@@ -541,17 +583,29 @@ After completing a step, include a [DONE:n] tag in your response.`;
       }
       markCompletedSteps(texts.join("\n"), todoItems);
     }
-    if (hasArtifact()) markCoachRoleComplete(todoItems);
+    if (hasArtifact()) {
+      markPreCoachComplete(todoItems);
+      markCoachRoleComplete(todoItems);
+    }
 
-    if (planModeEnabled) enablePlanModeTools();
-    else if (executionMode) constrainAwaitingCoach();
+    planHeld = false;
+    if (planModeEnabled) {
+      enablePlanModeTools();
+      if (options.models) {
+        const modelError = await options.models.enter("plan", ctx);
+        if (modelError) ctx.ui.notify(modelError, "error");
+        else planHeld = true;
+      }
+    } else if (executionMode) constrainAwaitingCoach();
     updateStatus(ctx);
+    // Resume only: do not coach on cold start without a scout turn after executeStartedAt.
     if (executionMode) void maybeStartCoach(ctx);
   });
 
   options.coach?.onArtifact((ctx) => {
     if (!executionMode) return;
     capabilities.release("awaiting-coach");
+    markPreCoachComplete(todoItems);
     markCoachRoleComplete(todoItems);
     updateStatus(ctx);
     persistState();

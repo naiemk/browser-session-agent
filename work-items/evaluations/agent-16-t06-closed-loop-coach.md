@@ -37,6 +37,7 @@ Evidence: L0/L1 FakePi `tests/unit/pi-coach.test.ts`, `coach-strategy.test.ts`,
 
 ## Residual
 
-- **R1.E2 live** `docs/example-prompts/party.txt` `/plan` then Execute. FakePi does not close E2. `goal_mtvqt1a6001` / `goal_mtvpsym1001` do not close E2.
+- **R1.E2 live** `docs/example-prompts/party.txt` `/plan` then Execute. FakePi does not close E2. `goal_mtvqt1a6001` / `goal_mtvpsym1001` / `goal_mtvx69qt001` do not close E2.
+- **2026-09-10 `goal_mtvx69qt001`:** Execute called `maybeStartCoach` immediately; plan-mode `route_affordance` counted as scout yield → coach skipped scout; widget froze on Scout 1 while harvest ran (~$0.58). Patched: no coach on Execute click; scout epoch filters plan-mode yields; `markPreCoachComplete` so the widget advances to Coach → Harvest.
 - Peek snapshots on Instagram profiles can still be thinner than main-tab `act` (PERF-04). Dialog scroll (PERF-05) still out of scope. Success is try-or-falsify → rescue, not 200 peeks from a broken followers modal.
 - Jobs `CoachingPolicy` / materializer remains AGENT-16-T04 / R3.

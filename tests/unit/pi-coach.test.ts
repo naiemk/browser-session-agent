@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
 import browserSessionAgent from "../../src/extension.ts";
 import { bindCoach, COACH_CHECKPOINT_ENTRY, COACH_COMMAND, COACH_REVIEW_THINKING } from "../../src/host/pi-coach.ts";
+import { MAGPIE_MODELS_FILE } from "../../src/host/pi-models.ts";
 import { MAGPIE_CHAT_OBJECTIVE } from "../../src/host/pi-operator-goal.ts";
 import { fileEvidence } from "../../src/host/evidence.ts";
 import { MAGPIE_GOAL_ENTRY } from "../../src/host/pi-session-goal.ts";
@@ -32,6 +32,10 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const homes: string[] = [];
 let previousCore: string | undefined;
 
+beforeEach(() => {
+  previousCore = process.env.BSA_CORE_HOME;
+});
+
 afterEach(async () => {
   if (previousCore === undefined) delete process.env.BSA_CORE_HOME;
   else process.env.BSA_CORE_HOME = previousCore;
@@ -45,9 +49,15 @@ afterEach(async () => {
 async function tempCore(): Promise<string> {
   const home = await mkdtemp(path.join(os.tmpdir(), "bsa-coach-"));
   homes.push(home);
-  previousCore = process.env.BSA_CORE_HOME;
   process.env.BSA_CORE_HOME = home;
   return home;
+}
+
+async function writePins(home: string, pins: { default?: string; plan?: string; coach?: string }): Promise<void> {
+  await writeFile(
+    path.join(home, MAGPIE_MODELS_FILE),
+    `${JSON.stringify({ default: "", plan: "", coach: "", ...pins }, null, 2)}\n`,
+  );
 }
 
 const ARTIFACT = {
@@ -356,6 +366,7 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     assert.equal(coachTodo?.completed, true);
     const harvestExec = pi.customMessages.filter((message) => message.customType === "plan-mode-execute").at(-1);
     assert.match(harvestExec?.content ?? "", /Harvest \(blocked/);
+    assert.doesNotMatch(harvestExec?.content ?? "", /^@medium\n/);
     assert.match(harvestExec?.content ?? "", new RegExp(HARVEST_EXECUTE_HINT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(harvestExec?.content ?? "", /Coach: Submit/);
     assert.doesNotMatch(harvestExec?.content ?? "", /scout only/i);
@@ -473,7 +484,56 @@ describe("AGENT-16-T06 Magpie closed-loop coach", () => {
     assert.ok(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")));
   });
 
-  it("requests a stronger thinking class for review and restores it after accept", async () => {
+  it("does not skip scout for plan-mode yields; widget leaves Scout when coach runs", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "");
+    await runTool(pi, TOOL_REMEMBER, {
+      key: "hashtag-dead",
+      value: "tags redirect to keyword search",
+      yield: "route_affordance",
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: [{ type: "text", text: CALIBRATION_PLAN }] }],
+    });
+    // Execute click must not coach from the plan-mode remember (goal_mtvx69qt001).
+    assert.equal(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")), false);
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "empty puff" }],
+    });
+    assert.equal(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")), false);
+
+    await runTool(pi, TOOL_REMEMBER, {
+      key: "grid-scrolls",
+      value: "keyword results load on scroll",
+      yield: "route_affordance",
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "Scout sample recorded." }],
+    });
+    assert.ok(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")));
+
+    const duringCoach = pi.widgets.get("plan-todos") ?? [];
+    assert.ok(
+      duringCoach.filter((line) => line.startsWith("☑")).length >= 3,
+      `scout should be checked off before coach finishes: ${duringCoach.join(" | ")}`,
+    );
+    assert.ok(
+      duringCoach.some((line) => line.startsWith("→") && /Coach/i.test(line)),
+      `active step should be Coach, not Scout: ${duringCoach.join(" | ")}`,
+    );
+
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    const after = pi.widgets.get("plan-todos") ?? [];
+    assert.ok(after.some((line) => /^☑.*Coach/i.test(line)), after.join(" | "));
+    assert.ok(after.some((line) => /^→.*Harvest/i.test(line)), after.join(" | "));
+  });
+
+  it("requests thinking high for review and restores it after accept", async () => {
     await tempCore();
     const pi = createFakePi();
     browserSessionAgent(pi);
@@ -487,11 +547,98 @@ describe("AGENT-16-T06 Magpie closed-loop coach", () => {
     });
     assert.equal(pi.thinkingLog.includes(COACH_REVIEW_THINKING), true);
     assert.equal(pi.thinkingLevel, COACH_REVIEW_THINKING);
+    const review = pi.userMessages.find((text) => text.includes("[COACH REVIEW]")) ?? "";
+    assert.doesNotMatch(review, /^@(low|medium|high|ultra)\n/i);
     await pi.emit("turn_end", {
       message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
     });
     assert.equal(pi.thinkingLevel, "medium");
     assert.equal(pi.thinkingLog.at(-1), "medium");
+  });
+
+  it("switches to the coach pin for review and restores the prior model", async () => {
+    const home = await tempCore();
+    await writePins(home, { coach: "test/strong-coach" });
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" },
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" }],
+    });
+    assert.equal(pi.modelLog.includes("test/strong-coach"), true);
+    assert.equal(pi.currentModelId(), "test/strong-coach");
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.equal(pi.currentModelId(), "fake/session");
+    assert.equal(pi.modelLog.at(-1), "fake/session");
+  });
+
+  it("does not start review when the coach pin is not in the registry", async () => {
+    const home = await tempCore();
+    await writePins(home, { coach: "nope/missing" });
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" },
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" }],
+    });
+    assert.equal(pi.userMessages.some((text) => text.includes("[COACH REVIEW]")), false);
+    assert.equal(pi.thinkingLevel, "medium");
+    assert.match(pi.notifications.join("\n"), /not in the Pi model registry/);
+  });
+
+  it("hosted /coach still runs when a coach pin is set but the host cannot switch models", async () => {
+    const home = await tempCore();
+    await writePins(home, { coach: "test/strong-coach" });
+    const notes: string[] = [];
+    const runtime = new OperatorRuntime(new NodeHub(), (message) => {
+      if (message.type === "notify") notes.push(message.message);
+    });
+    runtime.host.setActiveTools(["observe", "act", "probe", "ask_user", "subagent", "save_artifact"]);
+    await runtime.api.commands.get(COACH_COMMAND)?.handler("", extensionContext(runtime.host));
+    assert.match(notes.join("\n"), /mutations off/i);
+    assert.match(notes.join("\n"), /coach model skipped/i);
+    assert.equal(runtime.host.getActiveTools().includes("act"), false);
+  });
+
+  it("plan pin switches on /plan and Execute restores before scout", async () => {
+    const home = await tempCore();
+    await writePins(home, { plan: "test/plan-opus" });
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "");
+    assert.equal(pi.currentModelId(), "test/plan-opus");
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: [{ type: "text", text: CALIBRATION_PLAN }] }],
+    });
+    assert.equal(pi.currentModelId(), "fake/session");
+    assert.match(executeContent(pi), /scout/i);
+  });
+
+  it("manual /coach during plan restores the plan pin, not the operate model", async () => {
+    const home = await tempCore();
+    await writePins(home, { plan: "test/plan-opus", coach: "test/strong-coach" });
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, PLAN_COMMAND, "");
+    assert.equal(pi.currentModelId(), "test/plan-opus");
+    await runCommand(pi, COACH_COMMAND, "");
+    assert.equal(pi.currentModelId(), "test/strong-coach");
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.equal(pi.currentModelId(), "test/plan-opus");
   });
 
   it("puts the plan objective in the digest, not the generic Magpie card", async () => {

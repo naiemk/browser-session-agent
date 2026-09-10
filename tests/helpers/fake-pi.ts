@@ -21,6 +21,8 @@ export interface FakePi extends ExtensionAPI {
   statuses: Map<string, string | undefined>;
   workingMessages: Array<string | undefined>;
   thinkingLog: string[];
+  modelLog: string[];
+  currentModelId(): string | undefined;
   ctx: ExtensionContext;
   /**
    * Event handlers, recorded rather than discarded, and many per event.
@@ -50,8 +52,15 @@ export function createFakePi(answers: string[] = []): FakePi {
   const statuses = new Map<string, string | undefined>();
   const workingMessages: Array<string | undefined> = [];
   const thinkingLog: string[] = [];
+  const modelLog: string[] = [];
   const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
   let thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" = "medium";
+  let currentModel: { provider: string; id: string } = { provider: "fake", id: "session" };
+  const catalog = new Map<string, { provider: string; id: string }>([
+    ["fake/session", { provider: "fake", id: "session" }],
+    ["test/strong-coach", { provider: "test", id: "strong-coach" }],
+    ["test/plan-opus", { provider: "test", id: "plan-opus" }],
+  ]);
   const pending = [...answers];
   let active = ["read", "bash", "write", "edit"];
   let loading = true;
@@ -97,6 +106,17 @@ export function createFakePi(answers: string[] = []): FakePi {
   const ctx: ExtensionContext = {
     cwd: process.cwd(),
     hasUI: true,
+    get model() {
+      return currentModel;
+    },
+    modelRegistry: {
+      find(provider, modelId) {
+        return catalog.get(`${provider}/${modelId}`);
+      },
+      getAvailable() {
+        return [...catalog.values()];
+      },
+    },
     sessionManager: {
       getEntries() {
         const messages = userMessages.map((content) => ({
@@ -157,12 +177,26 @@ export function createFakePi(answers: string[] = []): FakePi {
     statuses,
     workingMessages,
     thinkingLog,
+    modelLog,
+    currentModelId() {
+      return `${currentModel.provider}/${currentModel.id}`;
+    },
     get thinkingLevel() {
+      return thinkingLevel;
+    },
+    getThinkingLevel() {
       return thinkingLevel;
     },
     setThinkingLevel(level) {
       thinkingLevel = level;
       thinkingLog.push(level);
+    },
+    async setModel(model) {
+      const record = model as { provider?: string; id?: string };
+      if (!record?.provider || !record?.id) return false;
+      currentModel = { provider: record.provider, id: record.id };
+      modelLog.push(`${record.provider}/${record.id}`);
+      return true;
     },
     handlers,
     ctx,

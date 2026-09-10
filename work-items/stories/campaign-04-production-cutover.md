@@ -30,6 +30,7 @@ browser boundaries.
 - [CAMPAIGN-04-T02](../tasks/campaign-04-t02-telemetry-routing.md) — OBS-01..04
 - [CAMPAIGN-04-T03](../tasks/campaign-04-t03-fault-process-matrix.md) — MIGRATE-02 proof
 - [CAMPAIGN-04-T04](../tasks/campaign-04-t04-cutover-delete-prototype.md) — MIGRATE-02..04
+- [CAMPAIGN-R2-1](../tasks/campaign-r2-1-product-execution-host.md) — R2.1 product host (L6)
 
 ## Done when
 

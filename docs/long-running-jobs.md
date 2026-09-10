@@ -91,9 +91,10 @@ model or browser. Missing `ExecutionHost` is `runtime_unavailable`, never `idle`
 The prototype proves useful pieces (explicit creation, versioned specs, bounded `runTask`,
 fixture browser, inbox/leases) but does **not** yet:
 
-1. Execute due ticks with a real model/browser (`runtime_unavailable` path is honest only
-   after quarantine).
-2. Reconnect CLI/Pi runs to Magpie's persistent profile.
+1. Execute due ticks with a real model/browser when `--host` / `BSA_DURABLE_HOST=1`
+   attaches Magpie + a provider key (`runtime_unavailable` otherwise; never fake
+   success). Magpie chat bind of durable commands is still R2.2.
+2. Reconnect CLI/Pi runs to Magpie's interactive profile across process restarts (R2.E1).
 3. Keep one transactional authority (overlapping JSON stores; non-atomic transitions).
 4. Enforce revision, completion oracles, pacing, challenge breakers, lease renewal/fencing,
    cancel, or due-scan fairness as product claims.

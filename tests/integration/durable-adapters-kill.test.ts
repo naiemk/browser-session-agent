@@ -83,6 +83,87 @@ describe("CAMPAIGN-04-T01 FakePi + CLI adapters", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("BSA_DURABLE_HOST=1 without a model still exits 4 (never FakeKernel success)", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "bsa-cli-fakehost-"));
+    await mkdir(path.join(dir, "durable"), { recursive: true });
+    const prevHost = process.env.BSA_DURABLE_HOST;
+    const keys = [
+      "OPENROUTER_API_KEY",
+      "open_router_api_key",
+      "ANTHROPIC_API_KEY",
+      "anthropic_api_key",
+      "OPENAI_API_KEY",
+      "openai_api_key",
+      "GOOGLE_API_KEY",
+      "GEMINI_API_KEY",
+      "google_api_key",
+      "gemini_api_key",
+      "AI_GATEWAY_API_KEY",
+      "ai_gateway_api_key",
+    ] as const;
+    const prevKeys = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    process.env.BSA_DURABLE_HOST = "1";
+    for (const k of keys) delete process.env[k];
+    try {
+      const repo = SqliteJobRepository.open(path.join(dir, "durable", "control.sqlite"));
+      const service = new JobApplicationService(repo, () => null);
+      const job = await service.create({ objective: "due" });
+      const proposed = await service.propose(job.jobId, draft(job.jobId));
+      await service.approve(job.jobId, proposed.hash!);
+      repo.close();
+
+      const code = await commandDurable({
+        positional: ["tick", job.jobId],
+        flags: { root: dir, json: true },
+      });
+      assert.equal(code, 4);
+    } finally {
+      if (prevHost === undefined) delete process.env.BSA_DURABLE_HOST;
+      else process.env.BSA_DURABLE_HOST = prevHost;
+      for (const k of keys) {
+        if (prevKeys[k] === undefined) delete process.env[k];
+        else process.env[k] = prevKeys[k];
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("FakePi durable-tick without host reports runtime_unavailable; with host works", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "bsa-fakepi-tick-"));
+    await mkdir(path.join(dir, "durable"), { recursive: true });
+    const repo = SqliteJobRepository.open(path.join(dir, "durable", "control.sqlite"));
+    const job = await new JobApplicationService(repo, () => null).create({ objective: "pi" });
+    const proposed = await new JobApplicationService(repo, () => null).propose(job.jobId, draft(job.jobId));
+    await new JobApplicationService(repo, () => null).approve(job.jobId, proposed.hash!);
+    repo.close();
+
+    const piNull = createFakePi();
+    await piNull.startSession();
+    registerDurablePiCommands(piNull, { root: dir });
+    await runCommand(piNull, "durable-tick", job.jobId);
+    assert.ok(piNull.notifications.some((n) => /runtime_unavailable/.test(n)));
+
+    const piHost = createFakePi();
+    await piHost.startSession();
+    const { DirectKernel } = await import("../../src/durable/ports/execution-kernel.ts");
+    registerDurablePiCommands(piHost, {
+      root: dir,
+      hostFactory: () => ({
+        available: true,
+        profileKey: "test",
+        nowIso: () => new Date().toISOString(),
+        kernel: new DirectKernel(async () => ({
+          status: "completed",
+          value: { ok: true },
+          evidenceIds: ["ev"],
+        })),
+      }),
+    });
+    await runCommand(piHost, "durable-tick", job.jobId);
+    assert.ok(piHost.notifications.some((n) => /"worked"|"complete"/.test(n)));
+    await rm(dir, { recursive: true, force: true });
+  });
 });
 
 async function waitForMarker(marker: string, timeoutMs = 15_000): Promise<string> {

@@ -8,6 +8,7 @@ import { withToolView } from "./host/pi-tool-view.ts";
 import { WorkerBrowserPort } from "./host/worker-browser-port.ts";
 import { bindPlanMode } from "./host/pi-plan-mode.ts";
 import { bindCoach } from "./host/pi-coach.ts";
+import { bindMagpieModels } from "./host/pi-models.ts";
 import { MAGPIE_CHAT_OBJECTIVE } from "./host/pi-operator-goal.ts";
 import { bindJobCommands } from "./host/pi-jobs.ts";
 import { bindSessionGoal, isSubagentProcess } from "./host/pi-session-goal.ts";
@@ -178,11 +179,13 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     };
   });
 
+  const models = bindMagpieModels(pi);
   const coach = bindCoach(pi, {
     evidence,
     objective: MAGPIE_CHAT_OBJECTIVE,
+    models,
   });
-  bindPlanMode(pi, { coach });
+  bindPlanMode(pi, { coach, models });
   jobs = bindJobCommands(pi, { headless: process.env.BSA_HEADLESS === "1" });
 
   pi.registerCommand("browser-evidence", {

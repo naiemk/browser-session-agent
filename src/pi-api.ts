@@ -89,6 +89,12 @@ export interface ExtensionContext {
       message?: unknown;
     }>;
   };
+  /** Current session model (Pi). Magpie plan/coach pins swap and restore via setModel. */
+  model?: { provider?: string; id?: string };
+  modelRegistry?: {
+    find(provider: string, modelId: string): unknown | undefined;
+    getAvailable?(): Array<{ provider: string; id: string }>;
+  };
   ui: {
     notify(message: string, level?: "info" | "warning" | "error"): void;
     input(title: string, placeholder?: string): Promise<string | undefined>;
@@ -114,7 +120,10 @@ export interface ExtensionAPI {
   appendEntry?(customType: string, data?: unknown): void;
   /** Pi thinking selector (D12). Coach requests a stronger class; it does not catalog models. */
   thinkingLevel?: string;
+  getThinkingLevel?: () => "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   setThinkingLevel?: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
+  /** Swap the session model (Pi). Magpie plan/coach pins use this, then restore. */
+  setModel?: (model: unknown) => Promise<boolean>;
 }
 
 export function textResult(text: string, details: Record<string, unknown> = {}, isError = false): ToolResult {

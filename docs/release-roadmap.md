@@ -26,7 +26,7 @@ the gates**, not a second spec.
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
 | R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
-| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | Blocked on real host + L7 |
+| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.1 L6 landed; R2.2 bind + R2.E* open** |
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
@@ -68,7 +68,7 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
   Berlin checkout, not Magpie coder harvest, not another Instagram tagged-feed
   recipe. Prompt class: `docs/example-prompts/sas.txt` /
   `conference.txt` / `find-apartment.txt`.
-- Start **R2.1** whenever someone can own Magpie + model wiring for durable ticks.
+- Start **R2.2** whenever Magpie/web can own `registerDurablePiCommands` bind.
 - Optional live checks of already-landed instrumentation: a switched-model chat for
   PERF-01 turn rows; headed `BSA_CHALLENGE_BEHAVIOR=1` on a challenge fixture.
 
@@ -82,6 +82,7 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 - AGENT-16-T04 product claim (R3). Compiler tests may start now that T01/T02 exist.
 - Treating `goal_mtu4ujai001` as E-QUAL closed.
 - Treating R1 as shipped before R1.E2.
+- Treating R2 as shipped before R2.E1 / R2.E3.
 
 ---
 
@@ -275,11 +276,12 @@ Tickets: remaining honesty on CAMPAIGN-02-T04 / 04-T01 / 04-T04
 
 ### Build
 
-- [ ] **R2.1** Real `ExecutionHost` as the **default product path**: Magpie
+- [x] **R2.1** Real `ExecutionHost` as the **default product path**: Magpie
       `WorkerBrowserPort` + model loop, not `FakeKernel` in CLI/Pi. Default off
       unless host is attached (`runtime_unavailable`, never fake success).
-      2026-09-09: Magpie `persistent-host.ts` already constructs `DirectKernel`;
-      `src/durable/adapters/{cli,pi}.ts` still inject `FakeKernel`.
+      2026-09-10: CAMPAIGN-R2-1 — `product-host.ts` + `runDurableAttempt`; adapters
+      no longer import FakeKernel; `BSA_DURABLE_HOST=1` / `--host` fail closed without
+      model or worker. Magpie chat bind of durable commands is still R2.2.
 - [ ] **R2.2** Bind V2 in Pi/web (`registerDurablePiCommands` from `extension.ts` /
       hosted runtime). Stop implying prototype jobs will execute
 - [ ] **R2.3** Durable attempt path uses AGENT-13/14/15 on a **real host**, with
@@ -293,8 +295,9 @@ R2.1–R2.3 may start while R1 is in flight. **R2.4 waits for evaluations.**
 
 - [ ] **R2.E1** L5: login on fixture profile → restart control process → same auth;
       stale tab/refs rejected (`docs/jobs-v2-evaluation.md` §3.3)
-- [ ] **R2.E2** L6: FakePi + CLI process + due-tick with and without host (nonzero exit
-      when host missing)
+- [x] **R2.E2** (partial) L6: FakePi + CLI process + due-tick with and without host
+      (nonzero exit when host missing). 2026-09-10: CAMPAIGN-R2-1 adapters green;
+      web/RPC twin still R2.2.
 - [ ] **R2.E3** Two controlled **L7** smokes, no unsafe external commit, each with
       live-run review template
 - [ ] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs
@@ -303,7 +306,8 @@ R2.1–R2.3 may start while R1 is in flight. **R2.4 waits for evaluations.**
 ### Exit
 
 - [ ] Chat cannot bind a prototype job as if it will run
-- [ ] A due tick without a host is `runtime_unavailable`, not a silent FakeKernel complete
+- [x] A due tick without a host is `runtime_unavailable`, not a silent FakeKernel complete
+      2026-09-10: CAMPAIGN-R2-1 L6
 - [ ] MIGRATE-02..04 hard cutover complete
 
 ---
@@ -410,8 +414,8 @@ Tick into a future R6 only when the entry condition is met.
    on comparable live runs.
 2. Do not merge QUAL/PERF behavior until E-QUAL's decision review.
 3. Do not call coach a product success until R1.E2.
-4. Start **R2.1** (CLI/Pi stop using FakeKernel as the product default) as soon as
-   someone can own Magpie+model wiring; do not wait for R1.E2.
+4. **R2.1** FakePi/L6 landed (CAMPAIGN-R2-1). Next R2 build is **R2.2** (bind durable
+   commands in Magpie/web). Do not claim R2 shipped until R2.E1/E3.
 5. **R3** product claim only after R1 exit + R2.1.
 
 ---
@@ -426,3 +430,5 @@ Tick into a future R6 only when the entry condition is met.
 | 2026-09-10 | AGENT-16-T05 opened (R1.4). `goal_mtumeewm001` showed Execute does not
       invoke `/coach`. E2 still open. |
 | 2026-09-10 | R1.4 FakePi ticked (AGENT-16-T05). Next: R1.E2 live Execute→coach. |
+| 2026-09-10 | R2.1 L6 ticked (CAMPAIGN-R2-1). Adapters no longer FakeKernel-complete.
+      Next R2 build: R2.2 Magpie/web bind. R2.E1/E3 still open. |

@@ -117,7 +117,9 @@ EXPERIMENTAL: the src/jobs prototype is not a production scheduler. job tick wit
 model/browser host returns runtime_unavailable (exit 4), never idle. Do not cron these
 commands until Jobs V2 attaches a persistent ExecutionHost. job run uses an ephemeral
 Playwright browser (no Magpie profile); --allow-ephemeral is required and warns on stderr.
-Use \`browser-agent durable\` for the Jobs V2 SQLite path.
+Use \`browser-agent durable\` for the Jobs V2 SQLite path. durable tick without --host
+(or BSA_DURABLE_HOST=1) exits 4; with attach it uses the Magpie persistent profile + a
+live model, or still exits 4 if either is missing (never fake success).
 
 run options:
   --url <url>              page to start from (required)
