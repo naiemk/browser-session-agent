@@ -91,6 +91,32 @@ describe("AGENT-16-T02 strategy artifact", () => {
     assert.throws(() => assertStrategyArtifact("not json"), StrategyArtifactError);
   });
 
+  it("rejects invented nested strategy JSON with a schema hint, not a silent empty object", () => {
+    const invented = {
+      schemaVersion: 1,
+      artifact: "coach_strategy_review",
+      strategy: {
+        route_affordances_to_keep: ["Peek profile URLs directly"],
+      },
+      do_not: { skipApproval: true },
+    };
+    assert.equal(parseStrategyArtifact(invented), undefined);
+    assert.throws(
+      () => assertStrategyArtifact(invented),
+      (error: unknown) =>
+        error instanceof StrategyArtifactError &&
+        error.code === "invalid" &&
+        /dropping unknown keys/i.test(error.message) &&
+        /summary/.test(error.message) &&
+        /loop/.test(error.message),
+    );
+    const fenced = "```json\n" + JSON.stringify(invented, null, 2) + "\n```";
+    assert.throws(
+      () => assertStrategyArtifact(fenced),
+      (error: unknown) => error instanceof StrategyArtifactError && /dropping unknown keys/i.test(error.message),
+    );
+  });
+
   it("renders onto the task card under the D29 budget", () => {
     const artifact = assertStrategyArtifact(GUIDELINE);
     const card = buildTaskCard({

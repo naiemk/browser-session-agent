@@ -434,7 +434,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
         { customType: "plan-mode-execute", content: execMessage, display: true },
         { triggerTurn: !sessionMoved, deliverAs: "followUp" },
       );
-      void maybeStartCoach(ctx);
+      await maybeStartCoach(ctx);
     } else if (choice === "Refine the plan") {
       const refinement = ctx.ui.editor
         ? await ctx.ui.editor("Refine the plan:", "")

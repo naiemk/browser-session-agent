@@ -30,6 +30,23 @@ export interface StrategyArtifact {
   assumptions: string[];
 }
 
+export const STRATEGY_REQUIRED_HINT =
+  "Required keys: schemaVersion 1, summary, loop, qualify, exceptions, record, stop, doNot (string array), confidence (low|medium|high), falsify, assumptions. Unknown keys are dropped. Do not nest fields under strategy or artifact.";
+
+export const STRATEGY_JSON_EXAMPLE = JSON.stringify({
+  schemaVersion: 1,
+  summary: "Acquire via the cheapest verified route; peek instead of leaving the list.",
+  loop: ["Stay on the source list", "Peek each candidate", "Qualify on the live page"],
+  qualify: ["Apply the goal criteria; do not loosen them"],
+  exceptions: [],
+  record: ["candidate_accepted or candidate_rejected after each peek"],
+  stop: ["After enough accepts, or when the source list stops yielding"],
+  doNot: ["Navigate away and Back; you lose the list"],
+  confidence: "medium",
+  falsify: "The named route has no candidates on the next two sources",
+  assumptions: [],
+});
+
 export class StrategyArtifactError extends Error {
   readonly code: string;
 
@@ -166,7 +183,13 @@ export function assertStrategyArtifact(raw: unknown): StrategyArtifact {
   }
   const parsed = parseStrategyArtifact(obj);
   if (!parsed) {
-    throw new StrategyArtifactError("invalid", "strategy artifact is empty");
+    const nested = ["strategy", "artifact", "trajectory_summary", "do_not"].some((key) => key in obj);
+    throw new StrategyArtifactError(
+      "invalid",
+      nested
+        ? `strategy artifact is empty after dropping unknown keys. ${STRATEGY_REQUIRED_HINT}`
+        : `strategy artifact is empty (need a summary or loop). ${STRATEGY_REQUIRED_HINT}`,
+    );
   }
   if (SPEC_REWRITE.some((pattern) => pattern.test(rewriteBlob(parsed)))) {
     throw new StrategyArtifactError(

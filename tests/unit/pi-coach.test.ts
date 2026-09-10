@@ -14,6 +14,7 @@ import {
   extractTodoItems,
   preCoachComplete,
 } from "../../src/host/pi-plan-todos.ts";
+import { STRATEGY_JSON_EXAMPLE } from "../../src/runtime/coach/strategy.ts";
 import { extensionContext } from "../../src/host/memory-host.ts";
 import { NodeHub } from "../../src/hosts/web/hub.ts";
 import { OperatorRuntime } from "../../src/hosts/web/runtime.ts";
@@ -30,6 +31,7 @@ afterEach(async () => {
   else process.env.BSA_CORE_HOME = previousCore;
   previousCore = undefined;
   while (homes.length) {
+    await new Promise((resolve) => setImmediate(resolve));
     await rm(homes.pop()!, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });
@@ -176,6 +178,36 @@ describe("AGENT-16-T03 interactive /coach", () => {
   it("exposes /coach on the hosted chat command bar", async () => {
     const source = await readFile(path.join(ROOT, "src/hosts/web/public/app.js"), "utf8");
     assert.match(source, /\["coach", "Review-phase strategy coach"\]/);
+  });
+
+  it("tells the coach the closed schema so invented nested JSON is not accepted as empty", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, COACH_COMMAND, "");
+    assert.ok(pi.userMessages.some((text) => text.includes(STRATEGY_JSON_EXAMPLE)));
+    const invented =
+      "```json\n" +
+      JSON.stringify({
+        schemaVersion: 1,
+        artifact: "coach_strategy_review",
+        strategy: { route_affordances_to_keep: ["peek profiles"] },
+        do_not: { skipApproval: true },
+      }) +
+      "\n```";
+    await pi.emit("turn_end", { message: { role: "assistant", content: invented } });
+    await pi.emit("agent_end", { messages: [{ role: "assistant", content: invented }] });
+    const rejects = pi.notifications.filter((note) => /rejected/i.test(note));
+    assert.equal(rejects.length, 1);
+    assert.match(rejects[0] ?? "", /dropping unknown keys/i);
+    assert.ok(pi.userMessages.some((text) => /Previous output was rejected/i.test(text)));
+    assert.equal(pi.entries.some((entry) => entry.customType === COACH_CHECKPOINT_ENTRY), false);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.ok(pi.entries.some((entry) => entry.customType === COACH_CHECKPOINT_ENTRY));
+    assert.equal(pi.getActiveTools().includes("act"), true);
   });
 });
 

@@ -11,6 +11,8 @@ import {
   assertStrategyArtifact,
   renderStrategyArtifact,
   StrategyArtifactError,
+  STRATEGY_JSON_EXAMPLE,
+  STRATEGY_REQUIRED_HINT,
   type StrategyArtifact,
 } from "../runtime/coach/strategy.ts";
 import { readMetrics } from "../optimize/recorder.ts";
@@ -25,10 +27,16 @@ export const COACH_CONTEXT_TYPE = "coach-review-context";
 
 export const COACH_DISABLED_TOOLS = PLAN_MODE_DISABLED_TOOLS;
 
+const COACH_RETRY_MAX = 2;
+
 const COACH_INSTRUCTIONS =
   "[COACH REVIEW]\n" +
-  "Phase: review. Mutations are off. Output one JSON strategy artifact only (schemaVersion 1). " +
-  "Do not rewrite qualification criteria, grants, send, or follow policy. Do not skip approval. " +
+  "Phase: review. Mutations are off. Output one JSON object only, exactly this shape " +
+  "(unknown keys are dropped and the artifact is rejected as empty):\n" +
+  STRATEGY_JSON_EXAMPLE +
+  "\n" +
+  STRATEGY_REQUIRED_HINT +
+  "\nDo not rewrite qualification criteria, grants, send, or follow policy. Do not skip approval. " +
   "Coach is a guideline generator, not a second planner.\n" +
   "This session's model is unchanged. The operator can Ctrl+P to pick a stronger class for this turn.\n\n" +
   "Trajectory digest (not the session transcript):\n";
@@ -71,6 +79,7 @@ function restoreCheckpoint(
 async function compileSessionDigest(
   options: CoachBindOptions,
   checkpoint?: CoachCheckpointData,
+  ctx?: ExtensionContext,
 ): Promise<CompiledDigest> {
   const events = (await options.evidence.ledger.read?.()) ?? [];
   await options.evidence.metrics.flush();
@@ -83,7 +92,7 @@ async function compileSessionDigest(
   return compileDigest({
     events,
     metrics,
-    goalText: options.objective,
+    goalText: userGoalFromSession(ctx, options.objective),
     criteria: [...(options.criteria ?? [])],
     checkpoint: checkpoint ? { at: checkpoint.at } : undefined,
     previousArtifact: checkpoint
@@ -92,12 +101,30 @@ async function compileSessionDigest(
   });
 }
 
+function userGoalFromSession(ctx: ExtensionContext | undefined, fallback: string): string {
+  const entries = ctx?.sessionManager?.getEntries?.() ?? [];
+  for (const entry of [...entries].reverse()) {
+    if (entry.type !== "message") continue;
+    const message = entry.message;
+    if (!message || typeof message !== "object") continue;
+    if ((message as { role?: unknown }).role !== "user") continue;
+    const text = assistantText(message).trim();
+    if (!text) continue;
+    if (text.includes("[COACH REVIEW]")) continue;
+    if (text.startsWith("/")) continue;
+    return text.length > 800 ? `${text.slice(0, 797)}...` : text;
+  }
+  return fallback;
+}
+
 export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHandle {
   const capabilities = capabilityCoordinator(pi);
   let reviewing = false;
   let digestJson = "";
   let latest: CoachCheckpointData | undefined;
   let artifactListener: ((ctx: ExtensionContext) => void) | undefined;
+  let lastAttemptText = "";
+  let rejectCount = 0;
 
   function persist(data: CoachCheckpointData): void {
     latest = data;
@@ -106,6 +133,8 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
 
   function enableReview(ctx: ExtensionContext): void {
     reviewing = true;
+    lastAttemptText = "";
+    rejectCount = 0;
     capabilities.constrain("coach", { disable: COACH_DISABLED_TOOLS });
     ctx.ui.setStatus?.("coach", "coach review");
   }
@@ -113,6 +142,8 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
   function disableReview(ctx: ExtensionContext, notify = false): void {
     reviewing = false;
     digestJson = "";
+    lastAttemptText = "";
+    rejectCount = 0;
     capabilities.release("coach");
     ctx.ui.setStatus?.("coach", latest ? "coached" : undefined);
     if (notify) ctx.ui.notify("Coach review ended. Browser tools restored.");
@@ -137,7 +168,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     const previous = latest;
     let compiled: CompiledDigest;
     try {
-      compiled = await compileSessionDigest(options, previous);
+      compiled = await compileSessionDigest(options, previous, ctx);
     } catch (error) {
       ctx.ui.notify(`Could not compile digest: ${error instanceof Error ? error.message : String(error)}`, "error");
       return false;
@@ -158,6 +189,8 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
 
   async function acceptArtifact(text: string, ctx: ExtensionContext): Promise<boolean> {
     if (!reviewing) return false;
+    if (text === lastAttemptText) return false;
+    lastAttemptText = text;
     try {
       const artifact = assertStrategyArtifact(text);
       const rendered = renderStrategyArtifact(artifact);
@@ -186,6 +219,14 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     } catch (error) {
       if (error instanceof StrategyArtifactError) {
         ctx.ui.notify(`Coach output rejected (${error.code}): ${error.message}`, "warning");
+        rejectCount += 1;
+        if (rejectCount <= COACH_RETRY_MAX && pi.sendUserMessage) {
+          pi.sendUserMessage(
+            `[COACH REVIEW]\nPrevious output was rejected (${error.code}): ${error.message}\n` +
+              `Output one JSON object only:\n${STRATEGY_JSON_EXAMPLE}`,
+            { deliverAs: "followUp" },
+          );
+        }
         return false;
       }
       throw error;
