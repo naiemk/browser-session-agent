@@ -5,6 +5,7 @@ import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "../../runtime/turn-identity.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
 import { bindCoach, type CoachHandle } from "../../host/pi-coach.ts";
+import { bindMagpieModels } from "../../host/pi-models.ts";
 import { MAGPIE_CHAT_OBJECTIVE } from "../../host/pi-operator-goal.ts";
 import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
@@ -144,6 +145,7 @@ export class OperatorRuntime {
         turn: () => this.clock.current(),
       },
     });
+    const models = bindMagpieModels(this.api);
     this.coach = bindCoach(this.api, {
       evidence: this.evidence,
       objective: MAGPIE_CHAT_OBJECTIVE,
@@ -154,8 +156,9 @@ export class OperatorRuntime {
           this.pi?.setThinkingLevel(level);
         },
       },
+      models,
     });
-    this.planMode = bindPlanMode(this.api, { coach: this.coach });
+    this.planMode = bindPlanMode(this.api, { coach: this.coach, models });
     this.api.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
       if (!this.browserPrompt) return undefined;
       const goalId = this.sessionGoal.id();

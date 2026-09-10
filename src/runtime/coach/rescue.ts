@@ -35,8 +35,17 @@ export function isCandidateYieldEvent(event: LedgerEvent): boolean {
   return Boolean(kind && CANDIDATE_KINDS.has(kind));
 }
 
-export function hasScoutYield(events: readonly LedgerEvent[]): boolean {
+export function hasScoutYield(
+  events: readonly LedgerEvent[],
+  /** When set, only yields at/after this instant count (ignore plan-mode remembers). */
+  sinceIso?: string,
+): boolean {
+  const sinceMs = sinceIso ? Date.parse(sinceIso) : Number.NaN;
   return events.some((event) => {
+    if (Number.isFinite(sinceMs)) {
+      const ts = Date.parse(event.ts);
+      if (Number.isFinite(ts) && ts < sinceMs) return false;
+    }
     const kind = yieldKindOf(event);
     return kind === "route_affordance" || kind === "fact_established";
   });

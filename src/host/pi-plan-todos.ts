@@ -124,6 +124,20 @@ export function markCoachRoleComplete(items: TodoItem[]): boolean {
   return true;
 }
 
+/** Host advanced past scout (DONE or coach started/finished) — clear the Scout → freeze. */
+export function markPreCoachComplete(items: TodoItem[]): number {
+  const coachStep = coachStepNumber(items);
+  if (coachStep === undefined) return 0;
+  let marked = 0;
+  for (const item of items) {
+    if (item.step < coachStep && !item.completed) {
+      item.completed = true;
+      marked += 1;
+    }
+  }
+  return marked;
+}
+
 export function assistantText(message: unknown): string {
   if (!message || typeof message !== "object") return "";
   const content = (message as { content?: unknown }).content;

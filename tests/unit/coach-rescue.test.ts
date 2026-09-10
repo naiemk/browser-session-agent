@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { LedgerEvent } from "../../src/core/ledger.ts";
 import {
   MAGPIE_RESCUE_ACTIONS_WITHOUT_YIELD,
+  hasScoutYield,
   magpieRescueDecision,
   siteActionsWithoutCandidateYield,
 } from "../../src/runtime/coach/rescue.ts";
@@ -51,5 +52,25 @@ describe("AGENT-16-T06 Magpie rescue decision", () => {
       { type: "action", ts: "t2" },
     ] as LedgerEvent[];
     assert.equal(siteActionsWithoutCandidateYield(events), 2);
+  });
+
+  it("ignores plan-mode route_affordance before the Execute scout epoch", () => {
+    const events = [
+      {
+        ...yieldInput({ kind: "route_affordance", summary: "hashtag redirects" }),
+        ts: "2026-09-10T19:30:00.000Z",
+      },
+      {
+        ...yieldInput({ kind: "fact_established", summary: "logged in" }),
+        ts: "2026-09-10T19:30:00.000Z",
+      },
+      {
+        ...yieldInput({ kind: "route_affordance", summary: "keyword grid loads" }),
+        ts: "2026-09-10T19:32:00.000Z",
+      },
+    ] as LedgerEvent[];
+    assert.equal(hasScoutYield(events), true);
+    assert.equal(hasScoutYield(events, "2026-09-10T19:31:22.000Z"), true);
+    assert.equal(hasScoutYield(events, "2026-09-10T19:33:00.000Z"), false);
   });
 });

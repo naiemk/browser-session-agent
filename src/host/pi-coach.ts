@@ -1,7 +1,8 @@
 /**
  * Interactive `/coach`: review-phase digest in, strategy artifact out (COACH-09, 12–13, 15–18).
  *
- * Stronger thinking class for the review turn (COACH-12). Does not invent a model router (D12).
+ * Stronger review class (COACH-12): Pi thinking `high`, plus the Magpie `coach` model
+ * pin when set (`/models`). Restored after accept or abort. Not an `@ultra` prefix.
  */
 
 import { coreRoot, goalPaths } from "../core/paths.ts";
@@ -27,6 +28,7 @@ import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { PLAN_MODE_DISABLED_TOOLS } from "./pi-plan-mode.ts";
 import { assistantText, isAssistantMessage } from "./pi-plan-todos.ts";
 import { firstOperatorGoal, isOperatorGoalText, MAGPIE_CHAT_OBJECTIVE } from "./pi-operator-goal.ts";
+import { modelKey, type MagpieModelHost } from "./pi-models.ts";
 
 export const COACH_COMMAND = "coach";
 export const COACH_CHECKPOINT_ENTRY = "coach-checkpoint";
@@ -79,6 +81,8 @@ export interface CoachHandle {
   startReview(ctx: ExtensionContext): Promise<boolean>;
   onArtifact(handler: (ctx: ExtensionContext) => void): void;
   setPlanSlice(slice: PlanSlice): void;
+  /** Instant Execute began; plan-mode yields before this do not count as scout yield. */
+  setScoutEpoch(iso: string | undefined): void;
   hasScoutYield(): Promise<boolean>;
   considerRescue(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
 }
@@ -88,6 +92,7 @@ export interface CoachBindOptions {
   objective: string | (() => string);
   criteria?: readonly string[] | (() => readonly string[]);
   thinking?: CoachThinking;
+  models?: MagpieModelHost;
 }
 
 function restoreCheckpoint(
@@ -117,7 +122,7 @@ function thinkingControl(pi: ExtensionAPI, options: CoachBindOptions): CoachThin
   if (options.thinking) return options.thinking;
   if (typeof pi.setThinkingLevel !== "function") return undefined;
   return {
-    get: () => pi.thinkingLevel,
+    get: () => pi.thinkingLevel ?? pi.getThinkingLevel?.(),
     set: (level) => pi.setThinkingLevel?.(level),
   };
 }
@@ -175,7 +180,9 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
   let lastAttemptText = "";
   let rejectCount = 0;
   let planSlice: PlanSlice = {};
+  let scoutEpoch: string | undefined;
   let savedThinking: string | undefined;
+  let coachHeld = false;
   let rescueInFlight = false;
   let emptyRescues = 0;
   let halted = false;
@@ -199,6 +206,20 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     thinking.set(previous);
   }
 
+  async function requestReviewModel(ctx: ExtensionContext): Promise<string | undefined> {
+    if (!options.models) return undefined;
+    const error = await options.models.enter("coach", ctx);
+    if (error) return error;
+    coachHeld = true;
+    return undefined;
+  }
+
+  async function restoreReviewModel(ctx: ExtensionContext): Promise<void> {
+    if (!coachHeld) return;
+    coachHeld = false;
+    await options.models?.leave(ctx);
+  }
+
   function enableReview(ctx: ExtensionContext): void {
     reviewing = true;
     lastAttemptText = "";
@@ -207,7 +228,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     ctx.ui.setStatus?.("coach", "coach review");
   }
 
-  function disableReview(ctx: ExtensionContext, notify = false, reason: "accept" | "abort" | "session" = "session"): void {
+  async function disableReview(ctx: ExtensionContext, notify = false, reason: "accept" | "abort" | "session" = "session"): Promise<void> {
     const wasRescue = rescueInFlight;
     reviewing = false;
     digestJson = "";
@@ -216,6 +237,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     rescueInFlight = false;
     capabilities.release("coach");
     restoreReviewClass();
+    await restoreReviewModel(ctx);
     if (reason === "abort" && wasRescue) emptyRescues += 1;
     if (reason === "accept") {
       emptyRescues = 0;
@@ -253,18 +275,31 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
       );
       return false;
     }
+    const modelError = await requestReviewModel(ctx);
+    if (modelError) {
+      restoreReviewClass();
+      ctx.ui.notify(modelError, "error");
+      return false;
+    }
     const previous = latest;
     let compiled: CompiledDigest;
     try {
       compiled = await compileSessionDigest(options, previous, ctx, planSlice);
     } catch (error) {
       restoreReviewClass();
+      await restoreReviewModel(ctx);
       ctx.ui.notify(`Could not compile digest: ${error instanceof Error ? error.message : String(error)}`, "error");
       return false;
     }
     digestJson = compiled.json;
     enableReview(ctx);
-    ctx.ui.notify("Coach review: mutations off. Digest only. Stronger thinking class for this turn.");
+    const modelId = (await options.models?.resolved("coach")) ?? undefined;
+    const using = modelId && modelKey(ctx.model) === modelId ? modelId : undefined;
+    ctx.ui.notify(
+      using
+        ? `Coach review: mutations off. Digest only. Model ${using} + thinking high for this turn.`
+        : "Coach review: mutations off. Digest only. Thinking high for this turn.",
+    );
     const content = `${COACH_INSTRUCTIONS}${compiled.json}`;
     if (pi.sendUserMessage) {
       pi.sendUserMessage(content, { deliverAs: "followUp" });
@@ -291,7 +326,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
         replacedPrevious: Boolean(latest),
       });
       await options.evidence.facts.mergeGoalFacts({ strategyArtifact: artifact });
-      disableReview(ctx, false, "accept");
+      await disableReview(ctx, false, "accept");
       pi.sendMessage?.(
         {
           customType: "coach-artifact",
@@ -314,7 +349,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
             { deliverAs: "followUp" },
           );
         } else if (rejectCount > COACH_RETRY_MAX) {
-          disableReview(ctx, true, "abort");
+          await disableReview(ctx, true, "abort");
         }
         return false;
       }
@@ -371,6 +406,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     if (restored) latest = restored;
     reviewing = false;
     digestJson = "";
+    coachHeld = false;
     capabilities.release("coach");
     restoreReviewClass();
     ctx.ui.setStatus?.("coach", latest ? "coached" : undefined);
@@ -387,9 +423,12 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     setPlanSlice(slice) {
       planSlice = { ...planSlice, ...slice };
     },
+    setScoutEpoch(iso) {
+      scoutEpoch = iso;
+    },
     async hasScoutYield() {
       const events = (await options.evidence.ledger.read?.()) ?? [];
-      return hasScoutYield(events);
+      return hasScoutYield(events, scoutEpoch);
     },
     async considerRescue(ctx) {
       if (halted) return "none";

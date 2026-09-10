@@ -50,6 +50,8 @@ The VPS hosts `ui` + `api` + `gateway` (chat, Pi SDK, TLS). Playwright’s bundl
 
 Default model choice on the web host is **Pi Router** from `pi-model-auto`: Low / Medium / High / Ultra, cheapest authenticated model that meets the floor. Budgets are `pi-meter` (soft downshift, hard refuse). No second routing layer in this repo.
 
+Magpie `/models` pins (`~/.browser-agent-core/models.json`) are operator-named `provider/id` applied with Pi `setModel` for default / plan / coach turns — not a cheapest-at-floor picker. Empty pin = this session’s model (Ctrl+P). `@ultra` does not switch an in-session Magpie turn.
+
 Policy:
 
 - Inspect, obvious clicks, form fill, JSONLint-class pages → **low/medium**

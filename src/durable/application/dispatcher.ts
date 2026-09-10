@@ -79,7 +79,9 @@ export async function dispatchDueJob(input: {
     return {
       jobId: job.jobId,
       status: "runtime_unavailable",
-      detail: "no execution host or approved spec",
+      detail: !approved
+        ? "no approved spec"
+        : "no execution host: set BSA_DURABLE_HOST=1 or pass --host to attach Magpie profile + model",
       workItemId: decision.kind === "dispatch" ? decision.workItemId : decision.workItemIds[0],
     };
   }

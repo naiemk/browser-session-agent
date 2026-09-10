@@ -305,11 +305,18 @@ the operator (same spirit as AGENT-15 / EXEC-07).
 **COACH-12.** `/coach` SHALL compile a digest, run a review-phase model (no `act`, no
 `save`, no side-tab mutations, no `subagent` coder), validate the artifact, persist it
 as a checkpoint, and inject only the rendered artifact into the executing session.
-Switching model class is the operator's Ctrl+P / Pi router (D12); the host MAY request
-a high/ultra class for the coach turn but MUST NOT invent a second router. Magpie
-SHALL request Pi thinking level `high` for the review turn and restore the previous
-level after accept or abort (AGENT-16-T06).
-- Owner: `src/host/pi-coach.ts`, Magpie Execute trigger in `src/host/pi-plan-mode.ts`
+Switching model class uses Pi’s session APIs (D12); the host MUST NOT invent a second
+router or mid-session `@ultra` prompt prefix (pi-model-auto only honors floors on the
+first user turn, and extension `sendUserMessage` skips that hook). Magpie SHALL request
+Pi thinking level `high` for the review turn and restore the previous level after accept
+or abort. Magpie model pins live in `{coreRoot}/models.json` (`default` / `plan` /
+`coach`). Empty / `session` / omitted = this session’s model. `plan` and `coach` may be
+`default` or a concrete `provider/id` from the Pi registry; `/models` sets them.
+`enter`/`leave` stack so `/plan` → Execute restores the operate model and `/coach`
+during plan restores the plan model. If the host cannot switch models (no `setModel` /
+registry), Magpie SHALL still run review at thinking `high` and warn. An unknown id,
+auth failure, or a floor like `@ultra` SHALL fail closed. Do not use `BSA_COACH_MODEL`.
+- Owner: `src/host/pi-models.ts`, `src/host/pi-coach.ts`, Magpie Execute trigger in `src/host/pi-plan-mode.ts`
 - Ticket: AGENT-16-T03, AGENT-16-T05, AGENT-16-T06
 
 **COACH-13.** Coach is a compaction boundary (D52). After a successful coach, harvest
@@ -374,6 +381,7 @@ src/runtime/coach/
   strategy.ts     # COACH-05..08 — parse/validate/render
   yield.ts        # yield event helpers used by tools + digest
 src/host/pi-coach.ts                  # /coach command, checkpoint, startReview
+src/host/pi-models.ts                 # /models pins + enter/leave (not a router)
 src/host/pi-plan-mode.ts              # Execute remaining-steps; auto-invoke startReview
 src/durable/domain/spec-types.ts      # optional CoachingPolicy
 src/durable/domain/spec-compiler.ts   # accept/reject policy
