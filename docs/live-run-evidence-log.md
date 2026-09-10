@@ -394,3 +394,33 @@ Decision:
 - Main evidence:
 - Ticket implications:
 - Decision:
+
+## 2026-09-10 — Magpie Execute did not run `/coach` (`goal_mtumeewm001`)
+
+Identity:
+
+- Goal: `goal_mtumeewm001`
+- Session: `2026-09-09T21-38-26-450Z_01a0881b-9e12-747d-8bca-c7405f68cfd1`
+- Task: `docs/example-prompts/party.txt` (Minsk party-goers, list only, “Use insta”)
+- Host: local Magpie / Pi browser chat
+
+Observation:
+
+- `/plan` classified `calibration_required`. Todos included step 4
+  `Coach: Submit the scout artifact for coaching…` and step 5
+  `Harvest (blocked on coach artifact)`.
+- Execute at 21:41:02Z injected all seven steps, including the coach todo, as
+  remaining executor work. Plan `turn_end` only tracks `[DONE:n]`.
+- GLM did not emit `[DONE:n]` during scout. First `[DONE:]` tags are 22:13–22:14Z
+  on a second Execute after harvest.
+- At 21:46:38Z GLM reasoned there is no coach tool and called
+  `subagent({ agent: "planner" })` (“Your job as coach”). Child: DeepSeek Flash,
+  3 turns, $0.0016. Output saved as `artifacts/harvest-criteria.md`
+  (`ev_mtumq8vy05m`). No `coach-checkpoint`, no `[COACH REVIEW]`.
+- T03 `agent=coach` refuse did not apply. This is not R1.E2.
+
+Decision:
+
+- Open **AGENT-16-T05**: Magpie Execute invokes the existing `/coach` handler after
+  pre-coach todos complete; remaining-steps MUST omit the coach-role todo.
+- Do not treat this as QUAL/PERF accept. Do not start AGENT-16-T04 for this gap.

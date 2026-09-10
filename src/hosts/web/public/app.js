@@ -30,6 +30,7 @@ const pairHintEl = document.getElementById("pair-hint");
 const COMMANDS = [
   ["browser-start", "Start a run"],
   ["plan", "Toggle plan mode"],
+  ["coach", "Review-phase strategy coach"],
   ["browser-status", "Status"],
   ["browser-runs", "Runs"],
   ["browser-pause", "Pause"],
@@ -300,7 +301,7 @@ COMMANDS.forEach(([name, label]) => {
       addMessage("user", `/${name} ${url ? `--url ${url} ` : ""}${goal}`);
       return;
     }
-    if (name === "plan") {
+    if (name === "plan" || name === "coach") {
       send({ type: "command", name, args: "" });
       addMessage("user", `/${name}`);
       return;

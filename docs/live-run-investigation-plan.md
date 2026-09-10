@@ -22,6 +22,7 @@ Related documents:
 - `docs/challenge-and-approval-handling.md` — CAPTCHA/challenge and approval-boundary
   experiment design.
 - `docs/coach.md` — strategy coach (D58); not a QUAL/PERF accept.
+- `docs/release-roadmap.md` — build order and evaluation gates (E-QUAL before QUAL/PERF accept).
 - `docs/jobs-v2-spec.md` — normative Jobs V2 requirements (implementation authority).
 - `docs/jobs-v2-evaluation.md` — evidence levels and per-task review protocol.
 - `docs/long-running-jobs.md` — product/architecture overview; defers to the normative

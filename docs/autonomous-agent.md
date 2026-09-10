@@ -48,6 +48,8 @@ and resume from fresh evidence without session history.
 
 Work breakdown: `work-items/epics/agent.md` (8 stories, 13 tasks). Each task carries a definition of done that can be checked objectively, usually a named test file plus a specific assertion.
 
+What ships next, in order, with evaluation gates: [`docs/release-roadmap.md`](release-roadmap.md).
+
 ## Current state
 
 New core and runtime (D34, D36), built and tested against fixtures, not yet wired to the hosted shell. Layering is described in `docs/runtime.md`.
@@ -66,8 +68,8 @@ Old system, still the shipping product (see `docs/architecture.md`):
 - Semantic inspect with ref-tagged controls, action harness with read-back and delta postconditions (D17), page-plan DSL, evidence log on disk, knowledge store with candidate/approved states.
 - Desktop node runs Chromium; the VPS never does (D11).
 
-Designed, not built: strategy coach (D58, `docs/coach.md`) — scout → review-phase
-guideline → harvest; `/coach`; job `coaching` policy. AGENT-16.
+Designed, not built: job `coaching` policy (AGENT-16-T04). Magpie `/plan` Execute
+auto-invokes `/coach` after scout (AGENT-16-T05, FakePi). Live E2 still open.
 
 Deliberately not decided yet: session strategy (D27), planner and graph, memory tiers (D28).
 D58 is the planner's *calibration gate*, not the gated living task graph in AGENT-08.

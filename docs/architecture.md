@@ -41,6 +41,7 @@ Do not treat the prototype's JSON plan/task/entity/sprint stores as architecture
 replacement shares this product's persistent browser ownership while putting transactional
 job/case/work/effect state above the bounded attempt port. Normative design:
 `docs/jobs-v2-spec.md` (overview: `docs/long-running-jobs.md`, decision D57).
+Soft cutover vs product path: [`docs/release-roadmap.md`](release-roadmap.md) R2.
 
 ## Runtime layout
 

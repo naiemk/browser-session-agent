@@ -86,4 +86,5 @@ record under `work-items/evaluations/jobs-v2/`.
 - `docs/fabric-execution-experiment.md` — optional kernel
 - `docs/decisions.md` — D31–D33, D56, D57, D58
 - `docs/coach.md` — post-cutover strategy coach (AGENT-16)
+- `docs/release-roadmap.md` — R2 hard cutover, R3 job-invoked coach
 - `docs/live-run-investigation-plan.md` — QUAL/PERF backlog mapping

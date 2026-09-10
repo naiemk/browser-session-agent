@@ -31,7 +31,12 @@ export type LedgerEventType =
    * getting the work wrong, and it has to be findable to be measurable.
    */
   | "fork"
-  | "note";
+  | "note"
+  /**
+   * Semantic harvest progress (COACH-03). A click that returned ok is not this.
+   * Kinds live in `payload.kind`; see `src/runtime/coach/yield.ts`.
+   */
+  | "yield";
 
 export interface LedgerEvent {
   id: string;

@@ -77,6 +77,53 @@ export function markCompletedSteps(text: string, items: TodoItem[]): number {
   return doneSteps.length;
 }
 
+/** COACH-09: first numbered step whose wording is the coach role. */
+export const COACH_ROLE_PATTERN = /\bcoach(?:ing)?\b/i;
+
+export function isCoachRoleText(text: string): boolean {
+  return COACH_ROLE_PATTERN.test(text);
+}
+
+export function coachStepNumber(items: readonly TodoItem[]): number | undefined {
+  return items.find((item) => isCoachRoleText(item.text))?.step;
+}
+
+/**
+ * Work the executor is allowed to see (COACH-15).
+ *
+ * Before an artifact: only steps before the coach-role todo.
+ * After: only steps after it. No coach-role todo means known_flow — all remaining.
+ */
+export function executorRemaining(
+  items: readonly TodoItem[],
+  hasArtifact: boolean,
+): TodoItem[] {
+  const coachStep = coachStepNumber(items);
+  if (coachStep === undefined) {
+    return items.filter((todo) => !todo.completed);
+  }
+  if (!hasArtifact) {
+    return items.filter((todo) => todo.step < coachStep && !todo.completed);
+  }
+  return items.filter((todo) => todo.step > coachStep && !todo.completed);
+}
+
+export function preCoachComplete(items: readonly TodoItem[]): boolean {
+  const coachStep = coachStepNumber(items);
+  if (coachStep === undefined) return false;
+  const pre = items.filter((item) => item.step < coachStep);
+  return pre.length > 0 && pre.every((todo) => todo.completed);
+}
+
+export function markCoachRoleComplete(items: TodoItem[]): boolean {
+  const coachStep = coachStepNumber(items);
+  if (coachStep === undefined) return false;
+  const item = items.find((todo) => todo.step === coachStep);
+  if (!item || item.completed) return false;
+  item.completed = true;
+  return true;
+}
+
 export function assistantText(message: unknown): string {
   if (!message || typeof message !== "object") return "";
   const content = (message as { content?: unknown }).content;

@@ -3,7 +3,7 @@ id: AGENT-16-T03
 title: Interactive /coach and plan-mode policy
 story: AGENT-16
 epic: agent
-status: todo
+status: done
 ---
 
 # AGENT-16-T03 — Interactive `/coach` and plan-mode policy
