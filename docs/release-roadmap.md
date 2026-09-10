@@ -3,16 +3,16 @@
 Living checklist. Tick boxes here as work lands. Do not rewrite a ticked step; add a
 dated note under it if the outcome was partial.
 
-**As of 2026-09-10.** Current position: **R1.4 FakePi landed, live eval open.** Interactive
-Magpie chat works. `/plan` Execute now invokes `/coach` after pre-coach `[DONE:n]`.
-Instagram harvests still wander until a live `/plan` Execute with host `/coach` beats
-`goal_mtrvevpq001`. `goal_mtumeewm001` does not close E2.
-PR #55 is on `main`. AGENT-16-T01..T03 and T05 are in tree.
+**As of 2026-09-10.** Current position: **R1.5 FakePi landed; R1.E2 live next.**
+Interactive Magpie chat works. `/plan` Execute leases `/coach` after scout, harvest
+is a trial loop with yield-breaker rescue, review uses a stronger thinking class.
+Do not treat `goal_mtumeewm001` / `mtvqt1a6001` as E2. PR #55 is on `main`.
+AGENT-16-T01..T03, T05, and T06 FakePi are in tree.
 
 **Next two pieces of work, in parallel — not a single queue:**
 
-1. **R1.E2** — live party.txt `/plan` then Execute (host `/coach` after scout).
-   Prove less wandering without typing `/coach`.
+1. **R1.E2** — live party.txt `/plan` then Execute **after T06**. Prove less wandering
+   without typing `/coach`.
 2. **E-QUAL** — one more comparable collection run on a **different domain**, then the
    decision review.
 
@@ -25,7 +25,7 @@ the gates**, not a second spec.
 | Release | What the operator can do | Status |
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
-| R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T05 FakePi landed; R1.E2 live next** |
+| R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
 | R2 | Durable job ticks on the Magpie browser (V2 is the product path) | Blocked on real host + L7 |
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
@@ -60,9 +60,10 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 **Do next**
 
 - Run **R1.E2**: same `docs/example-prompts/party.txt`, `/plan` then Execute
-  (T05 host `/coach` after scout). Compare wandering vs `goal_mtrvevpq001`. Do not
-  treat `goal_mtumeewm001` as E2 (fake planner coach). Append an evidence-log row.
-  Do not call coach a success until this lands.
+  (T06 closed-loop host `/coach`). Compare wandering vs `goal_mtrvevpq001`. Do not
+  treat `goal_mtumeewm001` (fake planner) or `goal_mtvqt1a6001` (coach fired, harvest
+  ignored) as E2. Append an evidence-log row. Do not call coach a success until this
+  lands.
 - Run **E-QUAL**: a collection task on SaaS / conference CFPs / apartments. Not
   Berlin checkout, not Magpie coder harvest, not another Instagram tagged-feed
   recipe. Prompt class: `docs/example-prompts/sas.txt` /
@@ -213,7 +214,7 @@ Telemetry always. Halt / takeover / park / `blocked.challenge` only when the fla
 Execute runs `/coach` after scout without a second keystroke. Manual `/coach`
 mid-run still works. Cheap GLM then loops the guideline. Chat, not jobs.
 
-Spec: [`docs/coach.md`](coach.md) · tickets: AGENT-16-T01..T03, T05
+Spec: [`docs/coach.md`](coach.md) · tickets: AGENT-16-T01..T03, T05, T06
 (`work-items/stories/agent-16-strategy-coach.md`)
 
 ### Build
@@ -228,18 +229,25 @@ Spec: [`docs/coach.md`](coach.md) · tickets: AGENT-16-T01..T03, T05
 - [x] **R1.4** Magpie Execute invokes `/coach` — AGENT-16-T05
       (`work-items/evaluations/agent-16-t05-plan-execute-coach.md`)
       2026-09-10: FakePi. Live harvest following the artifact is R1.E2.
+      2026-09-10: Host `/coach` fired on `goal_mtvpsym1001` / `goal_mtvqt1a6001`;
+      harvest did not consume the loop. Closed loop is T06, not a second E2 attempt
+      on T05.
+- [x] **R1.5** Magpie closed-loop coach — AGENT-16-T06
+      (`work-items/evaluations/agent-16-t06-closed-loop-coach.md`)
+      2026-09-10: FakePi. Live harvest following the loop is still R1.E2.
 
 T01 and T02 may proceed in parallel. T03 depends on both. T05 depends on T03.
+T06 depends on T05. Do not run E2 until T06 FakePi is green.
 
 ### Evaluation
 
 - [x] **R1.E1** Unit/FakePi: `tests/unit/coach-digest.test.ts`,
       `coach-strategy.test.ts`, `pi-coach.test.ts` (no provider)
 - [ ] **R1.E2** Interactive live: same `party.txt` prompt, `/plan` then Execute
-      (T05 host `/coach` after scout). Record yield per site action, navigation
-      cycles, peek vs back, accepted-candidate quality vs `goal_mtrvevpq001`.
-      `goal_mtumeewm001` does not close this (no `coach-checkpoint`). Append
-      evidence-log row.
+      **after T06**. Record yield per site action, navigation cycles, peek vs back,
+      accepted-candidate quality vs `goal_mtrvevpq001`. `goal_mtumeewm001` (no
+      checkpoint) and `goal_mtvqt1a6001` (checkpoint, harvest ignored) do not close
+      this. Append evidence-log row.
 - [ ] **R1.E3** (optional, after E-QUAL) Same coach flow on the second-domain
       prompt. Confirms the guideline is not Instagram-specific.
 

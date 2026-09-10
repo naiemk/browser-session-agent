@@ -73,7 +73,6 @@ const SPEC_REWRITE = [
   /rewrite(?:s)? (?:the )?success/i,
   /dm\b[\s\S]{0,40}without approval/i,
   /lower(?:s)? (?:the )?follower/i,
-  /follower threshold/i,
 ];
 
 function capString(value: unknown, max: number): string {
@@ -163,7 +162,10 @@ function rewriteBlob(artifact: StrategyArtifact): string {
   ]
     .join("\n")
     .replace(/do not loosen[^\n]*/gi, "")
-    .replace(/don't loosen[^\n]*/gi, "");
+    .replace(/don't loosen[^\n]*/gi, "")
+    .replace(/do not change[^\n]*/gi, "")
+    .replace(/don't change[^\n]*/gi, "")
+    .replace(/no explicit follower threshold[^\n]*/gi, "");
 }
 
 export function assertStrategyArtifact(raw: unknown): StrategyArtifact {
