@@ -8,7 +8,13 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("CAMPAIGN-R2-1 adapter FakeKernel ban", () => {
   it("product adapters do not import FakeKernel", () => {
-    for (const rel of ["src/durable/adapters/cli.ts", "src/durable/adapters/pi.ts"]) {
+    for (const rel of [
+      "src/durable/adapters/cli.ts",
+      "src/durable/adapters/pi.ts",
+      "src/extension.ts",
+      "src/hosts/web/runtime.ts",
+      "src/host/pi-durable.ts",
+    ]) {
       const source = readFileSync(path.join(ROOT, rel), "utf8");
       assert.doesNotMatch(
         source,

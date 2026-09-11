@@ -39,6 +39,9 @@ const COMMANDS = [
   ["browser-stop", "Stop"],
   ["browser-knowledge", "Knowledge"],
   ["browser-approve", "Approve"],
+  ["durable-status", "Durable job status"],
+  ["durable-tick", "Durable job tick"],
+  ["durable-cancel", "Cancel durable job"],
 ];
 
 function send(message) {
@@ -308,6 +311,20 @@ COMMANDS.forEach(([name, label]) => {
     }
     if (name === "browser-approve") {
       const id = prompt("Knowledge id to approve?");
+      if (!id) return;
+      send({ type: "command", name, args: id });
+      addMessage("user", `/${name} ${id}`);
+      return;
+    }
+    if (name === "durable-status" || name === "durable-cancel") {
+      const id = prompt("Durable job id?");
+      if (!id) return;
+      send({ type: "command", name, args: id });
+      addMessage("user", `/${name} ${id}`);
+      return;
+    }
+    if (name === "durable-tick") {
+      const id = prompt("Durable job id (or --due)?");
       if (!id) return;
       send({ type: "command", name, args: id });
       addMessage("user", `/${name} ${id}`);

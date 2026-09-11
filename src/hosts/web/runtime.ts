@@ -5,6 +5,7 @@ import { thinkingOf, turnClock } from "../../host/pi-metering.ts";
 import { turnIdentityFields, turnIdentityKey, type TurnIdentity } from "../../runtime/turn-identity.ts";
 import { bindPlanMode, type PlanModeHandle } from "../../host/pi-plan-mode.ts";
 import { bindCoach, type CoachHandle } from "../../host/pi-coach.ts";
+import { bindDurableCommands } from "../../host/pi-durable.ts";
 import { bindMagpieModels } from "../../host/pi-models.ts";
 import { MAGPIE_CHAT_OBJECTIVE } from "../../host/pi-operator-goal.ts";
 import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
@@ -159,6 +160,7 @@ export class OperatorRuntime {
       models,
     });
     this.planMode = bindPlanMode(this.api, { coach: this.coach, models });
+    bindDurableCommands(this.api, { surface: "hosted" });
     this.api.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
       if (!this.browserPrompt) return undefined;
       const goalId = this.sessionGoal.id();

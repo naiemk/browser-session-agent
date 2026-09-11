@@ -2,7 +2,7 @@
  * CAMPAIGN-04-T01 / R2.1 — thin Pi adapter over JobApplicationService.
  * Fresh chat does not bind a job; commands are explicit.
  * Host is injected; default is null (runtime_unavailable). No fake completed kernel.
- * Magpie extension bind is R2.2 — do not call this from extension.ts here.
+ * Magpie / hosted chat bind is R2.2 (`src/host/pi-durable.ts`).
  */
 
 import path from "node:path";
@@ -18,7 +18,11 @@ export interface DurablePiOptions {
   /** Product or test host. Default: always null (ADAPTER-04). */
   hostFactory?: () => ExecutionHost | null;
   /** Copy when tick reports runtime_unavailable. */
-  remediation?: string;
+  remediation?: string | (() => string);
+}
+
+function resolveRemediation(remediation: string | (() => string)): string {
+  return typeof remediation === "function" ? remediation() : remediation;
 }
 
 export function registerDurablePiCommands(pi: ExtensionAPI, options?: DurablePiOptions): void {
@@ -57,8 +61,10 @@ export function registerDurablePiCommands(pi: ExtensionAPI, options?: DurablePiO
       if (text === "--due" || text.startsWith("--due")) {
         const results = await withService((s) => s.tickDue());
         const unavailable = results.some((r) => r.status === "runtime_unavailable");
+        const note = resolveRemediation(remediation);
+        // Prefer surface remediation over dispatcher CLI copy (ADAPTER-04 overlay).
         const annotated = results.map((r) =>
-          r.status === "runtime_unavailable" ? { ...r, detail: r.detail ?? remediation } : r,
+          r.status === "runtime_unavailable" ? { ...r, detail: note } : r,
         );
         ctx.ui.notify(JSON.stringify(annotated), unavailable ? "error" : "info");
         return;
@@ -68,9 +74,10 @@ export function registerDurablePiCommands(pi: ExtensionAPI, options?: DurablePiO
         return;
       }
       const result = await withService((s) => s.tick(text));
+      const note = resolveRemediation(remediation);
       const annotated =
         result.status === "runtime_unavailable"
-          ? { ...result, detail: result.detail ?? remediation }
+          ? { ...result, detail: note }
           : result;
       ctx.ui.notify(JSON.stringify(annotated), result.status === "runtime_unavailable" ? "error" : "info");
     },

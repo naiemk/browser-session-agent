@@ -65,7 +65,8 @@ R2.E1 Magpie CDP reconnect or R2.E3 L7.
 | Maintainability | 3 | 3 | |
 
 Residual (P1): Magpie CDP second-process reconnect still R2.E1 / 02-T04 operator path.
-Residual (P2): web/RPC twin and Magpie bind are R2.2.
+Residual (P2): Magpie/hosted bind landed in CAMPAIGN-R2-2 (2026-09-11). Hosted/RPC
+ExecutionHost twin still open (hosted ticks remain fail-closed).
 
 ## Improvement pass
 
