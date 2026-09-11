@@ -30,6 +30,7 @@ export async function validatePrototypeRoot(root: string): Promise<PrototypeVali
       }
       if (raw.currentSprintId) {
         report.unsupported.push({ jobId: name, reason: "authoritative sprint present; import as archive only" });
+        continue;
       }
       report.ok.push(name);
     } catch (err) {

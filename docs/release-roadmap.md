@@ -26,7 +26,7 @@ the gates**, not a second spec.
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
 | R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
-| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2 L6; R2.E3/E4 open** |
+| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2/E4; R2.E3 open** |
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
@@ -306,7 +306,9 @@ R2.1–R2.3 may start while R1 is in flight. **R2.4 waits for evaluations.**
       open (hosted ticks fail closed).
 - [ ] **R2.E3** Two controlled **L7** smokes, no unsafe external commit, each with
       live-run review template
-- [ ] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs
+- [x] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs.
+      2026-09-11: CAMPAIGN-R2-E4 — `--dry-run`, malformed quarantine, STORE-06 row
+      tightened. Does not complete MIGRATE-02 (R2.E3 still open).
 - [ ] **R2.E5** Repo search: no production import of deleted prototype runner
 
 ### Exit
@@ -443,3 +445,5 @@ Tick into a future R6 only when the entry condition is met.
       hosted ticks fail closed. R2.E1/E3 still open; do not claim R2 shipped. |
 | 2026-09-11 | R2.E1 L5 ticked (CAMPAIGN-R2-E1). Magpie CDP client reconnect on fixture
       profile. R2.E3/E4 still open; do not claim R2 shipped. |
+| 2026-09-11 | R2.E4 ticked (CAMPAIGN-R2-E4). Prototype dry-run + STORE-06 quarantine.
+      R2.E3 still open; do not claim R2 / MIGRATE-02 hard cutover. |
