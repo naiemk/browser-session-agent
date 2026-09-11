@@ -64,7 +64,8 @@ R2.E1 Magpie CDP reconnect or R2.E3 L7.
 | Test realism | 3 | 4 | Behavioral mock observes `/apply` |
 | Maintainability | 3 | 3 | |
 
-Residual (P1): Magpie CDP second-process reconnect still R2.E1 / 02-T04 operator path.
+Residual (P1): Magpie CDP client reconnect landed in CAMPAIGN-R2-E1 (2026-09-11, L5).
+Pi-crash orphan Chrome still later.
 Residual (P2): Magpie/hosted bind landed in CAMPAIGN-R2-2 (2026-09-11). Hosted/RPC
 ExecutionHost twin still open (hosted ticks remain fail-closed).
 
@@ -79,6 +80,4 @@ EXEC-05, ADAPTER-02/04, SCHED-02 → `product-host.ts`, `adapters/{cli,pi}.ts`, 
 
 ## Open risks / follow-ups
 
-- R2.2: `registerDurablePiCommands` from `extension.ts` / hosted runtime
-- R2.E1: real WorkerBrowserPort reconnect after control-process restart
 - R2.E3: two L7 smokes before deleting `src/jobs`

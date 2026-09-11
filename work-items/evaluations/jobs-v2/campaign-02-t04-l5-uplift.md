@@ -34,4 +34,6 @@ Added epoch guard assertion so reconnect tests fail closed on stale refs rather 
 
 ## Residual
 
-- P1: Spawned second-process Magpie CDP reconnect not automated here (needs headed worker harness).
+- P1 (closed 2026-09-11): Magpie CDP client reconnect automated in CAMPAIGN-R2-E1
+  (`tests/integration/magpie-cdp-reconnect-l5.test.ts`).
+- P2: Pi-crash orphan / always-detached supervisor still later.

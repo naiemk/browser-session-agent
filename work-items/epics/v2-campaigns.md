@@ -38,6 +38,7 @@ yield without blocking unrelated work; a new process continues without session h
 | [CAMPAIGN-02-T02](../tasks/campaign-02-t02-leases-fencing.md) | EXEC-01..03,08 | 01-T03 | done |
 | [CAMPAIGN-02-T03](../tasks/campaign-02-t03-context-outcome-evaluator.md) | EXEC-04,06,07,09 | 01-T02, 02-T01 | done |
 | [CAMPAIGN-02-T04](../tasks/campaign-02-t04-persistent-execution-host.md) | EXEC-01,05 | 02-T02, 02-T03 | done |
+| [CAMPAIGN-R2-E1](../tasks/campaign-r2-e1-magpie-cdp-reconnect.md) | EXEC-05 (L5 reconnect) | 02-T04 | done — Magpie CDP client reconnect L5 |
 | [CAMPAIGN-03-T01](../tasks/campaign-03-t01-cases-materialization-revision.md) | CASE-01..05, DOM-05, SPEC-05 | 01-T03, 01-T02 | done |
 | [CAMPAIGN-03-T02](../tasks/campaign-03-t02-effects-approvals.md) | EFFECT-01..06, SPEC-06 | 03-T01, AGENT-14 | done |
 | [CAMPAIGN-03-T03](../tasks/campaign-03-t03-challenges-breakers.md) | HUMAN-01..03, EXEC-07 | 02-T01, AGENT-13 | done |

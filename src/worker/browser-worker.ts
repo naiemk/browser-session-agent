@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright";
@@ -8,6 +8,7 @@ import { dataPaths, ensureDir } from "../store/paths.ts";
 import { readWorkerInfo, writeWorkerInfo, clearWorkerInfo } from "../store/worker-info.ts";
 import {
   BROWSER_LAUNCH_ID,
+  chromeExecutable,
   isMissingChromeError,
   needsNoSandbox,
   persistentContextArgs,
@@ -73,6 +74,15 @@ function chromePid(browser: Browser | null): number {
   return 0;
 }
 
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -83,6 +93,21 @@ async function freePort(): Promise<number> {
     });
     server.on("error", reject);
   });
+}
+
+async function waitForCdp(cdpUrl: string, attempts = 40): Promise<void> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const response = await fetch(`${cdpUrl}/json/version`);
+      if (response.ok) return;
+      last = new Error(`CDP ${response.status}`);
+    } catch (err) {
+      last = err;
+    }
+    await delay(100);
+  }
+  throw last instanceof Error ? last : new Error(`CDP not ready: ${cdpUrl}`);
 }
 
 async function connectCdp(cdpUrl: string, attempts = 15): Promise<Browser> {
@@ -169,49 +194,91 @@ export class BrowserWorker {
     }
   }
 
+  /**
+   * Drop the Playwright CDP client without killing Chromium.
+   * Leaves `worker.json` so a later BrowserWorker can connectOverCDP.
+   * `stop()` still SIGKILLs via retained pid / trackedPids.
+   *
+   * Use `browser.close()` on a CDP-attached browser (not the private
+   * `_connection.close()`): the latter leaves Chromium answering /json/version
+   * but rejects later connectOverCDP.
+   */
   async disconnect(): Promise<void> {
-    if (!this.launchedHere && this.browser) {
+    await Promise.race([this.stopScreencast(), delay(300)]).catch(() => undefined);
+    if (this.browser) {
       try {
-        const connection = (
-          this.browser as unknown as {
-            _connection?: { close: () => Promise<void> };
-          }
-        )._connection;
-        if (connection) await connection.close();
+        await this.browser.close();
       } catch {
         // drop the CDP client only
       }
     }
-    if (!this.launchedHere) {
-      this.browser = null;
-      this.context = null;
-      this.pages.clear();
-    }
+    this.browser = null;
+    this.context = null;
+    this.pages.clear();
+    this.consoleErrors.clear();
+    this.lastObservation.clear();
+    this.launchedHere = false;
+    // Keep this.info + trackedPids so stop() can still kill Chromium.
   }
 
   async stop(): Promise<void> {
     await Promise.race([this.stopScreencast(), delay(300)]).catch(() => undefined);
-    const pids = [...this.trackedPids, this.info?.pid ?? 0, chromePid(this.browser)].filter(
+    const fromDisk = this.info ?? (await readWorkerInfo(this.home).catch(() => null));
+    const pids = [...this.trackedPids, fromDisk?.pid ?? 0, this.info?.pid ?? 0, chromePid(this.browser)].filter(
       (pid) => pid > 0 && pid !== process.pid,
     );
+
+    // Quit Chromium over CDP while still attached so the profile flushes cookies.
+    // Playwright `browser.close()` on a CDP session only drops the client.
     if (this.context) {
       try {
-        await Promise.race([this.context.close(), delay(300)]);
+        const page = this.context.pages()[0] ?? (await this.context.newPage());
+        const session = await this.context.newCDPSession(page);
+        await Promise.race([session.send("Browser.close" as never), delay(2_000)]);
       } catch {
-        // already closed
+        // fall through to signals
       }
-    }
-    for (const pid of new Set(pids)) {
+    } else if (this.browser) {
       try {
-        process.kill(pid, "SIGKILL");
+        await Promise.race([this.browser.close(), delay(300)]);
       } catch {
         // already gone
       }
     }
-    this.launchedHere = false;
     this.browser = null;
     this.context = null;
     this.pages.clear();
+
+    // Wait for a graceful CDP quit before escalating.
+    const gracefulDeadline = Date.now() + 5_000;
+    while (Date.now() < gracefulDeadline && pids.some((pid) => isPidAlive(pid))) {
+      await delay(50);
+    }
+    for (const pid of new Set(pids)) {
+      if (!isPidAlive(pid)) continue;
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+    const termDeadline = Date.now() + 1_500;
+    while (Date.now() < termDeadline && pids.some((pid) => isPidAlive(pid))) {
+      await delay(50);
+    }
+    for (const pid of new Set(pids)) {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    }
+    this.launchedHere = false;
+    this.trackedPids = [];
     this.info = null;
     await clearWorkerInfo(this.home);
   }
@@ -517,24 +584,30 @@ export class BrowserWorker {
     await page.keyboard.up(event.key);
   }
 
+  /**
+   * Spawn Chromium/Chrome as an OS process, then attach over CDP.
+   * Playwright does not own the process, so `disconnect()` can drop the client
+   * while leaving the profile browser alive for a later control process.
+   */
   private async launchManaged(): Promise<void> {
     const paths = dataPaths(this.home);
     await ensureDir(paths.profileDir);
     const port = await freePort();
     const overrides = playwrightLaunchOverrides(this.browserChannel);
-    let context: BrowserContext;
+    let executable: string;
     try {
-      context = await chromium.launchPersistentContext(paths.profileDir, {
-        headless: this.headless,
-        viewport: { width: 1280, height: 720 },
-        channel: overrides.channel,
-        ignoreDefaultArgs: overrides.ignoreDefaultArgs,
-        args: persistentContextArgs({
-          port,
-          extraArgs: overrides.extraArgs,
-          noSandbox: needsNoSandbox(),
-        }),
-      });
+      if (this.browserChannel === "chrome") {
+        const chrome = await chromeExecutable();
+        if (!chrome) {
+          throw new AgentError(
+            "chrome_not_found",
+            "Google Chrome is not installed. Install Chrome, or start with --chromium after `npx playwright install chromium`.",
+          );
+        }
+        executable = chrome;
+      } else {
+        executable = chromium.executablePath();
+      }
     } catch (err) {
       if (this.browserChannel === "chrome" && isMissingChromeError(err)) {
         throw new AgentError(
@@ -544,11 +617,47 @@ export class BrowserWorker {
       }
       throw err;
     }
-    this.context = context;
-    this.browser = context.browser();
+
+    const args = [
+      `--user-data-dir=${paths.profileDir}`,
+      ...(this.headless ? ["--headless=new"] : []),
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--window-size=1280,720",
+      ...persistentContextArgs({
+        port,
+        extraArgs: overrides.extraArgs,
+        noSandbox: needsNoSandbox(),
+      }),
+      "about:blank",
+    ];
+
+    const child = spawn(executable, args, {
+      detached: true,
+      stdio: "ignore",
+    });
+    if (!child.pid) {
+      throw new Error(`failed to spawn ${this.browserChannel}`);
+    }
+    child.unref();
+
+    const cdpUrl = `http://127.0.0.1:${port}`;
+    try {
+      await waitForCdp(cdpUrl);
+      this.browser = await connectCdp(cdpUrl);
+      this.context = this.browser.contexts()[0] ?? (await this.browser.newContext());
+    } catch (err) {
+      try {
+        process.kill(child.pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+      throw err;
+    }
+
     this.info = {
-      pid: chromePid(this.browser),
-      cdpUrl: `http://127.0.0.1:${port}`,
+      pid: child.pid,
+      cdpUrl,
       port,
       profileDir: paths.profileDir,
       startedAt: new Date().toISOString(),
@@ -556,7 +665,9 @@ export class BrowserWorker {
       launch: BROWSER_LAUNCH_ID,
     };
     await writeWorkerInfo(this.home, this.info);
-    this.trackedPids = childPids();
+    this.trackedPids = [child.pid];
+    // Spawned by us; Playwright is only a CDP client (disconnect leaves Chromium).
+    this.launchedHere = true;
     await this.hydratePages();
   }
 

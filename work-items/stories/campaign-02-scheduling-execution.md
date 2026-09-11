@@ -25,6 +25,7 @@ reports exactly why it cannot; it never claims to be idle because no runtime was
 - [CAMPAIGN-02-T02](../tasks/campaign-02-t02-leases-fencing.md) — EXEC-01..03,08
 - [CAMPAIGN-02-T03](../tasks/campaign-02-t03-context-outcome-evaluator.md) — EXEC-04,06,07,09
 - [CAMPAIGN-02-T04](../tasks/campaign-02-t04-persistent-execution-host.md) — EXEC-01,05
+- [CAMPAIGN-R2-E1](../tasks/campaign-r2-e1-magpie-cdp-reconnect.md) — Magpie CDP reconnect (L5)
 
 ## Done when
 
