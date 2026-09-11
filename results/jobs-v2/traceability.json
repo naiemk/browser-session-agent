@@ -155,11 +155,12 @@
     },
     {
       "id": "STORE-06",
-      "ticket": "CAMPAIGN-01-T04",
-      "code": "src/durable/**",
-      "tests": "tests/unit/durable-* + tests/integration/durable-*",
+      "ticket": "CAMPAIGN-R2-E4",
+      "code": "src/durable/infrastructure/prototype-import.ts, src/durable/infrastructure/prototype/validate.ts, src/durable/adapters/cli.ts",
+      "tests": "tests/unit/durable-prototype-import.test.ts, tests/fixtures/prototype-jobs/**",
       "status": "implemented",
-      "finalScoreGate": "see evaluation record"
+      "finalScoreGate": "see work-items/evaluations/jobs-v2/campaign-r2-e4-prototype-dry-run.md",
+      "note": "2026-09-11 R2.E4: dry-run import/archive; malformed quarantined; unsupported not ok"
     },
     {
       "id": "STORE-07",
@@ -566,8 +567,9 @@
       "ticket": "CAMPAIGN-04-T04",
       "code": "src/durable/**",
       "tests": "tests/unit/durable-* + tests/integration/durable-*",
-      "status": "implemented",
-      "finalScoreGate": "see evaluation record"
+      "status": "partial",
+      "finalScoreGate": "see evaluation record",
+      "note": "2026-09-11 R2.E4 closed eval §3 item 6 (prototype dry-run). L5 done (R2.E1). L7 (R2.E3) and delete (R2.E5) still open — not hard cutover."
     },
     {
       "id": "MIGRATE-03",

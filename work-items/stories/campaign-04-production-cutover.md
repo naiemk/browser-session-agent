@@ -32,6 +32,7 @@ browser boundaries.
 - [CAMPAIGN-04-T04](../tasks/campaign-04-t04-cutover-delete-prototype.md) — MIGRATE-02..04
 - [CAMPAIGN-R2-1](../tasks/campaign-r2-1-product-execution-host.md) — R2.1 product host (L6)
 - [CAMPAIGN-R2-2](../tasks/campaign-r2-2-magpie-web-bind.md) — Magpie/web bind of durable commands (L6)
+- [CAMPAIGN-R2-E4](../tasks/campaign-r2-e4-prototype-dry-run.md) — Prototype import/archive dry-run (STORE-06)
 
 ## Done when
 

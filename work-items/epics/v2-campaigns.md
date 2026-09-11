@@ -50,6 +50,7 @@ yield without blocking unrelated work; a new process continues without session h
 | [CAMPAIGN-04-T04](../tasks/campaign-04-t04-cutover-delete-prototype.md) | MIGRATE-02..04 | all above + 04-T01..T03 | done |
 | [CAMPAIGN-R2-1](../tasks/campaign-r2-1-product-execution-host.md) | EXEC-05, ADAPTER-02/04, SCHED-02 | 02-T04, 04-T01 | done — R2.1 L6; Magpie bind is R2.2 |
 | [CAMPAIGN-R2-2](../tasks/campaign-r2-2-magpie-web-bind.md) | ADAPTER-01..04, SCHED-02 | R2-1, 04-T01 | done — R2.2 L6 Magpie/web bind |
+| [CAMPAIGN-R2-E4](../tasks/campaign-r2-e4-prototype-dry-run.md) | STORE-06 | 01-T04 | done — prototype dry-run L6 |
 
 ### Superseded broad tasks (kept for history)
 
