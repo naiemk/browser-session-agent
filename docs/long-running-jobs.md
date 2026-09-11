@@ -95,7 +95,9 @@ fixture browser, inbox/leases) but does **not** yet:
    env-key model, or when CLI `--host` / `BSA_DURABLE_HOST=1` attaches Magpie + a
    provider key (`runtime_unavailable` otherwise; never fake success). Hosted chat
    registers the same commands but ticks stay unavailable (no in-process worker).
-2. Reconnect CLI/Pi runs to Magpie's interactive profile across process restarts (R2.E1).
+2. Reconnect CLI/Pi runs to Magpie's interactive profile across process restarts
+   (R2.E1 L5 evidenced 2026-09-11: control-client `disconnect` + `connectOverCDP`;
+   Pi-crash orphan Chrome still later).
 3. Keep one transactional authority (overlapping JSON stores; non-atomic transitions).
 4. Enforce revision, completion oracles, pacing, challenge breakers, lease renewal/fencing,
    cancel, or due-scan fairness as product claims.
