@@ -11,6 +11,7 @@ import { bindCoach } from "./host/pi-coach.ts";
 import { bindMagpieModels } from "./host/pi-models.ts";
 import { MAGPIE_CHAT_OBJECTIVE } from "./host/pi-operator-goal.ts";
 import { bindJobCommands } from "./host/pi-jobs.ts";
+import { bindDurableCommands } from "./host/pi-durable.ts";
 import { bindSessionGoal, isSubagentProcess } from "./host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
 import { standingLastCoderPrompt, reconstructProgress } from "./host/pi-subagent/progress.ts";
@@ -187,6 +188,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   });
   bindPlanMode(pi, { coach, models });
   jobs = bindJobCommands(pi, { headless: process.env.BSA_HEADLESS === "1" });
+  bindDurableCommands(pi, { surface: "magpie", worker: session.worker });
 
   pi.registerCommand("browser-evidence", {
     description: "Where this session's evidence, metrics and payloads are written",

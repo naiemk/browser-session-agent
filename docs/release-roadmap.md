@@ -26,7 +26,7 @@ the gates**, not a second spec.
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
 | R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
-| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.1 L6 landed; R2.2 bind + R2.E* open** |
+| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.2 Magpie/web bind L6; R2.E1/E3 open** |
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
@@ -281,9 +281,12 @@ Tickets: remaining honesty on CAMPAIGN-02-T04 / 04-T01 / 04-T04
       unless host is attached (`runtime_unavailable`, never fake success).
       2026-09-10: CAMPAIGN-R2-1 — `product-host.ts` + `runDurableAttempt`; adapters
       no longer import FakeKernel; `BSA_DURABLE_HOST=1` / `--host` fail closed without
-      model or worker. Magpie chat bind of durable commands is still R2.2.
-- [ ] **R2.2** Bind V2 in Pi/web (`registerDurablePiCommands` from `extension.ts` /
-      hosted runtime). Stop implying prototype jobs will execute
+      model or worker. Magpie/hosted chat bind of durable commands: CAMPAIGN-R2-2.
+- [x] **R2.2** Bind V2 in Pi/web (`registerDurablePiCommands` from `extension.ts` /
+      hosted runtime). Stop implying prototype jobs will execute.
+      2026-09-11: CAMPAIGN-R2-2 — Magpie chat ticks use `session.worker` + env-key
+      `createLiveModel`; hosted ticks fail closed (no RPC ExecutionHost). Prototype
+      `/job-*` remains. R2.E1/E3 still open; do not claim R2 shipped.
 - [ ] **R2.3** Durable attempt path uses AGENT-13/14/15 on a **real host**, with
       evaluation residual on CAMPAIGN-04-T04. Gated detectors already exist; this
       step is attach + L7 evidence, not a second implementation.
@@ -297,7 +300,8 @@ R2.1–R2.3 may start while R1 is in flight. **R2.4 waits for evaluations.**
       stale tab/refs rejected (`docs/jobs-v2-evaluation.md` §3.3)
 - [x] **R2.E2** (partial) L6: FakePi + CLI process + due-tick with and without host
       (nonzero exit when host missing). 2026-09-10: CAMPAIGN-R2-1 adapters green;
-      web/RPC twin still R2.2.
+      2026-09-11: CAMPAIGN-R2-2 Magpie/hosted bind. Hosted/RPC ExecutionHost twin still
+      open (hosted ticks fail closed).
 - [ ] **R2.E3** Two controlled **L7** smokes, no unsafe external commit, each with
       live-run review template
 - [ ] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs
@@ -414,8 +418,9 @@ Tick into a future R6 only when the entry condition is met.
    on comparable live runs.
 2. Do not merge QUAL/PERF behavior until E-QUAL's decision review.
 3. Do not call coach a product success until R1.E2.
-4. **R2.1** FakePi/L6 landed (CAMPAIGN-R2-1). Next R2 build is **R2.2** (bind durable
-   commands in Magpie/web). Do not claim R2 shipped until R2.E1/E3.
+4. **R2.1** + **R2.2** FakePi/L6 landed (CAMPAIGN-R2-1/R2-2). Next R2 work is **R2.E1**
+   (CDP reconnect) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*. Do not
+   claim R2 shipped until R2.E1/E3.
 5. **R3** product claim only after R1 exit + R2.1.
 
 ---
@@ -432,3 +437,5 @@ Tick into a future R6 only when the entry condition is met.
 | 2026-09-10 | R1.4 FakePi ticked (AGENT-16-T05). Next: R1.E2 live Execute→coach. |
 | 2026-09-10 | R2.1 L6 ticked (CAMPAIGN-R2-1). Adapters no longer FakeKernel-complete.
       Next R2 build: R2.2 Magpie/web bind. R2.E1/E3 still open. |
+| 2026-09-11 | R2.2 L6 ticked (CAMPAIGN-R2-2). Magpie/hosted durable commands bound;
+      hosted ticks fail closed. R2.E1/E3 still open; do not claim R2 shipped. |
