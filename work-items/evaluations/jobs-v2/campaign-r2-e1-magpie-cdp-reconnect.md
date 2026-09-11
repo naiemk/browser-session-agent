@@ -23,7 +23,7 @@ Commit: (this PR)
 - `launchManaged`: spawn Chromium/Chrome detached with `--user-data-dir` +
   `--remote-debugging-port`, then `connectOverCDP` (Playwright is a client only).
 - `disconnect()`: `browser.close()` (CDP client drop); leave Chromium + `worker.json`.
-- `stop()`: SIGTERM then process-group SIGKILL so the profile flushes and helpers die.
+- `stop()`: CDP `Browser.close` while attached (profile flush), wait, then SIGTERM / group SIGKILL.
 - `tests/integration/magpie-cdp-reconnect-l5.test.ts`: fixture login → disconnect →
   second worker attach → `/jobs` still auth; stale ref / unknown tab fail closed.
 
@@ -72,7 +72,7 @@ supervisor. Residual (P2): R2.E3 L7 smokes.
    disconnect can leave Chromium alive (required for honest L5).
 2. Replaced `_connection.close()` with `browser.close()` after proving the private close
    path rejects later `connectOverCDP`.
-3. `stop()` SIGTERM-then-SIGKILL (and process-group kill) so cookie restore after relaunch
+3. `stop()` CDP `Browser.close` then SIGTERM/SIGKILL so cookie restore after relaunch
    still passes.
 
 ## Requirement coverage

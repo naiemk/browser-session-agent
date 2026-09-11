@@ -80,6 +80,8 @@ describe("persistent worker", () => {
     assert.equal(submitted.verification.status, "passed");
 
     await world.session.worker.stop();
+    // Profile lock / cookie flush can lag briefly after Chromium exits on Linux CI.
+    await new Promise((resolve) => setTimeout(resolve, 250));
     const again = new BrowserSession({ home: world.home, headless: true });
     world.session = again;
     await again.worker.start();

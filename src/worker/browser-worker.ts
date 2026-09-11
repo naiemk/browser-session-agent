@@ -227,9 +227,19 @@ export class BrowserWorker {
     const pids = [...this.trackedPids, fromDisk?.pid ?? 0, this.info?.pid ?? 0, chromePid(this.browser)].filter(
       (pid) => pid > 0 && pid !== process.pid,
     );
-    if (this.browser) {
+
+    // Quit Chromium over CDP while still attached so the profile flushes cookies.
+    // Playwright `browser.close()` on a CDP session only drops the client.
+    if (this.context) {
       try {
-        // CDP client disconnect only — does not quit the OS browser.
+        const page = this.context.pages()[0] ?? (await this.context.newPage());
+        const session = await this.context.newCDPSession(page);
+        await Promise.race([session.send("Browser.close" as never), delay(2_000)]);
+      } catch {
+        // fall through to signals
+      }
+    } else if (this.browser) {
+      try {
         await Promise.race([this.browser.close(), delay(300)]);
       } catch {
         // already gone
@@ -239,16 +249,21 @@ export class BrowserWorker {
     this.context = null;
     this.pages.clear();
 
-    // Graceful first so the profile flushes cookies/storage; then group SIGKILL.
+    // Wait for a graceful CDP quit before escalating.
+    const gracefulDeadline = Date.now() + 5_000;
+    while (Date.now() < gracefulDeadline && pids.some((pid) => isPidAlive(pid))) {
+      await delay(50);
+    }
     for (const pid of new Set(pids)) {
+      if (!isPidAlive(pid)) continue;
       try {
         process.kill(pid, "SIGTERM");
       } catch {
         // already gone
       }
     }
-    const deadline = Date.now() + 1_500;
-    while (Date.now() < deadline && pids.some((pid) => isPidAlive(pid))) {
+    const termDeadline = Date.now() + 1_500;
+    while (Date.now() < termDeadline && pids.some((pid) => isPidAlive(pid))) {
       await delay(50);
     }
     for (const pid of new Set(pids)) {
