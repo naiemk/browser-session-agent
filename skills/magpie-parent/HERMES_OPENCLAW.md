@@ -32,6 +32,9 @@ Multi-site harvest / qualify ~N entities / keep working across pages → start M
 
 ## One-time cost setup
 
+Install (Grok Bot / any host): `npm install -g @naiemk/magpi` (CLI binary is `magpie`).
+Need Magpie **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier open the TUI instead).
+
 Before the first long harvest on a machine, recommend a Magpie profile so harvest
 turns use Magpie's provider pins, not your conversation model:
 
@@ -41,6 +44,8 @@ magpie profiles apply budget   # after the human confirms
 ```
 
 Do not put API keys in this skill. Do not auto-apply a paid profile without confirm.
+If `magpie profiles recommend` opens a TUI or hangs, the installed build is too old —
+upgrade `@naiemk/magpi` before continuing.
 
 ## How to start
 

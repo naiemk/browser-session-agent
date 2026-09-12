@@ -5,11 +5,21 @@ enable under Plugins → Yours). Do **not** assume a GitHub URL installer works 
 Grok Bot (that path is Grok Build marketplace). See `docs/grok-bot-feasibility.md`
 RESEARCH-02.
 
-On the Agent Computer, set:
+## Install Magpi on the Agent Computer (once)
+
+Need **Node ≥ 24** and a Magpie provider key for harvest follow-ups (`OPENROUTER_API_KEY`
+or `/login` in Magpie). Parent `--json` start itself does not need Chrome.
 
 ```bash
+npm install -g @naiemk/magpi@0.1.5
 export MAGPIE_SESSION_DIR=/workspace/magpie/sessions
+mkdir -p "$MAGPIE_SESSION_DIR"
+# verify parent flags exist (must show --json / profiles):
+magpie --help | head -40
 ```
+
+Do **not** run bare `magpie` / `magpie profiles` without confirming `--json` is in help —
+old builds open the TUI and hang headless.
 
 Then follow the canonical Magpie parent skill:
 
@@ -36,6 +46,9 @@ Multi-site harvest / qualify ~N entities / keep working across pages → start M
 
 ## One-time cost setup
 
+Install (Grok Bot / any host): `npm install -g @naiemk/magpi` (CLI binary is `magpie`).
+Need Magpie **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier open the TUI instead).
+
 Before the first long harvest on a machine, recommend a Magpie profile so harvest
 turns use Magpie's provider pins, not your conversation model:
 
@@ -45,6 +58,8 @@ magpie profiles apply budget   # after the human confirms
 ```
 
 Do not put API keys in this skill. Do not auto-apply a paid profile without confirm.
+If `magpie profiles recommend` opens a TUI or hangs, the installed build is too old —
+upgrade `@naiemk/magpi` before continuing.
 
 ## How to start
 
