@@ -117,6 +117,8 @@ Commands:
   magpie --json --session <id>
                               parent status of an existing Magpie session
   magpie --session <id> -p …  resume the same Pi session (forwards to Pi)
+  magpie profiles [list|recommend|apply <budget|balanced|grok>]
+                              named model pins (writes models.json; no auto-apply)
   magpie [pi args]            forwarded to Pi (e.g. --print, --model)
 
 From a git checkout, npm run cli is the same command.

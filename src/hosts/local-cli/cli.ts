@@ -22,6 +22,7 @@ import {
   withSessionDirArgs,
 } from "../../host/parent-session.ts";
 import { admitParentPlan, writeAdmittedPlan } from "../../host/parent-plan.ts";
+import { runProfilesCommand } from "../../host/parent-profiles.ts";
 
 const root = repoRootFrom(import.meta.url);
 const raw = process.argv.slice(2);
@@ -29,6 +30,15 @@ const raw = process.argv.slice(2);
 if (raw.includes("--help") || raw.includes("-h") || raw[0] === "help") {
   process.stdout.write(helpText());
   process.exit(0);
+}
+
+/** Named cost profiles — no Chrome, no provider call. */
+if (raw[0] === "profiles" || raw[0] === "--apply") {
+  const argv = raw[0] === "profiles" ? raw.slice(1) : raw;
+  const result = await runProfilesCommand(argv);
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exit(result.code);
 }
 
 const withoutCheck = raw.filter((arg) => arg !== "--check");

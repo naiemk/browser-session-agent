@@ -35,7 +35,7 @@ the gates**, not a second spec.
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
-| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **R6.1/R6.2/R6.E1 landed; R6.E2 open** |
+| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **R6.1–R6.4 + E1/E2 landed; R6.E3 / exit auth open** |
 
 Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 [`docs/parent-agent.md`](parent-agent.md),
@@ -404,14 +404,17 @@ May proceed **in parallel** with R1/R2. Does **not** improve harvest quality and
 - [ ] **R6.0** RESEARCH-01..09 dump + local Pi `-p` / `--session` canary —
       PARENT-00-T01 (`docs/grok-bot-feasibility.md`)
       2026-09-12: RESEARCH-09 canary pass (Magpie `--json` session + goal round-trip,
-      provider-free). RESEARCH-01..08 remain **unverified**.
+      provider-free).
+      2026-09-13: citation pass for RESEARCH-01..08 from public docs (Bot MCP still
+      unverified; skill install = paste/Plugins/Teach — not GitHub URL). Live
+      Bot-computer facts remain for PARENT-02-T01. Do not tick R6.0 fully closed.
 - [x] **R6.1** Stable `--session-dir`, print Pi session id, restore `goal_*`, compact
       yield — PARENT-01-T01
 - [x] **R6.2** Admit parent `plan.md`; insert scout → coach → harvest when the loop is
       unknown — PARENT-01-T02
-- [ ] **R6.3** Host skills (Grok Bot / Hermes / OpenClaw), same CLI — PARENT-01-T04
+- [x] **R6.3** Host skills (Grok Bot / Hermes / OpenClaw), same CLI — PARENT-01-T04
       (iterate copy from R6.E2 failures)
-- [ ] **R6.4** Named cost profiles (`budget` / …) binding `default` / `plan` /
+- [x] **R6.4** Named cost profiles (`budget` / …) binding `default` / `plan` /
       `coach` — PARENT-01-T05
 
 R6.1 and R6.2 may proceed in parallel after the RESEARCH-09 canary. R6.3 after E2.
@@ -421,24 +424,28 @@ R6.4 may parallel R6.1. Do not polish an installer or MCP before E2.
 
 - [x] **R6.E1** Provider-free: session-dir / restore goal / admission fixtures
       (`npm test`). PARENT-01-T01, T02.
-- [ ] **R6.E2** **Success proxy (gate):** `OPENROUTER_API_KEY=… npm run
+- [x] **R6.E2** **Success proxy (gate):** `OPENROUTER_API_KEY=… npm run
       test:parent-supervisor`. Fake Magpie CLI, cheap flash/haiku supervisor, no
       Chrome. Cases: tiny lookup not delegated; harvest delegated once with coarse
       plan (no click/type); status + instruct reuse the same session id; no duplicate
       start. Cap USD 0.25 / 16 turns. PARENT-01-T03.
+      2026-09-12: 6/6 PASS on `openrouter/google/gemini-2.5-flash`, ≈USD 0.004,
+      9–10 turns. Eval: `work-items/evaluations/parent-agent/parent-01-t03.md`.
 - [ ] **R6.E3** (optional, after E2) Real Grok Bot computer notes — PARENT-02-T01.
       Does not replace E2.
 
 ### Exit
 
-- [ ] Client-facing handle is Pi's session id; `--session` restores the Magpie goal
-- [ ] Parent plan cannot skip Magpie scout/coach on `calibration_required`
-- [ ] R6.E2 green on a local OpenRouter key
-- [ ] Default `npm test` still has no provider (D37)
-- [ ] Skills tell the parent not to harvest in parallel
+- [x] Client-facing handle is Pi's session id; `--session` restores the Magpie goal
+- [x] Parent plan cannot skip Magpie scout/coach on `calibration_required`
+- [x] R6.E2 green on a local OpenRouter key
+- [x] Default `npm test` still has no provider (D37)
+- [x] Skills tell the parent not to harvest in parallel
 
 **Do not include** Magpie→Grok subscription auth as an R6 exit (RESEARCH-04/05/06).
 That can follow E2 without blocking the CLI handle.
+Do **not** claim R6 shipped until R6.E3 notes (optional) are acknowledged and any
+remaining research blockers for operators are documented — product gate was E2.
 
 ---
 
@@ -531,3 +538,7 @@ sessions (Track B), already listed above.
 | 2026-09-12 | R6.1 / R6.2 / R6.E1 ticked (PARENT-01-T01, T02). Magpie `--json` session
       handle + L0 plan admission. RESEARCH-09 canary noted under R6.0. R6.E2 /
       skills / cost profiles / R6 exit still open; do not claim R6 shipped. |
+| 2026-09-13 | R6.E2 green (PARENT-01-T03, ≈USD 0.004 flash). R6.3 skills + R6.4 profiles
+      ticked. R6.0 citation pass (01–08 not all live-verified). Exit checklist
+      items for handle/admission/E2/D37/skills ticked; R6.E3 Bot live + Magpie→Grok
+      auth still open. Do not claim R6 as a marketed ship without E3 notes. |

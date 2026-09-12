@@ -3,7 +3,7 @@ id: PARENT-01-T03
 title: OpenRouter supervisor proxy suite (success criteria)
 story: PARENT-01
 epic: parent-agent
-status: todo
+status: done
 ---
 
 # PARENT-01-T03 — Supervisor proxy suite

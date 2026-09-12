@@ -3,7 +3,7 @@ id: PARENT-01-T04
 title: Host skills for Grok Bot, Hermes, and OpenClaw
 story: PARENT-01
 epic: parent-agent
-status: todo
+status: done
 ---
 
 # PARENT-01-T04 — Host skills
