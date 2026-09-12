@@ -3,7 +3,7 @@ id: PARENT-01-T05
 title: Named cost profiles for worker / plan / coach
 story: PARENT-01
 epic: parent-agent
-status: todo
+status: done
 ---
 
 # PARENT-01-T05 — Cost profiles
