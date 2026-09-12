@@ -31,7 +31,7 @@ the gates**, not a second spec.
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
 | R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
-| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2/E2 L6; R2.E3/E4 open** |
+| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2/E2 L6 + R2.E4; R2.E3 open** |
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
@@ -324,7 +324,9 @@ R2.1–R2.3 may start while R1 is in flight. **R2.4 waits for evaluations.**
       `RpcBrowserPort` twin (disconnected node still `runtime_unavailable`).
 - [ ] **R2.E3** Two controlled **L7** smokes, no unsafe external commit, each with
       live-run review template
-- [ ] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs
+- [x] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs.
+      2026-09-11: CAMPAIGN-R2-E4 — `--dry-run`, malformed quarantine, STORE-06 row
+      tightened. Does not complete MIGRATE-02 (R2.E3 still open).
 - [ ] **R2.E5** Repo search: no production import of deleted prototype runner
 
 ### Exit
@@ -492,8 +494,8 @@ sessions (Track B), already listed above.
    on comparable live runs.
 2. Do not merge QUAL/PERF behavior until E-QUAL's decision review.
 3. Do not call coach a product success until R1.E2.
-4. **R2.1** + **R2.2** + **R2.E1** + **R2.E2** landed. Next R2 work is **R2.E4** (prototype dry-run)
-   / **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
+4. **R2.1** + **R2.2** + **R2.E1** + **R2.E2** + **R2.E4** landed. Next R2 work is
+   **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
    Do not claim R2 shipped until R2.E3.
 5. **R3** product claim only after R1 exit + R2.1.
 6. **R6** parent-agent: PARENT-00-T01 canary, then T01+T02 (no provider), then
@@ -522,3 +524,5 @@ sessions (Track B), already listed above.
       the node is connected. R2.E3/E4 still open; do not claim R2 shipped. |
 | 2026-09-12 | Track B / R6 parent-agent sessions added (D59, `docs/parent-agent.md`).
       Gate is OpenRouter supervisor proxy (PARENT-01-T03), not a live Grok Bot run. |
+| 2026-09-12 | R2.E4 ticked (CAMPAIGN-R2-E4). Prototype dry-run + STORE-06 quarantine
+      rebased onto main. R2.E3 still open; do not claim R2 / MIGRATE-02 hard cutover. |

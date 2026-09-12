@@ -6,7 +6,7 @@ import {
   validatePrototypeRoot,
   archivePrototypeJob,
   importPrototypeReadOnly,
-} from "../infrastructure/prototype/validate.ts";
+} from "../infrastructure/prototype-import.ts";
 import { coreRoot } from "../../core/paths.ts";
 import { BrowserSession } from "../../session.ts";
 import { createLiveModel, resolveKey, KEY_ENV_NAMES } from "../../runtime/model.ts";
@@ -146,7 +146,7 @@ export async function commandDurable(args: DurableCliArgs): Promise<number> {
   browser-agent durable status <jobId> [--root DIR]
   browser-agent durable cancel <jobId> [--root DIR]
   browser-agent durable tick <jobId>|--due [--root DIR] [--host] [--json]
-  browser-agent durable prototype validate|import|archive [--root DIR] [--job ID]
+  browser-agent durable prototype validate|import|archive [--root DIR] [--job ID] [--dry-run]
 
 Requires Node 24 node:sqlite. Prototype job commands remain quarantined separately.
 
@@ -159,6 +159,7 @@ If the worker or model cannot start, the tick still exits 4 (never fake success)
 
     if (verb === "prototype") {
       const action = rest[0];
+      const dryRun = Boolean(args.flags["dry-run"] || args.flags.dryRun);
       if (action === "validate") {
         print(await validatePrototypeRoot(root));
         return 0;
@@ -169,7 +170,11 @@ If the worker or model cannot start, the tick still exits 4 (never fake success)
           process.stderr.write("import needs --job <id>\n");
           return 2;
         }
-        print(await importPrototypeReadOnly(root, jobId));
+        const result = await importPrototypeReadOnly(root, jobId, { dryRun });
+        print(result);
+        if (result.class === "malformed" || result.class === "missing" || result.class === "unsupported") {
+          return 3;
+        }
         return 0;
       }
       if (action === "archive") {
@@ -178,7 +183,11 @@ If the worker or model cannot start, the tick still exits 4 (never fake success)
           process.stderr.write("archive needs --job <id>\n");
           return 2;
         }
-        print(await archivePrototypeJob(root, jobId, path.join(root, "archive")));
+        const result = await archivePrototypeJob(root, jobId, path.join(root, "archive"), { dryRun });
+        print(result);
+        if (result.class === "malformed" || result.class === "missing") {
+          return 3;
+        }
         return 0;
       }
       process.stderr.write("prototype needs validate|import|archive\n");
