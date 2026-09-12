@@ -100,6 +100,10 @@ independent evaluator (`src/core/evaluator.ts`), the living task graph
 measurement in AGENT-08; they exist and are tested, but the gate that would justify
 *relying* on them is still open.
 
+Parent-agent packaging (Pi session ids for Grok Bot / Hermes / OpenClaw) is a
+**separate** epic: [`parent-agent.md`](parent-agent.md). It does not add AGENT-17
+tasks here and does not unblock AGENT-09.
+
 Order: AGENT-01 first and alone. Then AGENT-02, AGENT-03, AGENT-04 in any order. Then a suite rerun: **if perception plus the oracle do not move the numbers, the diagnosis is wrong and nothing downstream is worth building.** Then AGENT-05 and AGENT-06, then AGENT-07 to choose what comes next.
 
 ## Definition of done
@@ -119,7 +123,8 @@ All listed tasks done, and:
 - `docs/v2-campaigns.md` — campaign semantics over the shared durable-job engine
 - `docs/long-running-jobs.md` — durable-work architecture and integration boundary
 - `docs/coach.md` — strategy coach (D58), AGENT-16
-- `docs/release-roadmap.md` — R1 interactive coach, evaluation gates
-- `docs/decisions.md` — D19–D33, D58
+- `docs/parent-agent.md` — parent Pi sessions (D59), Grok Bot / Hermes / OpenClaw
+- `docs/release-roadmap.md` — R1 interactive coach, Track B / R6, evaluation gates
+- `docs/decisions.md` — D19–D33, D58, D59
 - `docs/architecture.md` — what exists today
 - `docs/test-design.md` — fixture map to extend

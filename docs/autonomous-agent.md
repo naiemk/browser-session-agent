@@ -70,6 +70,8 @@ Old system, still the shipping product (see `docs/architecture.md`):
 
 Designed, not built: job `coaching` policy (AGENT-16-T04). Magpie `/plan` Execute
 auto-invokes `/coach` after scout (AGENT-16-T05, FakePi). Live E2 still open.
+Parent-agent Pi session packaging (D59, `docs/parent-agent.md`) is a parallel track;
+the cheap gate is an OpenRouter supervisor proxy, not a Grok Bot harvest.
 
 Deliberately not decided yet: session strategy (D27), planner and graph, memory tiers (D28).
 D58 is the planner's *calibration gate*, not the gated living task graph in AGENT-08.

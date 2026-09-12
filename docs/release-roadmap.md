@@ -3,7 +3,8 @@
 Living checklist. Tick boxes here as work lands. Do not rewrite a ticked step; add a
 dated note under it if the outcome was partial.
 
-**As of 2026-09-10.** Current position: **R1.5 FakePi landed; R1.E2 live next.**
+**As of 2026-09-12.** Current position: **R1.5 FakePi landed; R1.E2 live next.**
+Track B / R6 parent-agent sessions are planned (D59); they do not replace E2.
 Interactive Magpie chat works. `/plan` Execute leases `/coach` after scout, harvest
 is a trial loop with yield-breaker rescue, review uses a stronger thinking class.
 Do not treat `goal_mtumeewm001` / `mtvqt1a6001` as E2. PR #55 is on `main`.
@@ -15,6 +16,10 @@ AGENT-16-T01..T03, T05, and T06 FakePi are in tree.
    without typing `/coach`.
 2. **E-QUAL** — one more comparable collection run on a **different domain**, then the
    decision review.
+
+**Parallel build (does not replace those two):** **Track B / R6** parent-agent Pi
+sessions. Cheap gate is `npm run test:parent-supervisor` with an OpenRouter key, not
+a Grok Bot harvest.
 
 Do not spend the next cycle on QUAL/PERF *behavioral* tickets, default-on challenge or
 approval flags, AGENT-13-T04, or AGENT-16-T04 (that is R3).
@@ -30,8 +35,10 @@ the gates**, not a second spec.
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
+| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **Not started; parallel track** |
 
 Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
+[`docs/parent-agent.md`](parent-agent.md),
 [`docs/jobs-v2-evaluation.md`](jobs-v2-evaluation.md),
 [`docs/live-run-investigation-plan.md`](live-run-investigation-plan.md),
 [`docs/live-run-evidence-log.md`](live-run-evidence-log.md),
@@ -51,7 +58,8 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
    not a release.
 4. Do not start the next release's *product claim* until that release's evaluation
    gate is ticked. Parallel *build* on a later release is allowed only where the
-   table says so (R1 and E-QUAL; R1 T04 compiler vs R2 host).
+   table says so (R1 and E-QUAL; R1 T04 compiler vs R2 host; Track B / R6 parent
+   sessions vs R1.E2).
 
 ---
 
@@ -71,6 +79,8 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 - Start **R2.2** whenever Magpie/web can own `registerDurablePiCommands` bind.
 - Optional live checks of already-landed instrumentation: a switched-model chat for
   PERF-01 turn rows; headed `BSA_CHALLENGE_BEHAVIOR=1` on a challenge fixture.
+- Optional parallel: PARENT-00-T01 Pi `-p`/`--session` canary, then R6.1/R6.2. Do
+  not treat this as the next harvest live run.
 
 **Do not do yet**
 
@@ -83,6 +93,11 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 - Treating `goal_mtu4ujai001` as E-QUAL closed.
 - Treating R1 as shipped before R1.E2.
 - Treating R2 as shipped before R2.E1 / R2.E3.
+- Treating a Grok Bot install as the first parent-agent test. Run PARENT-01-T03
+  (OpenRouter supervisor proxy) first.
+- Building MCP, `@macpie/grok`, or a Magpie daemon before PARENT-01-T01..T03.
+- Claiming Cursor Grok Bot access means Magpie can call Grok without a key
+  (RESEARCH-04/05).
 
 ---
 
@@ -124,6 +139,7 @@ Interactive browser agent on a persistent profile. This is what you already run.
       already uses `DirectKernel` + `WorkerBrowserPort`; that is not the product path
       until R2.1–R2.E3
 - [ ] Hard delete of `src/jobs` / two L7 job smokes
+- [ ] Parent-agent packaging (Pi `--session` as the durable handle) — Track B / R6
 
 ---
 
@@ -369,6 +385,59 @@ calibration, PERF-04/05/09 perception. PERF-03 Fabric stays optional R&D
 
 ---
 
+## Track B / R6 — Parent-agent Pi sessions
+
+**Operator / parent agent:** start Magpie with a coarse plan, get a **Pi session id**,
+leave, later `magpie --session <id> -p` for status or a new instruction. Magpie stays
+the browser worker. No daemon. MCP not required.
+
+Spec: [`docs/parent-agent.md`](parent-agent.md) · D59 ·
+[`work-items/epics/parent-agent.md`](../work-items/epics/parent-agent.md)
+
+May proceed **in parallel** with R1/R2. Does **not** improve harvest quality and does
+**not** tick R1.E2. Success proxy is the OpenRouter supervisor suite, not a live Bot.
+
+### Build
+
+- [ ] **R6.0** RESEARCH-01..09 dump + local Pi `-p` / `--session` canary —
+      PARENT-00-T01 (`docs/grok-bot-feasibility.md`)
+- [ ] **R6.1** Stable `--session-dir`, print Pi session id, restore `goal_*`, compact
+      yield — PARENT-01-T01
+- [ ] **R6.2** Admit parent `plan.md`; insert scout → coach → harvest when the loop is
+      unknown — PARENT-01-T02
+- [ ] **R6.3** Host skills (Grok Bot / Hermes / OpenClaw), same CLI — PARENT-01-T04
+      (iterate copy from R6.E2 failures)
+- [ ] **R6.4** Named cost profiles (`budget` / …) binding `default` / `plan` /
+      `coach` — PARENT-01-T05
+
+R6.1 and R6.2 may proceed in parallel after the RESEARCH-09 canary. R6.3 after E2.
+R6.4 may parallel R6.1. Do not polish an installer or MCP before E2.
+
+### Evaluation
+
+- [ ] **R6.E1** Provider-free: session-dir / restore goal / admission fixtures
+      (`npm test`). PARENT-01-T01, T02.
+- [ ] **R6.E2** **Success proxy (gate):** `OPENROUTER_API_KEY=… npm run
+      test:parent-supervisor`. Fake Magpie CLI, cheap flash/haiku supervisor, no
+      Chrome. Cases: tiny lookup not delegated; harvest delegated once with coarse
+      plan (no click/type); status + instruct reuse the same session id; no duplicate
+      start. Cap USD 0.25 / 16 turns. PARENT-01-T03.
+- [ ] **R6.E3** (optional, after E2) Real Grok Bot computer notes — PARENT-02-T01.
+      Does not replace E2.
+
+### Exit
+
+- [ ] Client-facing handle is Pi's session id; `--session` restores the Magpie goal
+- [ ] Parent plan cannot skip Magpie scout/coach on `calibration_required`
+- [ ] R6.E2 green on a local OpenRouter key
+- [ ] Default `npm test` still has no provider (D37)
+- [ ] Skills tell the parent not to harvest in parallel
+
+**Do not include** Magpie→Grok subscription auth as an R6 exit (RESEARCH-04/05/06).
+That can follow E2 without blocking the CLI handle.
+
+---
+
 ## R5 — Recurring campaigns
 
 **Operator:** a multi-case job discovers subjects, advances them over days, parks on
@@ -401,7 +470,8 @@ Requires R2 exit. Benefits from R3 if the discovery step is a harvest.
 
 ## Later / gated (not a release yet)
 
-Tick into a future R6 only when the entry condition is met.
+Tick into a later release only when the entry condition is met. R6 is parent-agent
+sessions (Track B), already listed above.
 
 - [ ] AGENT-01 live suite baseline → then AGENT-09 core cutover
 - [ ] AGENT-07-T02 archetype repeat evidence → then memory (AGENT-08)
@@ -426,6 +496,9 @@ Tick into a future R6 only when the entry condition is met.
    / **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
    Do not claim R2 shipped until R2.E3.
 5. **R3** product claim only after R1 exit + R2.1.
+6. **R6** parent-agent: PARENT-00-T01 canary, then T01+T02 (no provider), then
+   **R6.E2** OpenRouter supervisor proxy. Do not use a Grok Bot campaign as the
+   first test. Do not let this displace R1.E2 / E-QUAL.
 
 ---
 
@@ -447,3 +520,5 @@ Tick into a future R6 only when the entry condition is met.
       profile. R2.E3/E4 still open; do not claim R2 shipped. |
 | 2026-09-12 | R2.E2 L6 completed (CAMPAIGN-R2-E2). Hosted ticks use RpcBrowserPort when
       the node is connected. R2.E3/E4 still open; do not claim R2 shipped. |
+| 2026-09-12 | Track B / R6 parent-agent sessions added (D59, `docs/parent-agent.md`).
+      Gate is OpenRouter supervisor proxy (PARENT-01-T03), not a live Grok Bot run. |
