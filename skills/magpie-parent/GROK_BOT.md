@@ -6,10 +6,7 @@ Magpie”). They do not paste Magpie flags, plan steps, or session ids.
 
 Canonical playbook (git; refresh every job):
 
-- Stable (after PR #70 merges):
-  `https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md`
-- Until then:
-  `https://raw.githubusercontent.com/naiemk/browser-session-agent/cursor/r6-on-main-0.1.5/skills/magpie-parent/SKILL.md`
+`https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md`
 
 Grok Bot has no Plugins “install skill from GitHub URL” path. This bootstrap plus
 Agent Computer `curl` is the reproducible install. See
@@ -27,11 +24,8 @@ You return the **result**. You do not ask them to write `plan.md` or run CLI fla
 
 ```bash
 mkdir -p /workspace/magpie
-CANONICAL_URL="https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md"
-FALLBACK_URL="https://raw.githubusercontent.com/naiemk/browser-session-agent/cursor/r6-on-main-0.1.5/skills/magpie-parent/SKILL.md"
-if ! curl -fsSL "$CANONICAL_URL" -o /workspace/magpie/SKILL.md; then
-  curl -fsSL "$FALLBACK_URL" -o /workspace/magpie/SKILL.md
-fi
+curl -fsSL "https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md" \
+  -o /workspace/magpie/SKILL.md
 ```
 
 Then follow `/workspace/magpie/SKILL.md` exactly: install Magpie ≥ 0.1.5 so
