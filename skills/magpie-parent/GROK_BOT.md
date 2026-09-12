@@ -16,8 +16,10 @@ Canonical skill (source of truth):
 - Repo path: `skills/magpie-parent/SKILL.md` in
   [naiemk/browser-session-agent](https://github.com/naiemk/browser-session-agent)
 
-Grok Bot has **no** documented “install skill from GitHub URL” marketplace path
-(that is **Grok Build**). See `docs/grok-bot-feasibility.md` RESEARCH-02 / RESEARCH-10.
+Grok Bot has **no** documented “install skill from GitHub URL” Plugins path.
+Private skill = paste this bootstrap (save-from-chat / Teach a task / Yours).
+Canonical Magpie rules stay on git — refresh via the curl below. See
+`docs/grok-bot-feasibility.md` RESEARCH-02 / RESEARCH-10.
 
 ---
 

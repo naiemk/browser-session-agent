@@ -182,7 +182,7 @@ Tickets MUST resolve or mark **unverified**. Do not hard-code platform folklore.
 | **RESEARCH-07** | Does Magpie Chromium appear on Agent Computer `DISPLAY` for takeover? | Login UX on Bot VM |
 | **RESEARCH-08** | Can Grok Bot routines poll `magpie --session id -p status`? Push notify is assumed unavailable. | Long-job UX |
 | **RESEARCH-09** | Pi `-p` / RPC vs Magpie extension: does `-p` load Magpie, restore `magpie-goal`, and allow a compact yield without a TUI? **Experiment locally before polishing the installer.** | PARENT-01-T01 |
-| **RESEARCH-10** | Can we submit a third-party plugin/skill to Grok Bot marketplace? (vs Grok Build `xai-org/plugin-marketplace` PR) | PARENT-01-T04 distribution; optional Build listing |
+| **RESEARCH-10** | Can we submit a third-party plugin/skill to the Grok Bot marketplace? | PARENT-01-T04 distribution |
 
 Write findings in [`docs/grok-bot-feasibility.md`](grok-bot-feasibility.md) (created by
 PARENT-00-T01). Mark verified vs unverified.
