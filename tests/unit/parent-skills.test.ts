@@ -19,6 +19,9 @@ describe("PARENT-01-T04 host skills", () => {
     assert.match(body, /second Magpie session|second session/i);
     assert.match(body, /not.*browse.*harvest|not.*scrape the harvest|not.*in parallel/i);
     assert.match(body, /profiles recommend/);
+    assert.match(body, /only the \*\*goal\*\*|only the goal/i);
+    assert.match(body, /deliverable|return the \*\*result\*\*/i);
+    assert.match(body, /current-job\.json/);
   });
 
   it("Grok bootstrap points at git canonical skill; Hermes shares the CLI contract", async () => {

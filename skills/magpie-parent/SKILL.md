@@ -1,10 +1,7 @@
 # Magpie parent agent
 
-Source of truth for Magpie parent hosts (Grok Bot, Hermes, OpenClaw, Cursor).
-Edit this file in git; do not maintain a forked procedure inside a Bot chat.
-
-Grok Bot installers paste the thin bootstrap in `GROK_BOT.md` (not this whole
-file), then fetch this URL on the Agent Computer before each Magpie job:
+Source of truth. Edit this file in git. Hosts fetch it; they do not keep a forked
+procedure in chat.
 
 `https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md`
 
@@ -12,83 +9,152 @@ You are a **supervising agent**. Magpie is the delegated browser worker. You do 
 drive the browser yourself. You do not call click, type, CSS selectors, Playwright,
 or Magpie operator tools.
 
+## Human contract
+
+The human sends **only the goal** (and maybe “use Magpie / Magpi”). They will not
+pass CLI flags, write `plan.md`, name a session dir, or ask for `session_id`.
+
+You own all Magpie ceremony. You return the **deliverable** (the harvest, the
+qualified list, the answer), not Magpie plumbing.
+
+Missing date / venue / vibe / language / follower floor: pick Berlin-nightlife (or
+goal-local) defaults, write them under Missing inputs, and continue. Do not stall
+the human with a questionnaire unless the goal is impossible without an answer.
+
 ## When NOT to use Magpie
 
-- One fact from a single URL ("what is the title of …")
-- A tiny reversible lookup you can answer without a multi-site campaign
-- Questions that do not require a browser at all
+- One fact from a single URL
+- A tiny lookup you can answer without a multi-site campaign
+- Questions that do not need a browser
 
-For those, answer directly. Do **not** run `magpie`.
+Answer those yourself. Do **not** run `magpie`.
 
-## When to delegate
+## When to use Magpie
 
-Multi-site harvest / qualify ~N entities / keep working across pages → start Magpie
-**once** with a coarse plan.
+The human names Magpie / Magpi, **or** the goal is a multi-site harvest / qualify
+~N people or entities / keep working across pages. Then run the playbook below
+**once** for that job.
 
-## One-time cost setup
+## Playbook (every Magpie job)
 
-Install (Grok Bot / any host): `npm install -g @naiemk/magpi` (CLI binary is `magpie`).
-Need Magpie **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier open the TUI instead).
+Do these steps yourself. Do not ask the human to run them.
 
-Before the first long harvest on a machine, recommend a Magpie profile so harvest
-turns use Magpie's provider pins, not your conversation model:
+### 0. Refresh this skill
+
+```bash
+mkdir -p /workspace/magpie
+CANONICAL_URL="https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md"
+FALLBACK_URL="https://raw.githubusercontent.com/naiemk/browser-session-agent/cursor/r6-on-main-0.1.5/skills/magpie-parent/SKILL.md"
+if ! curl -fsSL "$CANONICAL_URL" -o /workspace/magpie/SKILL.md; then
+  curl -fsSL "$FALLBACK_URL" -o /workspace/magpie/SKILL.md
+fi
+```
+
+Follow the fetched file. If both URLs fail, stop and say the skill fetch failed.
+Do not invent Magpie flags from memory.
+
+On hosts that are not Grok Bot, use Magpie’s default session dir
+(`~/.browser-agent-core/pi-sessions`) unless the environment already set
+`MAGPIE_SESSION_DIR`.
+
+### 1. Install / verify Magpie (once per machine)
+
+Need **Node ≥ 24**. Magpie **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier
+open the TUI and hang headless).
+
+```bash
+npm install -g @naiemk/magpi
+export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
+mkdir -p "$MAGPIE_SESSION_DIR"
+magpie --help | head -40
+```
+
+`--json` and `profiles` must appear in help. If they do not, upgrade
+`@naiemk/magpi` and re-check. Do **not** run bare `magpie` (TUI hang).
+
+Harvest follow-ups need a Magpie provider key (`OPENROUTER_API_KEY` or Magpie
+`/login`). `--json` start does not need Chrome. Do not put API keys in this skill.
+
+If this is the first long harvest on the machine:
 
 ```bash
 magpie profiles recommend
-magpie profiles apply budget   # after the human confirms
 ```
 
-Do not put API keys in this skill. Do not auto-apply a paid profile without confirm.
-If `magpie profiles recommend` opens a TUI or hangs, the installed build is too old —
-upgrade `@naiemk/magpi` before continuing.
+Ask the human before `magpie profiles apply …`. Do not auto-apply a paid profile.
+If `profiles` hangs or opens a TUI, the build is too old — upgrade and stop.
 
-## How to start
+### 2. Reuse a live job if this is a follow-up
 
-1. Write a short `plan.md` (Layer 1):
-   - `## Goal`
-   - `## Missing inputs` or constraints / stop rules
-   - `## Plan` — numbered coarse steps (scout / review / harvest kinds OK)
-   - Do **not** include `click(`, CSS selectors, or "type into …"
-2. Compact yield (no TUI wait):
+If `/workspace/magpie/current-job.json` exists for this conversation’s goal, **do
+not start Magpie again**. Go to Status / steer.
+
+User lines like “how’s it going?”, “ignore agencies”, “only real people”, “also
+look on TikTok” are **steer / status** on the existing session.
+
+### 3. Write a coarse plan from the goal
+
+Write `/workspace/magpie/plan.md`:
+
+- `## Goal` — the human’s words
+- `## Missing inputs or stop rules` — defaults you assumed; stop at ~N or when
+  public sources are exhausted; exclude agencies / venues / fakes if that fits
+- `## Plan` — numbered coarse steps (scout / review / harvest OK)
+
+Do **not** include `click(`, CSS selectors, or “type into …”. Do not outreach /
+message anyone unless the human explicitly asked.
+
+### 4. Start Magpie once
 
 ```bash
-magpie --json --session-dir "$MAGPIE_SESSION_DIR" --plan-file plan.md "<objective>"
+export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
+magpie --json --session-dir "$MAGPIE_SESSION_DIR" --plan-file /workspace/magpie/plan.md "<human goal>"
 ```
 
-Default session dir is Magpie home (`~/.browser-agent-core/pi-sessions`). On Grok Bot
-Agent Computer use `--session-dir /workspace/magpie/sessions`.
+Parse the **last stdout line** as JSON. Keep `session_id` and `goal_id`. Write
+`/workspace/magpie/current-job.json` with `session_id`, `goal_id`, the goal, and
+the session dir. Never mint a second session for the same job.
 
-3. Parse the last stdout line as JSON. Keep `session_id` and `goal_id`.
-4. Stop. Do not harvest in your own browser. Do not start a second Magpie session.
+### 5. Drive Magpie until there is a result or a hard block
 
-## Status and instructions
-
-When a Magpie session is already live for this job, **every** follow-up uses that
-`session_id`. This includes status checks **and** refinements such as "ignore
-agencies", "only founders", tighter criteria, or "also look elsewhere."
+`--json` start returns immediately. You must keep supervising the **same**
+`session_id` until Magpie has the deliverable or is blocked.
 
 ```bash
 magpie --json --session-dir "$MAGPIE_SESSION_DIR" --session <session_id>
-magpie --session-dir "$MAGPIE_SESSION_DIR" --session <session_id> -p "<instruction or status>"
+magpie --session-dir "$MAGPIE_SESSION_DIR" --session <session_id> -p "<status or instruction>"
 ```
 
 Rules:
 
-- A refinement is an instruction to the existing worker, **not** a new harvest start.
-- Do **not** write a new `plan.md` and call `magpie --json` without `--session` while
-  a session id for this job is live.
-- Never mint a second session for the same job.
-- Prefer Magpie's `next_check_hint` when unsure what to run next.
+- Prefer Magpie’s `next_check_hint` for when to poll.
+- A refinement is `-p` on the existing session, not a new `--json` start.
+- Do **not** write a new `plan.md` and start again while a session id is live.
+- Do **not** browse / scrape the harvest yourself in parallel (no Instagram / TikTok
+  / similar in your own browser).
+- Do not teach ACP in-memory ids as the Magpie handle.
 
-## Standing rules
+Hard blocks to report plainly (then stop): Magpie has no model key; Chrome/login
+needed and you cannot complete it; skill or `--json` flags missing. Do not invent
+people or accounts.
 
-- One Magpie start per harvest job.
-- The client-facing handle is Pi's session id Magpie printed — revive it with `--session`.
-- After delegate, do **not** browse / scrape the harvest yourself in parallel.
-- Do not teach ACP in-memory session ids as the durable Magpie handle.
+### 6. What you say to the human
 
-## Durable Pi-session jobs vs one-shot ACP
+**Default:** the result Magpie produced (structured list with links and a one-line
+why, or the artifact Magpie wrote). Mention assumptions you flagged.
 
-- **Long Magpie job (this skill):** `magpie --json` → keep `session_id` → status/instruct.
-- **One-shot ACP harness:** `npx -y browser-session-agent acp` — short verdict/evidence.
-  Do **not** send multi-site harvest campaigns into the ACP path by default.
+**If still running:** a short progress note in human language, then keep polling.
+Do not dump flags or tell the human to run Magpie.
+
+**If blocked:** what is missing (usually a Magpie provider key or an upgrade to
+`@naiemk/magpi` that has `--json`).
+
+Keep `session_id` / `goal_id` in `/workspace/magpie/current-job.json`. Only mention
+them if the human asks or a human must resume on another machine.
+
+## Durable Pi-session vs one-shot ACP
+
+- **This skill (long job):** `magpie --json` → same `session_id` → status/instruct
+  → result.
+- **One-shot ACP:** `npx -y browser-session-agent acp` — short verdict/evidence.
+  Do **not** send multi-site harvests into ACP by default.
