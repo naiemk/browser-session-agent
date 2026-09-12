@@ -494,8 +494,8 @@ sessions (Track B), already listed above.
    on comparable live runs.
 2. Do not merge QUAL/PERF behavior until E-QUAL's decision review.
 3. Do not call coach a product success until R1.E2.
-4. **R2.1** + **R2.2** + **R2.E1** + **R2.E2** landed. Next R2 work is **R2.E4** (prototype dry-run)
-   / **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
+4. **R2.1** + **R2.2** + **R2.E1** + **R2.E2** + **R2.E4** landed. Next R2 work is
+   **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
    Do not claim R2 shipped until R2.E3.
 5. **R3** product claim only after R1 exit + R2.1.
 6. **R6** parent-agent: PARENT-00-T01 canary, then T01+T02 (no provider), then

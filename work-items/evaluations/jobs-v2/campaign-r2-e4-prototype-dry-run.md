@@ -1,10 +1,10 @@
 # Evaluation: CAMPAIGN-R2-E4 (prototype dry-run)
 
-Date: 2026-09-11
+Date: 2026-09-11 (rebased onto main 2026-09-12)
 Implementer: Auto (Composer)
 Spec IDs: STORE-06
 Evidence: L1 fixtures + L6 CLI. Do not claim L7 / MIGRATE-02 hard cutover.
-Commit: (this PR)
+Commit: (this PR; cherry-pick of 3e28b47 onto main after R2.E2 / R6 plan)
 
 ## Discovery
 
@@ -71,3 +71,5 @@ STORE-06 → `prototype-import.ts`, `prototype/validate.ts`, `adapters/cli.ts`,
 - MIGRATE-02 hard cutover **not** claimed
 - Low-level `validate.ts` still exports write helpers for the import module; CLI uses
   the gated facade only
+- 2026-09-12 rebase: roadmap conflict resolved to keep R2.E2 + R6 while ticking R2.E4;
+  6/6 unit tests still green on main tip.
