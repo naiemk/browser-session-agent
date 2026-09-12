@@ -232,4 +232,41 @@ Automated tests stay local (in-process API, helper child, fixtures, file asserti
 - Signed MSI/pkg, Clerk, Stripe
 - Chromium on the VPS
 
+---
+
+# Parent-agent sessions (Track B / R6)
+
+Parents (Grok Bot, Hermes, OpenClaw) keep a **Pi session id**. Magpie remains the
+browser worker. Spec: [`docs/parent-agent.md`](parent-agent.md).
+
+## Layers
+
+| Layer | Runner | What it covers |
+| --- | --- | --- |
+| L0 admission / session-dir | `npm test` (no provider) | `--session-dir` under Magpie home; `--session` restores `goal_*`; harvest plans get scout → coach → harvest; known_flow does not |
+| Fake CLI | `npm test` | argv parser for start / status / instruct / missing id |
+| Supervisor proxy | `npm run test:parent-supervisor` | Cheap OpenRouter model + fake `magpie`; **not** in default CI |
+
+## Required cases (PARENT-01-T03)
+
+Fixtures: `tests/fixtures/parent-supervisor/`. Fake binary, no Chrome.
+
+| Case | Pass |
+| --- | --- |
+| `tiny_lookup` | No Magpie start |
+| `harvest_delegate` | One start; `plan.md` written; session id parsed |
+| `plan_quality` | Goal + constraints; no `click(` / CSS / type-into |
+| `status_followup` | `--session` same id |
+| `instruct_followup` | `--session` same id; instruction in prompt |
+| `no_duplicate` | No second start |
+
+Caps: USD 0.25, 16 supervisor turns. Skip the live script when `OPENROUTER_API_KEY`
+is unset. Default `npm test` must still assert no provider key (D37).
+
+## Non-goals for this suite
+
+- Magpie harvest quality on a real site (R1.E2)
+- Grok Bot VM / Auto Review (PARENT-02-T01)
+- Pi xAI subscription auth (RESEARCH-04)
+
 

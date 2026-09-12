@@ -625,6 +625,31 @@ Widen cheap actions before coaching them (D44): peek already exists so the guide
 can name it. Coach does not replace AGENT-15 breakers; those stop no-progress, this
 changes route.
 
+## D59. Parents keep a Pi session id; Magpie stays the browser worker
+
+Status: accepted product direction. Implementation: PARENT epic /
+[`docs/parent-agent.md`](parent-agent.md). This is not Jobs V2 cutover, not R1.E2, and
+not an MCP product.
+
+Grok Bot, Hermes, OpenClaw, and similar managers delegate substantial browser work.
+They do not drive Magpie's refs. The handle they store is Pi's session id
+(`--session` / `--session-dir` / `-p` / RPC). Magpie already binds `goal_*` to that
+jsonl (`magpie-goal` entry). Browser truth stays on disk (D7). A dead Magpie process
+is not a lost job.
+
+Parents MAY send a coarse plan. Magpie admits it and, when the acquisition loop is
+unknown, inserts scout → coach → harvest (D58). Magpie `/plan` TUI is not the parent
+path. The parent MUST NOT duplicate the harvest in its own browser (that is the cost
+reason to delegate).
+
+MCP is an optional adapter over the same id. Laptop localhost MCP is not a Grok Bot
+design. Named cost profiles bind existing `default` / `plan` / `coach` pins (D12);
+they are not a second router.
+
+Proof that a supervising LLM will use the CLI is an opt-in OpenRouter proxy suite
+(PARENT-13..16), not default CI (D37). A real Grok Bot install is later research,
+not that gate.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.
