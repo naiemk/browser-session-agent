@@ -1,6 +1,6 @@
 # PARENT-01: Pi session handle for parent agents
 
-Status: todo
+Status: in progress (T01/T02 done; T03 gate open)
 
 As a supervising agent (Grok Bot, Hermes, OpenClaw), I get a Pi session id when I
 delegate browser work to Magpie, I can revive that id after my process exits, I hand

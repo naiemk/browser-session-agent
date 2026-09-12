@@ -3,7 +3,7 @@ id: PARENT-01-T01
 title: Stable Pi session-dir, print id, restore goal, compact yield
 story: PARENT-01
 epic: parent-agent
-status: todo
+status: done
 ---
 
 # PARENT-01-T01 — Session CLI packaging
