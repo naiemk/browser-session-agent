@@ -110,6 +110,15 @@ Commands:
   magpie --chromium           Playwright Chromium instead of Chrome
   magpie --check               verify Node, Pi, extension, and the selected browser
   magpie --headless            headed off (BSA_HEADLESS=1)
+  magpie --json [--name …] [--plan-file plan.md | @plan.md] [objective]
+                              parent start: print {session_id,goal_id,state} and exit
+                              (no Chrome; session under ~/.browser-agent-core/pi-sessions)
+                              Grok Bot override: --session-dir /workspace/magpie/sessions
+  magpie --json --session <id>
+                              parent status of an existing Magpie session
+  magpie --session <id> -p …  resume the same Pi session (forwards to Pi)
+  magpie profiles [list|recommend|apply <budget|balanced|grok>]
+                              named model pins (writes models.json; no auto-apply)
   magpie [pi args]            forwarded to Pi (e.g. --print, --model)
 
 From a git checkout, npm run cli is the same command.
