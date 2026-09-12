@@ -1,6 +1,6 @@
 # Epic: Parent-agent sessions
 
-Status: **not started.** Direction D59. Spec: [`docs/parent-agent.md`](../../docs/parent-agent.md).
+Status: **in progress (R6.1/R6.2/R6.E1).** Direction D59. Spec: [`docs/parent-agent.md`](../../docs/parent-agent.md).
 Does not block R1.E2 or R2.E3. Does not ship Magpie as a Grok worker until the
 supervisor proxy suite is green.
 
@@ -31,9 +31,9 @@ requirement. No second session namespace.
 
 | Task | Spec IDs | Deps | Status |
 | --- | --- | --- | --- |
-| [PARENT-00-T01](../tasks/parent-00-t01-feasibility-research.md) | RESEARCH-01..09 | none | todo — research |
-| [PARENT-01-T01](../tasks/parent-01-t01-session-cli.md) | PARENT-01..04, RESEARCH-09 | 00-T01 canary | todo |
-| [PARENT-01-T02](../tasks/parent-01-t02-plan-admission.md) | PARENT-05..07 | none (parallel with T01) | todo |
+| [PARENT-00-T01](../tasks/parent-00-t01-feasibility-research.md) | RESEARCH-01..09 | none | partial — RESEARCH-09 only |
+| [PARENT-01-T01](../tasks/parent-01-t01-session-cli.md) | PARENT-01..04, RESEARCH-09 | 00-T01 canary | done |
+| [PARENT-01-T02](../tasks/parent-01-t02-plan-admission.md) | PARENT-05..07 | none (parallel with T01) | done |
 | [PARENT-01-T03](../tasks/parent-01-t03-supervisor-proxy.md) | PARENT-13..16, PARENT-07 | T01, T02, skill draft | todo — **R6.E2 gate** |
 | [PARENT-01-T04](../tasks/parent-01-t04-host-skills.md) | PARENT-08..11 | T03 (copy iterates on proxy failures) | todo |
 | [PARENT-01-T05](../tasks/parent-01-t05-cost-profiles.md) | PARENT-11, PARENT-12 | T01 | todo — parallel |

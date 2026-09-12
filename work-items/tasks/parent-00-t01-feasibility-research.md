@@ -3,7 +3,7 @@ id: PARENT-00-T01
 title: Parent-agent feasibility research and Pi -p canary
 story: PARENT-01
 epic: parent-agent
-status: todo
+status: partial
 ---
 
 # PARENT-00-T01 — Feasibility research and Pi `-p` canary

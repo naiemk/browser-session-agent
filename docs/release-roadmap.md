@@ -35,7 +35,7 @@ the gates**, not a second spec.
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
-| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **Not started; parallel track** |
+| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **R6.1/R6.2/R6.E1 landed; R6.E2 open** |
 
 Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 [`docs/parent-agent.md`](parent-agent.md),
@@ -403,9 +403,11 @@ May proceed **in parallel** with R1/R2. Does **not** improve harvest quality and
 
 - [ ] **R6.0** RESEARCH-01..09 dump + local Pi `-p` / `--session` canary —
       PARENT-00-T01 (`docs/grok-bot-feasibility.md`)
-- [ ] **R6.1** Stable `--session-dir`, print Pi session id, restore `goal_*`, compact
+      2026-09-12: RESEARCH-09 canary pass (Magpie `--json` session + goal round-trip,
+      provider-free). RESEARCH-01..08 remain **unverified**.
+- [x] **R6.1** Stable `--session-dir`, print Pi session id, restore `goal_*`, compact
       yield — PARENT-01-T01
-- [ ] **R6.2** Admit parent `plan.md`; insert scout → coach → harvest when the loop is
+- [x] **R6.2** Admit parent `plan.md`; insert scout → coach → harvest when the loop is
       unknown — PARENT-01-T02
 - [ ] **R6.3** Host skills (Grok Bot / Hermes / OpenClaw), same CLI — PARENT-01-T04
       (iterate copy from R6.E2 failures)
@@ -417,7 +419,7 @@ R6.4 may parallel R6.1. Do not polish an installer or MCP before E2.
 
 ### Evaluation
 
-- [ ] **R6.E1** Provider-free: session-dir / restore goal / admission fixtures
+- [x] **R6.E1** Provider-free: session-dir / restore goal / admission fixtures
       (`npm test`). PARENT-01-T01, T02.
 - [ ] **R6.E2** **Success proxy (gate):** `OPENROUTER_API_KEY=… npm run
       test:parent-supervisor`. Fake Magpie CLI, cheap flash/haiku supervisor, no
@@ -526,3 +528,6 @@ sessions (Track B), already listed above.
       Gate is OpenRouter supervisor proxy (PARENT-01-T03), not a live Grok Bot run. |
 | 2026-09-12 | R2.E4 ticked (CAMPAIGN-R2-E4). Prototype dry-run + STORE-06 quarantine
       rebased onto main. R2.E3 still open; do not claim R2 / MIGRATE-02 hard cutover. |
+| 2026-09-12 | R6.1 / R6.2 / R6.E1 ticked (PARENT-01-T01, T02). Magpie `--json` session
+      handle + L0 plan admission. RESEARCH-09 canary noted under R6.0. R6.E2 /
+      skills / cost profiles / R6 exit still open; do not claim R6 shipped. |
