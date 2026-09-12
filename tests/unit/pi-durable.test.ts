@@ -8,8 +8,10 @@ import { fileURLToPath } from "node:url";
 import browserSessionAgent from "../../src/extension.ts";
 import {
   bindDurableCommands,
+  hostedDurableHostFactory,
   magpieDurableHostFactory,
   REMEDIATION_HOSTED_NO_HOST,
+  REMEDIATION_HOSTED_NO_NODE,
   REMEDIATION_MAGPIE_NO_WORKER,
 } from "../../src/host/pi-durable.ts";
 import { durableChatBinding } from "../../src/durable/adapters/pi.ts";
@@ -17,8 +19,13 @@ import { SqliteJobRepository } from "../../src/durable/infrastructure/sqlite/rep
 import { JobApplicationService } from "../../src/durable/application/service.ts";
 import { REQUIRED_NEVER_PREAPPROVE } from "../../src/durable/domain/spec-types.ts";
 import type { BrowserWorker } from "../../src/worker/browser-worker.ts";
+import type { BrowserPort } from "../../src/core/browser.ts";
 import type { ModelPort } from "../../src/runtime/model.ts";
 import { createFakePi, runCommand } from "../helpers/fake-pi.ts";
+import { OperatorRuntime } from "../../src/hosts/web/runtime.ts";
+import { NodeHub } from "../../src/hosts/web/hub.ts";
+import { extensionContext } from "../../src/host/memory-host.ts";
+import { AgentError } from "../../src/domain/types.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const homes: string[] = [];
@@ -167,6 +174,121 @@ describe("CAMPAIGN-R2-2 Magpie / hosted durable bind", () => {
   });
 });
 
+describe("CAMPAIGN-R2-E2 hosted/RPC ExecutionHost twin", () => {
+  const stubPort = {} as BrowserPort;
+  const stream = (async function* () {
+    /* unused */
+  }) as unknown as ModelPort;
+
+  it("hostedDurableHostFactory is null when disconnected or without model", () => {
+    assert.equal(
+      hostedDurableHostFactory({
+        connected: () => false,
+        browser: stubPort,
+        live: () => ({ stream, model: {} as never, name: "test" }),
+      })(),
+      null,
+    );
+    assert.equal(
+      hostedDurableHostFactory({
+        connected: () => true,
+        browser: stubPort,
+        live: () => null,
+      })(),
+      null,
+    );
+  });
+
+  it("hostedDurableHostFactory returns hosted-rpc host when connected + stream", () => {
+    const host = hostedDurableHostFactory({
+      connected: () => true,
+      browser: stubPort,
+      live: () => ({ stream, model: {} as never, name: "test" }),
+      profileKey: "hosted-rpc",
+    })();
+    assert.ok(host);
+    assert.equal(host.profileKey, "hosted-rpc");
+    assert.equal(host.available, true);
+    assert.equal(host.headedTakeover, true);
+  });
+
+  it("hosted kernel maps a mid-tick node drop to a retryable failed outcome", async () => {
+    const host = hostedDurableHostFactory({
+      connected: () => true,
+      browser: stubPort,
+      live: () => null,
+      hostOverrides: {
+        runAttempt: async () => {
+          throw new AgentError("node_disconnected", "Browser node disconnected");
+        },
+      },
+    })();
+    assert.ok(host);
+    const outcome = await host.kernel.execute({} as never);
+    assert.equal(outcome.status, "failed");
+    if (outcome.status === "failed") {
+      assert.equal(outcome.code, "node_disconnected");
+      assert.equal(outcome.retryable, true);
+    }
+  });
+
+  it("FakePi hosted tick with disconnected node notifies runtime_unavailable + node remediation", async () => {
+    const root = await tempCore();
+    const jobId = await approveJob(root, "hosted-node");
+    const pi = createFakePi();
+    await pi.startSession();
+    bindDurableCommands(pi, {
+      surface: "hosted",
+      root,
+      browser: stubPort,
+      nodeConnected: () => false,
+      liveCache: { current: null },
+    });
+    await runCommand(pi, "durable-tick", jobId);
+    const note = pi.notifications.join("\n");
+    assert.match(note, /runtime_unavailable/);
+    assert.match(note, new RegExp(REMEDIATION_HOSTED_NO_NODE.slice(0, 40)));
+    assert.doesNotMatch(note, /BSA_DURABLE_HOST/);
+  });
+
+  it("FakePi hosted tick with connected node + mock runAttempt is not runtime_unavailable", async () => {
+    const root = await tempCore();
+    const jobId = await approveJob(root, "hosted-tick");
+    const pi = createFakePi();
+    await pi.startSession();
+    bindDurableCommands(pi, {
+      surface: "hosted",
+      root,
+      browser: stubPort,
+      nodeConnected: () => true,
+      liveCache: { current: null },
+      hostOverrides: {
+        runAttempt: async () => ({
+          status: "completed",
+          value: { ok: true },
+          evidenceIds: ["ev:rpc-twin"],
+        }),
+      },
+    });
+    await runCommand(pi, "durable-tick", jobId);
+    const note = pi.notifications.join("\n");
+    assert.doesNotMatch(note, /runtime_unavailable/);
+  });
+
+  it("OperatorRuntime production bind fails closed while NodeHub is disconnected", async () => {
+    const root = await tempCore();
+    const jobId = await approveJob(root, "hosted-runtime");
+    const notes: string[] = [];
+    const runtime = new OperatorRuntime(new NodeHub(), (message) => {
+      if (message.type === "notify") notes.push(message.message);
+    });
+    await runtime.api.commands.get("durable-tick")?.handler(jobId, extensionContext(runtime.host));
+    const note = notes.join("\n");
+    assert.match(note, /runtime_unavailable/);
+    assert.match(note, new RegExp(REMEDIATION_HOSTED_NO_NODE.slice(0, 40)));
+  });
+});
+
 describe("CAMPAIGN-R2-2 FakeKernel ban (bind surfaces)", () => {
   it("extension, web runtime, and pi-durable do not import FakeKernel", () => {
     for (const rel of [
@@ -181,5 +303,14 @@ describe("CAMPAIGN-R2-2 FakeKernel ban (bind surfaces)", () => {
         `${rel} must not import FakeKernel`,
       );
     }
+  });
+
+  it("hosted runtime does not wrap RpcSessionHandle.worker as the durable host", () => {
+    const runtime = readFileSync(path.join(ROOT, "src/hosts/web/runtime.ts"), "utf8");
+    const durable = readFileSync(path.join(ROOT, "src/host/pi-durable.ts"), "utf8");
+    assert.match(runtime, /browser:\s*this\.rpcBrowser/);
+    assert.doesNotMatch(runtime, /handle\.worker/);
+    assert.doesNotMatch(durable, /handle\.worker/);
+    assert.doesNotMatch(durable, /new RpcSessionHandle/);
   });
 });

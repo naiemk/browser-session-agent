@@ -73,6 +73,8 @@ export class OperatorRuntime {
     emit: (event: string, payload?: unknown) => Promise<unknown[]>;
   };
   readonly handle: RpcSessionHandle;
+  /** One RPC port for chat tools and durable ticks (CAMPAIGN-R2-E2). */
+  private readonly rpcBrowser: RpcBrowserPort;
   private pi: PiLike | null = null;
   private planMode: PlanModeHandle | null = null;
   private coach: CoachHandle | null = null;
@@ -122,6 +124,9 @@ export class OperatorRuntime {
     this.send = send;
     this.options = options;
     this.handle = new RpcSessionHandle(hub);
+    this.rpcBrowser = new RpcBrowserPort({
+      call: (method, args) => this.hub.call(method, args),
+    });
     const startRun = this.handle.startRun.bind(this.handle);
     this.handle.startRun = async (goal: string, startUrl?: string) => {
       if (this.options.requirePaid && !this.isPaid()) {
@@ -160,7 +165,18 @@ export class OperatorRuntime {
       models,
     });
     this.planMode = bindPlanMode(this.api, { coach: this.coach, models });
-    bindDurableCommands(this.api, { surface: "hosted" });
+    bindDurableCommands(this.api, {
+      surface: "hosted",
+      browser: this.rpcBrowser,
+      nodeConnected: () => this.hub.connected,
+      takeover: async () => {
+        try {
+          await this.handle.takeover();
+        } catch {
+          // Node dropped between factory check and headed rehydration.
+        }
+      },
+    });
     this.api.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
       if (!this.browserPrompt) return undefined;
       const goalId = this.sessionGoal.id();
@@ -592,7 +608,7 @@ export class OperatorRuntime {
         policy: "ask",
       },
       tools: {
-        browser: new RpcBrowserPort({ call: (method, args) => this.hub.call(method, args) }),
+        browser: this.rpcBrowser,
         askUser: async (question) => this.host.input(question, "Your answer"),
         // A chat session is the goal here, same as in the local CLI: the operator's
         // objective spans whatever runs they start inside the conversation.

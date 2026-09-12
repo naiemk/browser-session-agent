@@ -1,8 +1,9 @@
 /**
  * R2.1 / CAMPAIGN-R2-1 — product ExecutionHost factory.
  *
- * Magpie WorkerBrowserPort + runTask behind DirectKernel. Missing worker or model
- * returns null so adapters report runtime_unavailable (never FakeKernel success).
+ * Magpie WorkerBrowserPort or hosted RpcBrowserPort + runTask behind DirectKernel.
+ * Missing worker/port or model returns null so adapters report runtime_unavailable
+ * (never FakeKernel success).
  */
 
 import type { Model } from "@earendil-works/pi-ai";
@@ -202,6 +203,8 @@ export async function runDurableAttempt(options: RunDurableAttemptOptions): Prom
 
 export interface ProductHostOptions {
   worker?: BrowserWorker | null;
+  /** Hosted/RPC twin — RpcBrowserPort. Magpie still passes `worker`. */
+  browser?: BrowserPort | null;
   stream?: ModelPort | null;
   model?: Model<never>;
   profileKey: string;
@@ -212,14 +215,17 @@ export interface ProductHostOptions {
   policy?: "auto" | "ask" | "never";
   /** Override runAttempt (tests). Default is runDurableAttempt with stream. */
   runAttempt?: PersistentHostOptions["runAttempt"];
+  takeover?: PersistentHostOptions["takeover"];
 }
 
 /**
- * Product path: Magpie worker + model → DirectKernel ExecutionHost.
- * Returns null when worker or model is missing (ADAPTER-04 / SCHED-02).
+ * Product path: Magpie worker or RPC BrowserPort + model → DirectKernel ExecutionHost.
+ * Returns null when browser/worker or model is missing (ADAPTER-04 / SCHED-02).
  */
 export function createProductExecutionHost(options: ProductHostOptions): ExecutionHost | null {
-  if (!options.worker) return null;
+  const worker = options.worker ?? null;
+  const browser = options.browser ?? null;
+  if (!worker && !browser) return null;
   if (!options.stream && !options.runAttempt) return null;
 
   const stream = options.stream;
@@ -248,11 +254,13 @@ export function createProductExecutionHost(options: ProductHostOptions): Executi
     });
 
   return createPersistentExecutionHost({
-    worker: options.worker,
+    worker: worker ?? undefined,
+    browser: browser ?? undefined,
     profileKey: options.profileKey,
     runAttempt,
     cancel: options.cancel,
     headedTakeover: options.headedTakeover,
     available: true,
+    takeover: options.takeover,
   });
 }

@@ -26,7 +26,7 @@ the gates**, not a second spec.
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
 | R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
-| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2 L6; R2.E3/E4 open** |
+| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2/E2 L6; R2.E3/E4 open** |
 | R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
@@ -287,6 +287,8 @@ Tickets: remaining honesty on CAMPAIGN-02-T04 / 04-T01 / 04-T04
       2026-09-11: CAMPAIGN-R2-2 — Magpie chat ticks use `session.worker` + env-key
       `createLiveModel`; hosted ticks fail closed (no RPC ExecutionHost). Prototype
       `/job-*` remains. R2.E1/E3 still open; do not claim R2 shipped.
+      2026-09-12: CAMPAIGN-R2-E2 — hosted ticks use `RpcBrowserPort` when the desktop
+      node is connected; disconnected / no-model still `runtime_unavailable`.
 - [ ] **R2.3** Durable attempt path uses AGENT-13/14/15 on a **real host**, with
       evaluation residual on CAMPAIGN-04-T04. Gated detectors already exist; this
       step is attach + L7 evidence, not a second implementation.
@@ -300,10 +302,10 @@ R2.1–R2.3 may start while R1 is in flight. **R2.4 waits for evaluations.**
       stale tab/refs rejected (`docs/jobs-v2-evaluation.md` §3.3).
       2026-09-11: CAMPAIGN-R2-E1 — detached Chromium + `disconnect()`/`connectOverCDP`;
       Magpie worker L5 test green. Pi-crash orphan Chrome still later; R2.E3 open.
-- [x] **R2.E2** (partial) L6: FakePi + CLI process + due-tick with and without host
+- [x] **R2.E2** L6: FakePi + CLI process + web/RPC twin, due-tick with and without host
       (nonzero exit when host missing). 2026-09-10: CAMPAIGN-R2-1 adapters green;
-      2026-09-11: CAMPAIGN-R2-2 Magpie/hosted bind. Hosted/RPC ExecutionHost twin still
-      open (hosted ticks fail closed).
+      2026-09-11: CAMPAIGN-R2-2 Magpie/hosted bind; 2026-09-12: CAMPAIGN-R2-E2 hosted
+      `RpcBrowserPort` twin (disconnected node still `runtime_unavailable`).
 - [ ] **R2.E3** Two controlled **L7** smokes, no unsafe external commit, each with
       live-run review template
 - [ ] **R2.E4** Prototype import/archive dry-run; traceability JSON still maps REQ-IDs
@@ -420,7 +422,7 @@ Tick into a future R6 only when the entry condition is met.
    on comparable live runs.
 2. Do not merge QUAL/PERF behavior until E-QUAL's decision review.
 3. Do not call coach a product success until R1.E2.
-4. **R2.1** + **R2.2** + **R2.E1** landed. Next R2 work is **R2.E4** (prototype dry-run)
+4. **R2.1** + **R2.2** + **R2.E1** + **R2.E2** landed. Next R2 work is **R2.E4** (prototype dry-run)
    / **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
    Do not claim R2 shipped until R2.E3.
 5. **R3** product claim only after R1 exit + R2.1.
@@ -443,3 +445,5 @@ Tick into a future R6 only when the entry condition is met.
       hosted ticks fail closed. R2.E1/E3 still open; do not claim R2 shipped. |
 | 2026-09-11 | R2.E1 L5 ticked (CAMPAIGN-R2-E1). Magpie CDP client reconnect on fixture
       profile. R2.E3/E4 still open; do not claim R2 shipped. |
+| 2026-09-12 | R2.E2 L6 completed (CAMPAIGN-R2-E2). Hosted ticks use RpcBrowserPort when
+      the node is connected. R2.E3/E4 still open; do not claim R2 shipped. |
