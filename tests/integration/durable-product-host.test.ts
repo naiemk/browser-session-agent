@@ -56,6 +56,14 @@ describe("CAMPAIGN-R2-1 product ExecutionHost", () => {
       }),
       null,
     );
+    const stub = {} as never;
+    assert.ok(
+      createProductExecutionHost({
+        profileKey: "hosted-rpc",
+        browser: stub,
+        stream: createMockModel({ script: [] }),
+      }),
+    );
   });
 
   it("maps parked challenge and model errors onto OperationOutcome", () => {

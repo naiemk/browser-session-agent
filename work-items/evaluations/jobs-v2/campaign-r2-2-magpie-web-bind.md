@@ -67,6 +67,7 @@ tests; did not claim R2 shipped / R2.E1 / R2.E3 / R2.4 / AGENT-16-T04 / R1.E2.
 | Maintainability | 3 | 4 | Thin `pi-durable.ts`; logic stays in adapter |
 
 Residual (P1): Hosted/RPC ExecutionHost twin (ticks remain fail-closed).
+  Closed 2026-09-12 by CAMPAIGN-R2-E2.
 Residual (P1): R2.E1 Magpie CDP reconnect.
 Residual (P2): R2.E3 L7 smokes before R2.4 delete.
 
@@ -84,7 +85,7 @@ ADAPTER-01..04, SCHED-02 → `src/host/pi-durable.ts`, `extension.ts`,
 
 ## Open risks / follow-ups
 
-- R2.E1 Magpie CDP reconnect
+- R2.E1 Magpie CDP reconnect (closed 2026-09-11 CAMPAIGN-R2-E1)
 - R2.E3 L7 smokes
-- Hosted/RPC ExecutionHost twin
+- Hosted/RPC ExecutionHost twin (closed 2026-09-12 CAMPAIGN-R2-E2)
 - Magpie laptop SQLite and hosted API SQLite remain different `coreRoot()` processes

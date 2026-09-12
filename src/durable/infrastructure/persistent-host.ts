@@ -19,7 +19,10 @@ export function reattachPersistentBrowserPort(worker: BrowserWorker): WorkerBrow
 }
 
 export interface PersistentHostOptions {
-  worker: BrowserWorker;
+  /** Magpie in-process worker. Required unless `browser` is supplied (RPC twin). */
+  worker?: BrowserWorker;
+  /** Already-wired port (RpcBrowserPort). Takes precedence over worker. */
+  browser?: BrowserPort;
   profileKey: string;
   runAttempt: (input: {
     compiled: CompiledAttempt;
@@ -29,10 +32,15 @@ export interface PersistentHostOptions {
   available?: boolean;
   cancel?: AbortSignal;
   headedTakeover?: boolean;
+  /** Hosted: RpcSessionHandle.takeover. Magpie defaults to worker.bringToFront. */
+  takeover?: (info: { host: string }) => Promise<void>;
 }
 
 export function createPersistentExecutionHost(options: PersistentHostOptions): ExecutionHost {
-  let port = createPersistentBrowserPort(options.worker);
+  if (!options.browser && !options.worker) {
+    throw new Error("createPersistentExecutionHost requires browser or worker");
+  }
+  let port: BrowserPort = options.browser ?? createPersistentBrowserPort(options.worker!);
   const kernel = new DirectKernel(async (compiled, signal) => {
     return options.runAttempt({ compiled, browser: port, signal });
   }, options.cancel);
@@ -54,14 +62,18 @@ export function createPersistentExecutionHost(options: PersistentHostOptions): E
         }
         return challengeEvidenceFromObservation(await port.observe());
       },
-      async takeover() {
-        const tabId = options.worker.firstTabId();
-        if (tabId) await options.worker.bringToFront(tabId);
+      async takeover(info) {
+        if (options.takeover) {
+          await options.takeover(info);
+          return;
+        }
+        const tabId = options.worker?.firstTabId();
+        if (tabId) await options.worker!.bringToFront(tabId);
       },
     },
     /** Test/ops helper: refresh port after control-process style reconnect. */
     reattach() {
-      port = reattachPersistentBrowserPort(options.worker);
+      if (options.worker) port = reattachPersistentBrowserPort(options.worker);
     },
   } as ExecutionHost & { reattach(): void };
 }

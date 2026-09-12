@@ -67,7 +67,7 @@ R2.E1 Magpie CDP reconnect or R2.E3 L7.
 Residual (P1): Magpie CDP client reconnect landed in CAMPAIGN-R2-E1 (2026-09-11, L5).
 Pi-crash orphan Chrome still later.
 Residual (P2): Magpie/hosted bind landed in CAMPAIGN-R2-2 (2026-09-11). Hosted/RPC
-ExecutionHost twin still open (hosted ticks remain fail-closed).
+ExecutionHost twin closed 2026-09-12 by CAMPAIGN-R2-E2.
 
 ## Improvement pass
 
