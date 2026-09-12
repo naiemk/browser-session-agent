@@ -5,13 +5,14 @@ every action, ask when something is genuinely unknown, and never claim success t
 does not support.
 
 ```bash
-npm install -g magpie
+npm install -g magpie-agent
 magpie
 ```
 
-`magpie` is the same as `npm run cli` in this repo: an interactive Pi TUI with the in-repo
-browser extension, driving installed Google Chrome on this machine. Pass `--chromium` to
-use Playwright Chromium instead (CI does this).
+The npm package is **`magpie-agent`** (the bare name `magpie` is taken on npm). The
+installed CLI binary is still `magpie`. Same as `npm run cli` in this repo: an interactive
+Pi TUI with the in-repo browser extension, driving installed Google Chrome on this
+machine. Pass `--chromium` to use Playwright Chromium instead (CI does this).
 
 Three local entry points, for three different jobs. None of them need the VPS.
 
@@ -73,7 +74,7 @@ on this machine. Useful when you want to steer the agent yourself rather than ha
 goal.
 
 ```bash
-npm install -g magpie
+npm install -g magpie-agent
 magpie
 ```
 
