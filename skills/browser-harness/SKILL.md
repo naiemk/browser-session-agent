@@ -1,6 +1,10 @@
 # Browser harness
 
-When the job is a browsing task, spawn this harness. Do not drive the browser yourself.
+Two modes. Pick explicitly. Do not send long Magpie harvest jobs into ACP by default.
+
+## Mode A — one-shot ACP (short verdict)
+
+When the job is a **short** browsing task that should return a verdict/evidence id:
 
 ```
 npx -y browser-session-agent acp
@@ -16,5 +20,19 @@ stay inside the harness.
 - Park (captcha, 2FA) is a waiting outcome, not a success
 - Evidence is on disk under the returned `goalId`
 
-This is a browser harness other agents delegate to, the same way they spawn a coding
-agent over ACP. It is not chrome-devtools-mcp and not a bundled `browser` plugin.
+ACP `session/new` ids are **in-memory** for that harness run. They are not Magpie's
+durable Pi session handle.
+
+## Mode B — long Magpie Pi-session job
+
+When the job is a multi-site harvest / qualify campaign that must survive process
+exit, use Magpie parent CLI (`skills/magpie-parent/SKILL.md`):
+
+```bash
+magpie --json --session-dir … --plan-file plan.md "<objective>"
+```
+
+Keep the printed `session_id`. Later: `magpie --session <id> -p "…"`. Do not drive
+the browser yourself. Do not harvest in parallel with Magpie.
+
+This skill is not chrome-devtools-mcp and not a bundled `browser` plugin.

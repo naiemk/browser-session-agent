@@ -1,0 +1,1 @@
+Ignore agencies — only founders, and only those with a public email or contact page.

@@ -3,7 +3,7 @@ id: PARENT-01-T02
 title: Admit parent plan; insert scout/coach when needed
 story: PARENT-01
 epic: parent-agent
-status: todo
+status: done
 ---
 
 # PARENT-01-T02 — Parent plan admission
