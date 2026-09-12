@@ -21,13 +21,17 @@ describe("PARENT-01-T04 host skills", () => {
     assert.match(body, /profiles recommend/);
   });
 
-  it("Grok / Hermes packages carry the same CLI contract", async () => {
+  it("Grok bootstrap points at git canonical skill; Hermes shares the CLI contract", async () => {
     const grok = await readFile(GROK, "utf8");
     const hermes = await readFile(HERMES, "utf8");
+    assert.match(grok, /raw\.githubusercontent\.com\/naiemk\/browser-session-agent/);
+    assert.match(grok, /skills\/magpie-parent\/SKILL\.md/);
+    assert.match(grok, /curl/);
+    assert.match(grok, /paste once|paste into Grok/i);
     assert.match(grok, /magpie --json/);
-    assert.match(hermes, /magpie --json/);
-    assert.match(grok, /paste/i);
-    assert.doesNotMatch(grok, /paste this GitHub URL/i);
+    assert.doesNotMatch(grok, /You are a \*\*supervising agent\*\*/);
+    assert.match(hermes, /skills\/magpie-parent\/SKILL\.md/);
+    assert.match(hermes, /raw\.githubusercontent|checked-out clone/i);
     assert.match(hermes, /ACP/i);
   });
 

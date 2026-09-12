@@ -174,7 +174,7 @@ Tickets MUST resolve or mark **unverified**. Do not hard-code platform folklore.
 | ID | Question | Blocks |
 | --- | --- | --- |
 | **RESEARCH-01** | Can Grok Bot register a **stdio** MCP server via `npx` on the Bot VM? Official docs vs third-party. | MCP adapter only. CLI path does not wait. |
-| **RESEARCH-02** | Can a Grok Bot skill be installed from a URL/repo, or only marketplace / save-from-chat / Teach a task? | PARENT-01-T04 distribution copy |
+| **RESEARCH-02** | Can a Grok Bot skill be installed from a URL/repo, or only marketplace / save-from-chat / Teach a task? (Answer: Bot has no URL installer; paste thin bootstrap + curl canonical `SKILL.md` from git.) | PARENT-01-T04 distribution copy |
 | **RESEARCH-03** | What on the Bot computer persists (`/workspace` vs npm global vs `~/.pi`)? Node version? Playwright/Chrome? | Installer; `--session-dir` location |
 | **RESEARCH-04** | Pi 0.85.1 `/login xai` subscription vs Magpie `createLiveModel` (today: no xAI in `KEY_ENV_NAMES`; durable host gated on env keys). Device-code on a headless VM? | Magpie-as-Grok-worker backend, not the CLI handle |
 | **RESEARCH-05** | Cursor Grok Bot entitlement vs SuperGrok OAuth for `api.x.ai`. Likely not the same. | Auth UX; do not promise "no API key" to every Bot user |
@@ -182,6 +182,7 @@ Tickets MUST resolve or mark **unverified**. Do not hard-code platform folklore.
 | **RESEARCH-07** | Does Magpie Chromium appear on Agent Computer `DISPLAY` for takeover? | Login UX on Bot VM |
 | **RESEARCH-08** | Can Grok Bot routines poll `magpie --session id -p status`? Push notify is assumed unavailable. | Long-job UX |
 | **RESEARCH-09** | Pi `-p` / RPC vs Magpie extension: does `-p` load Magpie, restore `magpie-goal`, and allow a compact yield without a TUI? **Experiment locally before polishing the installer.** | PARENT-01-T01 |
+| **RESEARCH-10** | Can we submit a third-party plugin/skill to Grok Bot marketplace? (vs Grok Build `xai-org/plugin-marketplace` PR) | PARENT-01-T04 distribution; optional Build listing |
 
 Write findings in [`docs/grok-bot-feasibility.md`](grok-bot-feasibility.md) (created by
 PARENT-00-T01). Mark verified vs unverified.
