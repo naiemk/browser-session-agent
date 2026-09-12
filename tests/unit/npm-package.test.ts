@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("npm package", () => {
-  it("publishes magpie-agent with the magpie CLI bin", async () => {
+  it("publishes magpi with the magpie CLI bin", async () => {
     const pkg = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8")) as {
       name: string;
       bin: Record<string, string>;
@@ -16,8 +16,8 @@ describe("npm package", () => {
       dependencies: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
-    // Bare npm name `magpie` is taken; package is magpie-agent, CLI binary stays magpie.
-    assert.equal(pkg.name, "magpie-agent");
+    // Bare npm name `magpie` is taken; package is magpi, CLI binary stays magpie.
+    assert.equal(pkg.name, "magpi");
     assert.equal(pkg.bin.magpie, "./bin/bsa-cli.mjs");
     assert.equal(pkg.bin.magpie, pkg.bin.bsa);
     assert.match(pkg.scripts.cli, /bsa-cli/);
