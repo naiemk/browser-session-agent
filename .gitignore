@@ -146,3 +146,5 @@ vite.config.ts.timestamp-*
 .browser-session-agent/
 test-results/
 playwright-report/
+results/parent-supervisor/*/
+!results/parent-supervisor/README.md
