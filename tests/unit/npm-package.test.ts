@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("npm package", () => {
-  it("publishes magpi with the magpie CLI bin", async () => {
+  it("publishes @naiemk/magpi with the magpie CLI bin", async () => {
     const pkg = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8")) as {
       name: string;
       bin: Record<string, string>;
@@ -15,9 +15,11 @@ describe("npm package", () => {
       scripts: Record<string, string>;
       dependencies: Record<string, string>;
       devDependencies?: Record<string, string>;
+      publishConfig?: { access?: string };
     };
-    // Bare npm name `magpie` is taken; package is magpi, CLI binary stays magpie.
-    assert.equal(pkg.name, "magpi");
+    // Bare magpie is taken; bare magpi is rejected by npm (too similar to hapi/wagmi).
+    assert.equal(pkg.name, "@naiemk/magpi");
+    assert.equal(pkg.publishConfig?.access, "public");
     assert.equal(pkg.bin.magpie, "./bin/bsa-cli.mjs");
     assert.equal(pkg.bin.magpie, pkg.bin.bsa);
     assert.match(pkg.scripts.cli, /bsa-cli/);
