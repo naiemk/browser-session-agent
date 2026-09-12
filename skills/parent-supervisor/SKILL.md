@@ -43,14 +43,11 @@ Do these steps yourself. Do not ask the human to run them.
 
 ```bash
 mkdir -p /workspace/magpie
-CANONICAL_URL="https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md"
-FALLBACK_URL="https://raw.githubusercontent.com/naiemk/browser-session-agent/cursor/r6-on-main-0.1.5/skills/magpie-parent/SKILL.md"
-if ! curl -fsSL "$CANONICAL_URL" -o /workspace/magpie/SKILL.md; then
-  curl -fsSL "$FALLBACK_URL" -o /workspace/magpie/SKILL.md
-fi
+curl -fsSL "https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md" \
+  -o /workspace/magpie/SKILL.md
 ```
 
-Follow the fetched file. If both URLs fail, stop and say the skill fetch failed.
+Follow the fetched file. If the fetch fails, stop and say the skill fetch failed.
 Do not invent Magpie flags from memory.
 
 On hosts that are not Grok Bot, use Magpie’s default session dir

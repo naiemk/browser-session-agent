@@ -7,12 +7,6 @@ Same contract as Grok Bot: the human sends a **goal**; you fetch and follow
 https://raw.githubusercontent.com/naiemk/browser-session-agent/main/skills/magpie-parent/SKILL.md
 ```
 
-Until that path exists on `main`:
-
-```text
-https://raw.githubusercontent.com/naiemk/browser-session-agent/cursor/r6-on-main-0.1.5/skills/magpie-parent/SKILL.md
-```
-
 ## Host chrome
 
 - Prefer a checkout of this repo; otherwise `curl` the raw URL and follow that file.
