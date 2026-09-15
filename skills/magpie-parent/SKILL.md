@@ -56,13 +56,13 @@ On hosts that are not Grok Bot, use Magpie’s default session dir
 
 ### 1. Install / verify Magpie (once per machine)
 
-Need **Node ≥ 24**. Package **`@naiemk/magpi`**, latest published **`0.1.5`**.
+Need **Node ≥ 24**. Package **`@naiemk/magpi`**, latest published **`0.1.6`**.
 Need **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier open the TUI and hang
-headless). Binary is `magpie`.
+headless); prefer **0.1.6+** for coach occasion frames. Binary is `magpie`.
 
 ```bash
 node -v   # must be v24+
-npm install -g @naiemk/magpi@0.1.5
+npm install -g @naiemk/magpi@0.1.6
 # or always latest: npm install -g @naiemk/magpi
 export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
 mkdir -p "$MAGPIE_SESSION_DIR"

@@ -14,12 +14,13 @@ with you.
 
 ## Install Magpie
 
-**Package:** `@naiemk/magpi` · **Latest:** `0.1.5` (need ≥ 0.1.5 for `--json` /
-`profiles`). Binary: `magpie`. Need **Node ≥ 24**.
+**Package:** `@naiemk/magpi` · **Latest:** `0.1.6` (need ≥ 0.1.5 for `--json` /
+`profiles`; prefer **0.1.6+** for coach occasion frames). Binary: `magpie`.
+Need **Node ≥ 24**.
 
 ```bash
 node -v   # v24+
-npm install -g @naiemk/magpi@0.1.5
+npm install -g @naiemk/magpi@0.1.6
 # or: npm install -g @naiemk/magpi
 magpie --help | head -40
 ```
