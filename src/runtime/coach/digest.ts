@@ -10,9 +10,14 @@ import type { MetricRecord, ObservationRecord, TurnRecord } from "../metrics.ts"
 import { yieldKindOf } from "./yield.ts";
 
 export const COACH_DIGEST_MAX_BYTES = 32_768;
+/** Occasion views stay smaller than the full trajectory cap (COACH-20). */
+export const COACH_DIGEST_VIEW_MAX_BYTES = 8_192;
 export const COACH_SNAPSHOT_QUOTE_MAX = 500;
 const ACTION_SUMMARY_MAX = 160;
 const REJECTION_REASONS_MAX = 12;
+const HOLE_QUOTES_MAX = 3;
+
+export type CoachDigestView = "full" | "scout" | "steer" | "close";
 
 export interface CoachCheckpoint {
   at?: string;
@@ -29,6 +34,10 @@ export interface CoachDigestInput {
   previousArtifact?: { summary?: string; followed?: boolean };
   remainingBudgets?: { scoutSiteActions?: number; harvestSiteActions?: number };
   checkpoint?: CoachCheckpoint;
+  /** Close view only: operate report summary. */
+  reportSummary?: string;
+  reportStatus?: string;
+  occasion?: CoachDigestView;
 }
 
 export interface DigestAction {
@@ -50,6 +59,7 @@ export interface NavigationCycle {
 export interface CoachDigest {
   goal: string;
   criteria: string[];
+  occasion?: Exclude<CoachDigestView, "full">;
   declaredStrategy?: string;
   counts: {
     accepted: number;
@@ -58,6 +68,10 @@ export interface CoachDigest {
     visitedUrls: number;
   };
   rejectionReasons: Array<{ reason: string; count: number }>;
+  unknownShare?: number;
+  holeQuotes?: Array<{ reason: string; quote: string }>;
+  reportSummary?: string;
+  reportStatus?: string;
   actions: DigestAction[];
   repeatedObservationHashes: number;
   zeroChangeReads: number;
@@ -266,21 +280,26 @@ function lastPage(
   return undefined;
 }
 
-function capDigest(digest: CoachDigest): CompiledDigest {
+function capDigest(digest: CoachDigest, maxBytes = COACH_DIGEST_MAX_BYTES): CompiledDigest {
   let truncated = false;
   const jsonOf = (value: CoachDigest) => JSON.stringify(value);
 
-  while (jsonOf(digest).length > COACH_DIGEST_MAX_BYTES && digest.actions.length > 0) {
+  while (jsonOf(digest).length > maxBytes && digest.actions.length > 0) {
     digest.actions.shift();
     digest.truncated = true;
     truncated = true;
   }
-  while (jsonOf(digest).length > COACH_DIGEST_MAX_BYTES && digest.snapshotQuotes.length > 0) {
+  while (jsonOf(digest).length > maxBytes && digest.snapshotQuotes.length > 0) {
     digest.snapshotQuotes.shift();
     digest.truncated = true;
     truncated = true;
   }
-  while (jsonOf(digest).length > COACH_DIGEST_MAX_BYTES && digest.rejectionReasons.length > 1) {
+  while (jsonOf(digest).length > maxBytes && (digest.holeQuotes?.length ?? 0) > 0) {
+    digest.holeQuotes!.shift();
+    digest.truncated = true;
+    truncated = true;
+  }
+  while (jsonOf(digest).length > maxBytes && digest.rejectionReasons.length > 1) {
     digest.rejectionReasons.pop();
     digest.truncated = true;
     truncated = true;
@@ -290,7 +309,48 @@ function capDigest(digest: CoachDigest): CompiledDigest {
   return { digest, json, bytes: json.length, truncated };
 }
 
-export function compileDigest(input: CoachDigestInput): CompiledDigest {
+function projectView(digest: CoachDigest, view: CoachDigestView): CoachDigest {
+  if (view === "full") return digest;
+  const next: CoachDigest = {
+    ...digest,
+    occasion: view,
+    actions: view === "scout" ? digest.actions.slice(-6) : [],
+    snapshotQuotes: digest.snapshotQuotes.slice(0, HOLE_QUOTES_MAX),
+    navigationCycles: view === "steer" ? digest.navigationCycles.slice(0, 4) : [],
+    repeatedObservationHashes: view === "steer" ? digest.repeatedObservationHashes : 0,
+    zeroChangeReads: view === "steer" ? digest.zeroChangeReads : 0,
+  };
+  if (view === "scout") {
+    delete next.holeQuotes;
+    delete next.unknownShare;
+    delete next.reportSummary;
+    delete next.reportStatus;
+  }
+  if (view === "steer" || view === "close") {
+    const holes = digest.rejectionReasons
+      .filter((row) => /\bunknown\b/i.test(row.reason))
+      .slice(0, HOLE_QUOTES_MAX)
+      .map((row) => ({ reason: row.reason, quote: `count=${row.count}` }));
+    next.holeQuotes = holes;
+    let unknown = 0;
+    let total = 0;
+    for (const row of digest.rejectionReasons) {
+      total += row.count;
+      if (/\bunknown\b/i.test(row.reason)) unknown += row.count;
+    }
+    next.unknownShare = total === 0 ? 0 : Number((unknown / total).toFixed(3));
+  }
+  if (view === "close") {
+    next.actions = [];
+    next.navigationCycles = [];
+  }
+  return next;
+}
+
+export function compileDigest(
+  input: CoachDigestInput,
+  view: CoachDigestView = input.occasion ?? "full",
+): CompiledDigest {
   const events = eventsSince(input.events, input.checkpoint);
   const metrics = input.metrics ?? [];
   const yields = yieldCounts(events);
@@ -337,7 +397,11 @@ export function compileDigest(input: CoachDigestInput): CompiledDigest {
     ...(currentPage ? { currentPage } : {}),
     ...(input.previousArtifact ? { previousStrategy: input.previousArtifact } : {}),
     ...(input.remainingBudgets ? { remainingBudgets: input.remainingBudgets } : {}),
+    ...(input.reportSummary ? { reportSummary: clip(input.reportSummary, 400) } : {}),
+    ...(input.reportStatus ? { reportStatus: clip(input.reportStatus, 40) } : {}),
   };
 
-  return capDigest(digest);
+  const projected = projectView(digest, view);
+  const maxBytes = view === "full" ? COACH_DIGEST_MAX_BYTES : COACH_DIGEST_VIEW_MAX_BYTES;
+  return capDigest(projected, maxBytes);
 }

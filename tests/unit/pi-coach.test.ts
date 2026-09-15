@@ -21,6 +21,7 @@ import {
   preCoachComplete,
 } from "../../src/host/pi-plan-todos.ts";
 import { STRATEGY_JSON_EXAMPLE } from "../../src/runtime/coach/strategy.ts";
+import { yieldInput } from "../../src/runtime/coach/yield.ts";
 import { extensionContext } from "../../src/host/memory-host.ts";
 import { NodeHub } from "../../src/hosts/web/hub.ts";
 import { OperatorRuntime } from "../../src/hosts/web/runtime.ts";
@@ -81,8 +82,8 @@ describe("AGENT-16-T03 interactive /coach", () => {
     assert.match(PLAN_MODE_CONTEXT, /harvest/i);
     assert.match(PLAN_MODE_CONTEXT, /MUST NOT invent a list of site tactics/i);
     assert.match(PLAN_MODE_CONTEXT, /qualification quality/i);
-    assert.match(HARVEST_EXECUTE_HINT, /peek\/observe/i);
-    assert.match(HARVEST_EXECUTE_HINT, /coder fetch/i);
+    assert.match(HARVEST_EXECUTE_HINT, /unknown/i);
+    assert.match(HARVEST_EXECUTE_HINT, /remember/i);
   });
 
   it("/coach disables act / save / subagent while the review turn runs", async () => {
@@ -205,7 +206,8 @@ describe("AGENT-16-T03 interactive /coach", () => {
     await pi.startSession();
     await runCommand(pi, COACH_COMMAND, "");
     assert.ok(pi.userMessages.some((text) => text.includes(STRATEGY_JSON_EXAMPLE)));
-    assert.ok(pi.userMessages.some((text) => /escalate-to-observe/i.test(text)));
+    assert.ok(pi.userMessages.some((text) => /occasion=scout/i.test(text)));
+    assert.ok(pi.userMessages.some((text) => /Put unknown in remember reasons/i.test(text)));
     const invented =
       "```json\n" +
       JSON.stringify({
@@ -700,19 +702,22 @@ describe("AGENT-16-T06 Magpie closed-loop coach", () => {
     browserSessionAgent(pi);
     await pi.startSession();
     await runCalibrationToArtifact(pi);
-    const digestReviews = () =>
-      pi.userMessages.filter((text) => text.includes("Trajectory digest (not the session transcript)"));
-    assert.equal(digestReviews().length, 1);
+    const steerStarts = () =>
+      pi.notifications.filter((note) => /Coach review \(steer\)/i.test(note));
+    assert.equal(steerStarts().length, 0);
     await pi.emit("agent_end", {
       messages: [{ role: "assistant", content: "harvesting without new actions" }],
     });
-    assert.equal(digestReviews().length, 1);
+    assert.equal(steerStarts().length, 0);
     await appendHarvestActions(pi, MAGPIE_RESCUE_ACTIONS_WITHOUT_YIELD);
     await pi.emit("agent_end", {
       messages: [{ role: "assistant", content: "still hopping" }],
     });
-    assert.equal(digestReviews().length, 2);
-    assert.match(digestReviews()[1] ?? "", /"followed":false/);
+    assert.equal(steerStarts().length, 1);
+    assert.match(
+      pi.userMessages.filter((text) => text.includes("occasion=steer")).at(-1) ?? "",
+      /"followed":false/,
+    );
     await pi.emit("turn_end", { message: { role: "assistant", content: "not-json-1" } });
     await pi.emit("turn_end", { message: { role: "assistant", content: "not-json-2" } });
     await pi.emit("turn_end", { message: { role: "assistant", content: "not-json-3" } });
@@ -721,7 +726,142 @@ describe("AGENT-16-T06 Magpie closed-loop coach", () => {
     await pi.emit("agent_end", {
       messages: [{ role: "assistant", content: "still hopping after empty rescue" }],
     });
-    assert.equal(digestReviews().length, 2);
+    assert.equal(steerStarts().length, 1);
     assert.match(pi.notifications.join("\n"), /Stopping for the operator/i);
+  });
+});
+
+describe("coach occasion frames (FakePi)", () => {
+  it("parent operate: standing calibration plan + scout yield → occasion=scout", async () => {
+    const home = await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    const goalId = magpieGoalId(pi);
+    const { goalPaths, coreRoot } = await import("../../src/core/paths.ts");
+    const scratchDir = goalPaths(coreRoot(home), goalId).scratchDir;
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(scratchDir, { recursive: true });
+    await writeFile(
+      path.join(scratchDir, "plan.md"),
+      [
+        "## Goal",
+        "Collect many SaaS pricing rows",
+        "",
+        "## Plan",
+        "1. Scout a source list",
+        "2. Coach",
+        "3. Harvest",
+        "",
+        "<!-- magpie-admission: calibration_required -->",
+      ].join("\n"),
+      "utf8",
+    );
+    await pi.emit("before_agent_start", {});
+    await runTool(pi, TOOL_REMEMBER, {
+      key: "list-exists",
+      value: "pricing index scrolls",
+      yield: "route_affordance",
+    });
+    await pi.emit("agent_end", {
+      messages: [{ role: "assistant", content: "Scout notes recorded." }],
+    });
+    const review = pi.userMessages.find((text) => text.includes("[COACH REVIEW]")) ?? "";
+    assert.match(review, /occasion=scout/);
+    assert.match(review, /What repeatable acquisition loop/i);
+  });
+
+  it("close gate fails without accepts then accept; off-track extend holds", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    const coach = bindCoach(pi, {
+      evidence,
+      objective: "Collect SaaS rows with email",
+      criteria: ["email required"],
+    });
+    await pi.startSession();
+    const ctx = pi.ctx;
+    assert.equal(await coach.startReview(ctx, "scout"), true);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.equal(coach.hasArtifact(), true);
+
+    // criteria set, zero accepts since checkpoint → close gate fails → review.
+    const firstClose = coach.considerClose(ctx, {
+      status: "success",
+      summary: "premature report",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(pi.userMessages.some((text) => /occasion=close/.test(text)));
+    await pi.emit("turn_end", {
+      message: {
+        role: "assistant",
+        content: JSON.stringify({
+          ...ARTIFACT,
+          occasion: "close",
+          decision: "accept",
+          summary: "Operator accepts thin deliverable.",
+          loop: [],
+        }),
+      },
+    });
+    assert.equal((await firstClose).action, "pass");
+
+    for (let i = 0; i < 5; i++) {
+      await evidence.ledger.append(
+        yieldInput({ kind: "candidate_rejected", summary: `row ${i}`, reason: "email unknown" }),
+      );
+      await evidence.ledger.append(yieldInput({ kind: "candidate_accepted", summary: `row ${i}` }));
+    }
+    const held = coach.considerClose(ctx, {
+      status: "success",
+      summary: "matrix of 30 with unknowns",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(pi.userMessages.some((text) => /occasion=close/.test(text)));
+    await pi.emit("turn_end", {
+      message: {
+        role: "assistant",
+        content: JSON.stringify({
+          ...ARTIFACT,
+          occasion: "close",
+          decision: "extend",
+          summary: "Observe SPA shells for unknown emails.",
+          loop: ["Observe JS pricing pages"],
+        }),
+      },
+    });
+    assert.equal((await held).action, "started");
+    assert.equal(coach.lastDecision(), "extend");
+  });
+
+  it("startReview defaults to scout when no artifact", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCommand(pi, COACH_COMMAND, "");
+    const review = pi.userMessages.find((text) => text.includes("[COACH REVIEW]")) ?? "";
+    assert.match(review, /occasion=scout/);
+  });
+
+  it("report tool terminate vs continue via beforeReport", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await runCalibrationToArtifact(pi);
+    const before = pi.notifications.filter((n) => /Coach review \(close\)/i.test(n)).length;
+    const ok = await runTool(pi, "report", {
+      status: "success",
+      summary: "healthy finish",
+    });
+    assert.equal((ok as { terminate?: boolean }).terminate, true);
+    assert.equal(
+      pi.notifications.filter((n) => /Coach review \(close\)/i.test(n)).length,
+      before,
+    );
   });
 });

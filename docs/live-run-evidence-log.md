@@ -451,8 +451,11 @@ Observation:
 
 Decision:
 
-- **COACH-20**: strategy must preserve qualification quality; cheapest route is
-  D44 peek (not curl). Empty JS shell / unknown required field → `observe`.
-  Harvest Execute hint forbids coder-fetch as the loop.
+- **COACH-20…22 (occasion frames)**: one `/coach` handler; occasions scout /
+  steer / close with digest views and mechanical skip gates. Cite
+  `goal_mtz1c1ar001` as evidence that route coach never saw the deliverable —
+  not as an encoded curl ban. Healthy harvest: one scout, zero steer, zero close
+  review models. Off-track / waste → steer patch; bad `report` → close extend
+  or halt.
 - Do not treat this as R1.E2 or E-QUAL. Host `/coach` bypass remains T05/T06 live
   debt on parent sessions.

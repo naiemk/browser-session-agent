@@ -205,7 +205,7 @@ Playwright, and job SQLite MUST NOT be required to unit-test a digest.
 - Owner: `src/runtime/coach/digest.ts`
 - Ticket: AGENT-16-T01
 
-### Strategy artifact (COACH-05 … COACH-08, COACH-20)
+### Strategy artifact (COACH-05 … COACH-08)
 
 **COACH-05.** Coach output SHALL validate against a closed schema before it can block or
 unblock harvest. Unknown keys dropped. Lists and strings hard-capped (same spirit as
@@ -228,10 +228,13 @@ interface StrategyArtifact {
   confidence: "low" | "medium" | "high";
   falsify: string;                 // what observation would kill this guideline, ≤ 200
   assumptions: string[];           // ≤ 6 × 160
+  occasion?: "scout" | "steer" | "close";
+  decision?: "continue" | "patch" | "extend" | "accept" | "halt";
 }
 ```
 
 Prose MAY be shown to the operator. Only the parsed artifact is prompt state for harvest.
+`accept` MAY omit `loop`.
 
 **COACH-06.** A strategy artifact MUST NOT change qualification criteria, in-scope /
 out-of-scope sources, effect envelope, or approval policy. A validator SHALL reject
@@ -255,17 +258,42 @@ context.
 - Owner: `src/runtime/card.ts` (render helper) + ContextCompiler for jobs
 - Ticket: AGENT-16-T02, AGENT-16-T04
 
-**COACH-20.** Coach SHALL name a repeatable acquisition loop that still meets the spec's
-qualification quality. Efficiency is waste-reduction (peek vs losing the list, D44), not
-substituting Magpie Chrome with curl or a coder fetch script. If scout evidence includes
-empty JS shells, fetch-only HTML, or required fields left unknown, the artifact MUST
-include an `exceptions` branch that escalates those rows to `observe` (rendered page).
-A guideline that scales “mark unknown and move on” for fields the spec required verifying
-on the product is incomplete. Rescue coach SHALL treat a harvest that only produced
-thin/unknown cells on JS-heavy pages as a falsified cheap route, not a finished matrix.
-- Rationale: `goal_mtz1c1ar001` scaled pricing-page fetch; SPA trust portals stayed unknown
-- Owner: `src/host/pi-coach.ts` instructions, `STRATEGY_JSON_EXAMPLE`, harvest Execute hint
-- Ticket: none yet (prompt/schema example change; not a new scheduler)
+### Coach occasions (COACH-20 … COACH-22)
+
+**COACH-20.** Magpie SHALL invoke the same `/coach` handler under three **occasions**.
+Each occasion is a frame `{ occasion, question, digestView, skipIf, decision }`. One
+handler; the scheduler sets the occasion. Healthy runs MUST NOT pay a review model when
+a mechanical gate says skip. Evidence that motivated frames: `goal_mtz1c1ar001` (route
+coach never saw the deliverable; curl-first was fine until holes stayed unknown).
+
+| Occasion | Question | Digest view | Skip review model when |
+| --- | --- | --- | --- |
+| `scout` | What repeatable loop? | SUCCESS + scout yield + tiny quotes; no result table | Never if calibration and no artifact |
+| `steer` | Heading at SUCCESS, cheaply enough? | SUCCESS, counts, unknown-rate, 2–3 hole quotes, current strategy, waste | Neither waste nor off-track |
+| `close` | Is SUCCESS met **now**? | SUCCESS + hole summary + report summary + counts | Gate passes (`accept` without a model) |
+
+Digest views MUST be smaller than the full trajectory cap (project, then truncate actions
+first per COACH-18). Meter `occasion` + digest bytes.
+- Owner: `src/runtime/coach/digest.ts`, `src/runtime/coach/occasion.ts`, `src/host/pi-coach.ts`
+- Ticket: coach occasion frames
+
+**COACH-21.** Steer SHALL trip on **waste** (existing Magpie rescue breakers) **or**
+**off-track** vs SUCCESS on the partial deliverable (e.g. accepted ≥ 5 with high
+unknown-share in yield reasons, or accepted ≥ 5 with criteria and zero
+`fact_established`). When the review model runs, it MUST output `continue` or `patch`
+for the **remainder** of harvest — not a new campaign and not a close verdict. Harvest
+SHOULD put `unknown` in `remember` reason when a required field is missing so the gate
+can see it.
+- Owner: `src/runtime/coach/occasion.ts`, `src/host/pi-plan-mode.ts` `turn_end` / `agent_end`
+- Ticket: coach occasion frames
+
+**COACH-22.** Close SHALL intercept `report`. A mechanical gate runs first (no provider).
+If the gate passes, terminate as today. If it fails, lease `/coach` with `occasion=close`.
+Decision: `accept` (terminate, no new loop), `extend` (do not terminate; inject patched
+guideline; harvest continues), or `halt` (stop for the operator). Do not finish a bad
+loop only because the operate model called `report`.
+- Owner: `src/runtime/tools.ts` report, `src/host/pi-coach.ts` `considerClose`
+- Ticket: coach occasion frames
 
 ### Planner policy (COACH-09 … COACH-11)
 
@@ -276,8 +304,7 @@ thin/unknown cells on JS-heavy pages as a falsified cheap route, not a finished 
 - You MUST author scout (tight budget) → coach → harvest blocked on the coach artifact.
 - You MUST NOT invent a list of site tactics to exhaust before coaching.
 - Coach is a guideline generator, not a second planner.
-- The guideline MUST preserve qualification quality (when to peek vs observe), not
-  replace Magpie Chrome with cheaper fetch.
+- Coach occasions (scout / steer / close) share one handler; do not invent tactic lists.
 
 `/plan` numbered steps for `calibration_required` MUST be recognizable as those three
 roles (scout / coach / harvest), even if the wording differs.

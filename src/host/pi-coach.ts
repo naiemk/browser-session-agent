@@ -1,17 +1,26 @@
 /**
- * Interactive `/coach`: review-phase digest in, strategy artifact out (COACH-09, 12–13, 15–18).
+ * Interactive `/coach`: review-phase digest in, strategy artifact out (COACH-09, 12–13, 15–18, 20–22).
  *
  * Stronger review class (COACH-12): Pi thinking `high`, plus the Magpie `coach` model
  * pin when set (`/models`). Restored after accept or abort. Not an `@ultra` prefix.
+ *
+ * Occasions (COACH-20): scout | steer | close — one handler; scheduler sets the frame.
  */
 
 import { coreRoot, goalPaths } from "../core/paths.ts";
 import type { Evidence } from "../runtime/evidence.ts";
 import { compileDigest, type CompiledDigest } from "../runtime/coach/digest.ts";
 import {
+  closeGateDecision,
+  countFactEstablished,
+  OCCASION_QUESTIONS,
+  offTrackFromDigest,
+  steerGateDecision,
+  type CoachOccasion,
+} from "../runtime/coach/occasion.ts";
+import {
   harvestFollowed,
   hasScoutYield,
-  magpieRescueDecision,
   siteActionsWithoutCandidateYield,
 } from "../runtime/coach/rescue.ts";
 import {
@@ -38,25 +47,34 @@ export const COACH_DISABLED_TOOLS = PLAN_MODE_DISABLED_TOOLS;
 
 const COACH_RETRY_MAX = 2;
 
-const COACH_INSTRUCTIONS =
-  "[COACH REVIEW]\n" +
-  "Phase: review. Mutations are off. Output one JSON object only, exactly this shape " +
-  "(unknown keys are dropped and the artifact is rejected as empty):\n" +
-  STRATEGY_JSON_EXAMPLE +
-  "\n" +
-  STRATEGY_REQUIRED_HINT +
-  "\nDo not rewrite qualification criteria, grants, send, or follow policy. Do not skip approval. " +
-  "Coach is a guideline generator, not a second planner. The loop is a trial, not a lock: " +
-  "doNot may name wasted routes already in this digest; do not forbid untested pools. " +
-  "If yield counts are zero, say so and demand recording — do not lock a pool. " +
-  "This turn uses a stronger thinking class; it is restored after the artifact.\n\n" +
-  "Efficiency is waste-reduction (a repeatable loop, peek instead of losing the list), " +
-  "not a cheaper-than-browser substitute. If the digest shows empty SPA shells, " +
-  "fetch-only HTML, or required fields left unknown, put an escalate-to-observe " +
-  "(live Chrome) exception in the artifact. Harvest still uses Magpie peek/observe; " +
-  "coder curl is not the loop when the spec says verify on the product. " +
-  "Do not scale “mark unknown and move on” for fields the goal required checking.\n\n" +
-  "Trajectory digest (not the session transcript):\n";
+function coachInstructions(occasion: CoachOccasion): string {
+  const question = OCCASION_QUESTIONS[occasion];
+  const decisionHint =
+    occasion === "scout"
+      ? "Prefer decision=continue with a trial loop."
+      : occasion === "steer"
+        ? "Prefer decision=continue or decision=patch for the remainder of harvest. Do not close the job."
+        : "Prefer decision=accept (omit loop), decision=extend (cheapest increment), or decision=halt.";
+  return (
+    `[COACH REVIEW]\n` +
+    `occasion=${occasion}\n` +
+    `Question: ${question}\n` +
+    `${decisionHint}\n` +
+    "Phase: review. Mutations are off. Output one JSON object only, exactly this shape " +
+    "(unknown keys are dropped and the artifact is rejected as empty):\n" +
+    STRATEGY_JSON_EXAMPLE +
+    "\n" +
+    STRATEGY_REQUIRED_HINT +
+    "\nDo not rewrite qualification criteria, grants, send, or follow policy. Do not skip approval. " +
+    "Coach is a guideline generator, not a second planner. The loop is a trial, not a lock: " +
+    "doNot may name wasted routes already in this digest; do not forbid untested pools. " +
+    "If yield counts are zero, say so and demand recording — do not lock a pool. " +
+    "This turn uses a stronger thinking class; it is restored after the artifact.\n" +
+    "Efficiency is waste-reduction (peek instead of losing the list), not inventing a new campaign. " +
+    "Put unknown in remember reasons when a required field is missing so later gates can see it.\n\n" +
+    "Trajectory digest (not the session transcript):\n"
+  );
+}
 
 export interface CoachCheckpointData {
   at: string;
@@ -65,6 +83,7 @@ export interface CoachCheckpointData {
   digestBytes: number;
   artifactBytes: number;
   phase: "review";
+  occasion?: CoachOccasion;
   replacedPrevious?: boolean;
 }
 
@@ -80,17 +99,33 @@ export interface CoachThinking {
   set(level: ThinkingLevel): void;
 }
 
+export type ReportStatus = "success" | "blocked" | "failed";
+
+export interface CloseReport {
+  status: ReportStatus;
+  summary: string;
+}
+
+export type CloseConsiderResult =
+  | { action: "pass" }
+  | { action: "started" }
+  | { action: "halted" }
+  | { action: "none" };
+
 export interface CoachHandle {
   enabled(): boolean;
   injection(): string | undefined;
   hasArtifact(): boolean;
-  startReview(ctx: ExtensionContext): Promise<boolean>;
+  startReview(ctx: ExtensionContext, occasion?: CoachOccasion): Promise<boolean>;
   onArtifact(handler: (ctx: ExtensionContext) => void): void;
   setPlanSlice(slice: PlanSlice): void;
-  /** Instant Execute began; plan-mode yields before this do not count as scout yield. */
   setScoutEpoch(iso: string | undefined): void;
   hasScoutYield(): Promise<boolean>;
   considerRescue(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
+  considerSteer(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
+  considerClose(ctx: ExtensionContext, report: CloseReport): Promise<CloseConsiderResult>;
+  considerParentScout(ctx: ExtensionContext): Promise<"none" | "started">;
+  lastDecision(): StrategyArtifact["decision"] | undefined;
 }
 
 export interface CoachBindOptions {
@@ -99,6 +134,7 @@ export interface CoachBindOptions {
   criteria?: readonly string[] | (() => readonly string[]);
   thinking?: CoachThinking;
   models?: MagpieModelHost;
+  parentCalibration?: boolean | (() => boolean);
 }
 
 function restoreCheckpoint(
@@ -138,6 +174,8 @@ async function compileSessionDigest(
   checkpoint: CoachCheckpointData | undefined,
   ctx: ExtensionContext | undefined,
   planSlice: PlanSlice,
+  occasion: CoachOccasion,
+  report?: CloseReport,
 ): Promise<CompiledDigest> {
   const events = (await options.evidence.ledger.read?.()) ?? [];
   await options.evidence.metrics.flush();
@@ -164,16 +202,22 @@ async function compileSessionDigest(
   const criteria = planSlice.criteria?.length
     ? [...planSlice.criteria]
     : resolveBoundList(options.criteria);
-  return compileDigest({
-    events,
-    metrics,
-    goalText,
-    criteria,
-    checkpoint: checkpoint ? { at: checkpoint.at } : undefined,
-    previousArtifact: checkpoint
-      ? { summary: checkpoint.artifact.summary, followed: harvestFollowed(since) }
-      : undefined,
-  });
+  return compileDigest(
+    {
+      events,
+      metrics,
+      goalText,
+      criteria,
+      checkpoint: checkpoint ? { at: checkpoint.at } : undefined,
+      previousArtifact: checkpoint
+        ? { summary: checkpoint.artifact.summary, followed: harvestFollowed(since) }
+        : undefined,
+      reportSummary: report?.summary,
+      reportStatus: report?.status,
+      occasion,
+    },
+    occasion,
+  );
 }
 
 export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHandle {
@@ -181,6 +225,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
   const thinking = thinkingControl(pi, options);
   let reviewing = false;
   let digestJson = "";
+  let activeOccasion: CoachOccasion = "scout";
   let latest: CoachCheckpointData | undefined;
   let artifactListener: ((ctx: ExtensionContext) => void) | undefined;
   let lastAttemptText = "";
@@ -192,6 +237,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
   let rescueInFlight = false;
   let emptyRescues = 0;
   let halted = false;
+  let pendingClose: { resolve: (result: CloseConsiderResult) => void } | undefined;
 
   function persist(data: CoachCheckpointData): void {
     latest = data;
@@ -234,7 +280,11 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     ctx.ui.setStatus?.("coach", "coach review");
   }
 
-  async function disableReview(ctx: ExtensionContext, notify = false, reason: "accept" | "abort" | "session" = "session"): Promise<void> {
+  async function disableReview(
+    ctx: ExtensionContext,
+    notify = false,
+    reason: "accept" | "abort" | "session" = "session",
+  ): Promise<void> {
     const wasRescue = rescueInFlight;
     reviewing = false;
     digestJson = "";
@@ -255,23 +305,30 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
 
   function injection(): string | undefined {
     if (reviewing && digestJson) {
-      return `${COACH_INSTRUCTIONS}${digestJson}`;
+      return `${coachInstructions(activeOccasion)}${digestJson}`;
     }
     if (!latest) return undefined;
+    if (latest.artifact.decision === "accept") {
+      return `${latest.rendered}\nDecision accept: deliverable stands. Do not start a new harvest loop.\n`;
+    }
     const trial =
       "\nThis STRATEGY is a trial loop. Try it until it is falsified. Record candidate_accepted, " +
-      "candidate_rejected, or candidate_duplicate after every candidate. Clicks that return ok are not " +
-      "progress. If the named route is falsified, stop — do not invent a second plan. Magpie will run " +
-      "/coach again. Do not treat Do-not as covering lists the scout never tried. " +
-      "Do not replace peek/observe with curl or a coder fetch script as the harvest loop. " +
-      "If a page is a JS shell or a required field stays unknown, observe it.\n";
+      "candidate_rejected, or candidate_duplicate after every candidate. Put unknown in the reason " +
+      "when a required field is missing. Clicks that return ok are not progress. If the named route " +
+      "is falsified, stop — do not invent a second plan. Magpie will run /coach again. Do not treat " +
+      "Do-not as covering lists the scout never tried.\n";
     const swap = latest.replacedPrevious
       ? "\nA new guideline replaces the previous one. Finish the current entity before switching loops.\n"
       : trial;
     return `${latest.rendered}${swap}`;
   }
 
-  async function handleCoach(_args: string, ctx: ExtensionContext): Promise<boolean> {
+  async function handleCoach(
+    _args: string,
+    ctx: ExtensionContext,
+    occasion: CoachOccasion = "scout",
+    report?: CloseReport,
+  ): Promise<boolean> {
     if (reviewing) {
       ctx.ui.notify("Coach review is already running.");
       return false;
@@ -292,23 +349,24 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     const previous = latest;
     let compiled: CompiledDigest;
     try {
-      compiled = await compileSessionDigest(options, previous, ctx, planSlice);
+      compiled = await compileSessionDigest(options, previous, ctx, planSlice, occasion, report);
     } catch (error) {
       restoreReviewClass();
       await restoreReviewModel(ctx);
       ctx.ui.notify(`Could not compile digest: ${error instanceof Error ? error.message : String(error)}`, "error");
       return false;
     }
+    activeOccasion = occasion;
     digestJson = compiled.json;
     enableReview(ctx);
     const modelId = (await options.models?.resolved("coach")) ?? undefined;
     const using = modelId && modelKey(ctx.model) === modelId ? modelId : undefined;
     ctx.ui.notify(
       using
-        ? `Coach review: mutations off. Digest only. Model ${using} + thinking high for this turn.`
-        : "Coach review: mutations off. Digest only. Thinking high for this turn.",
+        ? `Coach review (${occasion}): mutations off. Digest only. Model ${using} + thinking high.`
+        : `Coach review (${occasion}): mutations off. Digest only. Thinking high for this turn.`,
     );
-    const content = `${COACH_INSTRUCTIONS}${compiled.json}`;
+    const content = `${coachInstructions(occasion)}${compiled.json}`;
     if (pi.sendUserMessage) {
       pi.sendUserMessage(content, { deliverAs: "followUp" });
     } else {
@@ -323,6 +381,11 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     lastAttemptText = text;
     try {
       const artifact = assertStrategyArtifact(text);
+      if (!artifact.occasion) artifact.occasion = activeOccasion;
+      if (!artifact.decision) {
+        artifact.decision =
+          activeOccasion === "close" ? "extend" : activeOccasion === "steer" ? "patch" : "continue";
+      }
       const rendered = renderStrategyArtifact(artifact);
       persist({
         at: new Date().toISOString(),
@@ -331,6 +394,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
         digestBytes: digestJson.length,
         artifactBytes: JSON.stringify(artifact).length,
         phase: "review",
+        occasion: activeOccasion,
         replacedPrevious: Boolean(latest),
       });
       await options.evidence.facts.mergeGoalFacts({ strategyArtifact: artifact });
@@ -344,6 +408,15 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
         { triggerTurn: false },
       );
       ctx.ui.notify("Strategy artifact saved. Harvest sees the guideline, not the digest.");
+      if (pendingClose) {
+        const decision = artifact.decision;
+        if (decision === "accept") pendingClose.resolve({ action: "pass" });
+        else if (decision === "halt") {
+          halted = true;
+          pendingClose.resolve({ action: "halted" });
+        } else pendingClose.resolve({ action: "started" });
+        pendingClose = undefined;
+      }
       artifactListener?.(ctx);
       return true;
     } catch (error) {
@@ -352,12 +425,16 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
         rejectCount += 1;
         if (rejectCount <= COACH_RETRY_MAX && pi.sendUserMessage) {
           pi.sendUserMessage(
-            `[COACH REVIEW]\nPrevious output was rejected (${error.code}): ${error.message}\n` +
+            `${coachInstructions(activeOccasion)}Previous output was rejected (${error.code}): ${error.message}\n` +
               `Output one JSON object only:\n${STRATEGY_JSON_EXAMPLE}`,
             { deliverAs: "followUp" },
           );
         } else if (rejectCount > COACH_RETRY_MAX) {
           await disableReview(ctx, true, "abort");
+          if (pendingClose) {
+            pendingClose.resolve({ action: "halted" });
+            pendingClose = undefined;
+          }
         }
         return false;
       }
@@ -365,17 +442,105 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     }
   }
 
+  async function considerSteer(ctx: ExtensionContext): Promise<"none" | "started" | "halted"> {
+    if (halted) return "none";
+    if (reviewing || !latest) return "none";
+    let compiled: CompiledDigest;
+    try {
+      compiled = await compileSessionDigest(options, latest, ctx, planSlice, "steer");
+    } catch {
+      return "none";
+    }
+    const events = (await options.evidence.ledger.read?.()) ?? [];
+    const since = events.filter((event) => {
+      const ts = Date.parse(event.ts);
+      const at = Date.parse(latest!.at);
+      return !Number.isFinite(ts) || !Number.isFinite(at) || ts >= at;
+    });
+    const offTrack = offTrackFromDigest(compiled.digest, countFactEstablished(since));
+    const decision = steerGateDecision({
+      siteActionsWithoutCandidateYield: siteActionsWithoutCandidateYield(since),
+      navigationCycles: compiled.digest.navigationCycles.length,
+      lostPlace: compiled.digest.lostPlace,
+      wallMs: compiled.digest.wallMs,
+      emptyRescues,
+      offTrack,
+    });
+    if (decision === "halt") {
+      halted = true;
+      ctx.ui.notify(
+        "Harvest produced no yield after a steer coach. Stopping for the operator.",
+        "warning",
+      );
+      return "halted";
+    }
+    if (decision === "review") {
+      rescueInFlight = true;
+      const started = await handleCoach("", ctx, "steer");
+      if (!started) rescueInFlight = false;
+      return started ? "started" : "none";
+    }
+    return "none";
+  }
+
+  async function considerClose(ctx: ExtensionContext, report: CloseReport): Promise<CloseConsiderResult> {
+    if (halted) return { action: "halted" };
+    if (reviewing) return { action: "none" };
+    let compiled: CompiledDigest;
+    try {
+      compiled = await compileSessionDigest(options, latest, ctx, planSlice, "close", report);
+    } catch {
+      return { action: "pass" };
+    }
+    const events = (await options.evidence.ledger.read?.()) ?? [];
+    const offTrack = offTrackFromDigest(compiled.digest, countFactEstablished(events));
+    const gate = closeGateDecision({
+      reportStatus: report.status,
+      accepted: compiled.digest.counts.accepted,
+      criteriaCount: compiled.digest.criteria.length,
+      offTrack,
+    });
+    if (gate === "pass") return { action: "pass" };
+    return await new Promise((resolve) => {
+      pendingClose = { resolve };
+      void (async () => {
+        rescueInFlight = true;
+        const started = await handleCoach("", ctx, "close", report);
+        if (!started) {
+          rescueInFlight = false;
+          pendingClose = undefined;
+          resolve({ action: "pass" });
+        }
+      })();
+    });
+  }
+
+  async function considerParentScout(ctx: ExtensionContext): Promise<"none" | "started"> {
+    if (reviewing || latest) return "none";
+    const enabled =
+      typeof options.parentCalibration === "function"
+        ? options.parentCalibration()
+        : Boolean(options.parentCalibration);
+    if (!enabled) return "none";
+    const events = (await options.evidence.ledger.read?.()) ?? [];
+    if (!hasScoutYield(events, scoutEpoch)) return "none";
+    const started = await handleCoach("", ctx, "scout");
+    return started ? "started" : "none";
+  }
+
   pi.registerCommand(COACH_COMMAND, {
     description: "Review-phase coach: digest in, strategy guideline out (mutations off)",
     handler: async (args, ctx) => {
-      await handleCoach(args, ctx);
+      const occasion =
+        args.trim() === "steer" || args.trim() === "close" ? (args.trim() as CoachOccasion) : "scout";
+      await handleCoach(args, ctx, occasion);
     },
   });
 
   pi.on("context", (_event: unknown) => {
     if (!reviewing || !digestJson) return undefined;
     return {
-      messages: [{ role: "user", content: `${COACH_INSTRUCTIONS}${digestJson}` }],
+      messages: [{ role: "user", content: `${coachInstructions(activeOccasion)}${digestJson}` }],
     };
   });
 
@@ -392,20 +557,29 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
   });
 
   pi.on("turn_end", async (event: unknown, ctxUnknown: unknown) => {
-    if (!reviewing) return;
-    const message = (event as { message?: unknown })?.message;
-    if (!isAssistantMessage(message)) return;
-    await acceptArtifact(assistantText(message), ctxUnknown as ExtensionContext);
+    const ctx = ctxUnknown as ExtensionContext;
+    if (reviewing) {
+      const message = (event as { message?: unknown })?.message;
+      if (!isAssistantMessage(message)) return;
+      await acceptArtifact(assistantText(message), ctx);
+      return;
+    }
+    await considerParentScout(ctx);
+    if (latest && !reviewing) await considerSteer(ctx);
   });
 
   pi.on("agent_end", async (event: unknown, ctxUnknown: unknown) => {
-    if (!reviewing) return;
     const ctx = ctxUnknown as ExtensionContext;
-    const messages = Array.isArray((event as { messages?: unknown[] })?.messages)
-      ? (event as { messages: unknown[] }).messages
-      : [];
-    const lastAssistant = [...messages].reverse().find(isAssistantMessage);
-    if (lastAssistant) await acceptArtifact(assistantText(lastAssistant), ctx);
+    if (reviewing) {
+      const messages = Array.isArray((event as { messages?: unknown[] })?.messages)
+        ? (event as { messages: unknown[] }).messages
+        : [];
+      const lastAssistant = [...messages].reverse().find(isAssistantMessage);
+      if (lastAssistant) await acceptArtifact(assistantText(lastAssistant), ctx);
+      return;
+    }
+    await considerParentScout(ctx);
+    if (latest && !reviewing) await considerSteer(ctx);
   });
 
   pi.on("session_start", (_event: unknown, ctxUnknown: unknown) => {
@@ -424,7 +598,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
     enabled: () => reviewing,
     injection,
     hasArtifact: () => Boolean(latest),
-    startReview: (ctx) => handleCoach("", ctx),
+    startReview: (ctx, occasion = "scout") => handleCoach("", ctx, occasion),
     onArtifact(handler) {
       artifactListener = handler;
     },
@@ -438,43 +612,10 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
       const events = (await options.evidence.ledger.read?.()) ?? [];
       return hasScoutYield(events, scoutEpoch);
     },
-    async considerRescue(ctx) {
-      if (halted) return "none";
-      if (reviewing || !latest) return "none";
-      let compiled: CompiledDigest;
-      try {
-        compiled = await compileSessionDigest(options, latest, ctx, planSlice);
-      } catch {
-        return "none";
-      }
-      const events = (await options.evidence.ledger.read?.()) ?? [];
-      const since = events.filter((event) => {
-        const ts = Date.parse(event.ts);
-        const at = Date.parse(latest!.at);
-        return !Number.isFinite(ts) || !Number.isFinite(at) || ts >= at;
-      });
-      const decision = magpieRescueDecision({
-        siteActionsWithoutCandidateYield: siteActionsWithoutCandidateYield(since),
-        navigationCycles: compiled.digest.navigationCycles.length,
-        lostPlace: compiled.digest.lostPlace,
-        wallMs: compiled.digest.wallMs,
-        emptyRescues,
-      });
-      if (decision === "halt") {
-        halted = true;
-        ctx.ui.notify(
-          "Harvest produced no yield after a rescue coach. Stopping for the operator.",
-          "warning",
-        );
-        return "halted";
-      }
-      if (decision === "review") {
-        rescueInFlight = true;
-        const started = await handleCoach("", ctx);
-        if (!started) rescueInFlight = false;
-        return started ? "started" : "none";
-      }
-      return "none";
-    },
+    considerRescue: considerSteer,
+    considerSteer,
+    considerClose,
+    considerParentScout,
+    lastDecision: () => latest?.artifact.decision,
   };
 }
