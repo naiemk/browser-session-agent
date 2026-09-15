@@ -253,7 +253,7 @@ Spec: [`docs/coach.md`](coach.md) · tickets: AGENT-16-T01..T03, T05, T06
       (`work-items/evaluations/agent-16-t06-closed-loop-coach.md`)
       2026-09-10: FakePi. Live harvest following the loop is still R1.E2.
       2026-09-14: COACH-20 prompt after `goal_mtz1c1ar001` (fetch vs JS portals).
-      Not E2.
+      2026-09-15: Occasion frames (scout/steer/close gates). Not E2.
 
 T01 and T02 may proceed in parallel. T03 depends on both. T05 depends on T03.
 T06 depends on T05. Do not run E2 until T06 FakePi is green.
@@ -542,3 +542,5 @@ sessions (Track B), already listed above.
       skills / cost profiles / R6 exit still open; do not claim R6 shipped. |
 | 2026-09-14 | COACH-20: `goal_mtz1c1ar001` cheap-fetch vs JS portals. Coach
       prompt + harvest hint escalate shells/unknown fields to observe. Not R1.E2. |
+| 2026-09-15 | Coach occasion frames (scout / steer / close): mechanical gates,
+      digest views, report intercept. Evidence `goal_mtz1c1ar001`. Not R1.E2. |

@@ -78,6 +78,7 @@ export class OperatorRuntime {
   private pi: PiLike | null = null;
   private planMode: PlanModeHandle | null = null;
   private coach: CoachHandle | null = null;
+  private parentCalib = false;
   private modelRegistry: ModelRegistry | null = null;
   private unsubscribePi: (() => void) | null = null;
   private send: (message: ChatServerMessage) => void;
@@ -163,6 +164,7 @@ export class OperatorRuntime {
         },
       },
       models,
+      parentCalibration: () => this.parentCalib,
     });
     this.planMode = bindPlanMode(this.api, { coach: this.coach, models });
     bindDurableCommands(this.api, {
@@ -185,6 +187,9 @@ export class OperatorRuntime {
         reconstructProgress(ctx?.sessionManager?.getEntries?.() ?? []),
       );
       const plan = await standingPlanPrompt(goalId);
+      this.parentCalib =
+        /magpie-admission:\s*calibration_required/i.test(plan) ||
+        /\bscout\b[\s\S]*\bcoach\b[\s\S]*\bharvest\b/i.test(plan);
       const scratch = await standingScratchPrompt(goalId);
       const injection = this.planMode?.injection();
       const coach = this.coach?.injection();
@@ -633,6 +638,15 @@ export class OperatorRuntime {
             `${request.request.kind} — ${request.reason}\n${request.url}`,
           ),
         onReport: () => abortCurrentPrompt(this.pi),
+        beforeReport: async (report) => {
+          if (!this.coach) return "terminate";
+          const ctx = extensionContext(this.host);
+          const result = await this.coach.considerClose(ctx, report);
+          if (result.action === "pass") return "terminate";
+          if (result.action === "halted") return "halt";
+          if (result.action === "started" || result.action === "none") return "continue";
+          return "terminate";
+        },
       },
     });
     this.browserPrompt = `${composed.systemPrompt}\n\n${CHAT_WORKER_HINT}`;

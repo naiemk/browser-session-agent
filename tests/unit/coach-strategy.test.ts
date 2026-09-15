@@ -36,12 +36,50 @@ const GUIDELINE = {
 };
 
 describe("AGENT-16-T02 strategy artifact", () => {
-  it("schema example escalates JS shells instead of teaching cheapest-fetch", () => {
+  it("schema example stays peek-vs-wander (D44), not curl-vs-Chrome", () => {
     const artifact = assertStrategyArtifact(parseJsonValue(STRATEGY_JSON_EXAMPLE));
-    assert.match(artifact.summary, /painted page|wandering/i);
-    assert.match(artifact.exceptions.join(" "), /JS shell|observe/i);
-    assert.match(artifact.doNot.join(" "), /curl|coder fetch/i);
+    assert.match(artifact.summary, /Peek|wander|D44/i);
+    assert.match(artifact.doNot.join(" "), /Navigate away|lose the list/i);
     assert.match(artifact.qualify.join(" "), /unknown required fields are not done/i);
+    assert.equal(artifact.occasion, "scout");
+    assert.equal(artifact.decision, "continue");
+  });
+
+  it("accept may omit loop; criteria rewrite still rejected", () => {
+    const accepted = assertStrategyArtifact({
+      schemaVersion: 1,
+      occasion: "close",
+      decision: "accept",
+      summary: "SUCCESS met on the matrix.",
+      qualify: [],
+      exceptions: [],
+      record: [],
+      stop: [],
+      doNot: [],
+      confidence: "high",
+      falsify: "n/a",
+      assumptions: [],
+    });
+    assert.equal(accepted.decision, "accept");
+    assert.equal(accepted.loop.length, 0);
+    assert.throws(
+      () =>
+        assertStrategyArtifact({
+          schemaVersion: 1,
+          decision: "accept",
+          summary: "done",
+          criteria: ["loosen"],
+          qualify: [],
+          exceptions: [],
+          record: [],
+          stop: [],
+          doNot: [],
+          confidence: "low",
+          falsify: "x",
+          assumptions: [],
+        }),
+      (error: unknown) => error instanceof StrategyArtifactError && error.code === "spec_rewrite",
+    );
   });
 
   it("accepts a venue → tagged → peek guideline", () => {

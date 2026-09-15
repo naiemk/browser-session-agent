@@ -101,12 +101,13 @@ Do NOT attempt to make changes — just describe what you would do.`;
 export interface PlanExecuteCoach {
   enabled(): boolean;
   hasArtifact(): boolean;
-  startReview(ctx: ExtensionContext): Promise<boolean>;
+  startReview(ctx: ExtensionContext, occasion?: "scout" | "steer" | "close"): Promise<boolean>;
   onArtifact(handler: (ctx: ExtensionContext) => void): void;
   setPlanSlice?(slice: { objective?: string; criteria?: readonly string[] }): void;
   setScoutEpoch?(iso: string | undefined): void;
   hasScoutYield?(): Promise<boolean>;
   considerRescue?(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
+  considerSteer?(ctx: ExtensionContext): Promise<"none" | "started" | "halted">;
 }
 
 export interface PlanModeBindOptions {
@@ -129,11 +130,10 @@ export const SCOUT_EXECUTE_HINT =
 export const HARVEST_EXECUTE_HINT =
   "This STRATEGY is a trial. Stay on the named list, peek, and record remember yield " +
   "candidate_accepted, candidate_rejected, or candidate_duplicate after every candidate. " +
+  "When a required field is missing, put unknown in the remember reason. " +
   "Clicks that return ok are not progress. If the named route is falsified, stop — do not " +
   "invent a second plan. Magpie will run /coach again. Do not treat Do-not as covering " +
-  "lists the scout never tried. Do not replace peek/observe with curl or a coder fetch " +
-  "script as the harvest loop. If a page is a JS shell or a required field stays unknown, " +
-  "observe it.";
+  "lists the scout never tried.";
 
 /** While scout is waiting for host /coach, planner/coder cannot stand in as a critic. */
 export const AWAITING_COACH_DISABLED_TOOLS = new Set<string>(["subagent", "scratch_write"]);
@@ -269,7 +269,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     markPreCoachComplete(todoItems);
     updateStatus(ctx);
     persistState();
-    const started = await coach.startReview(ctx);
+    const started = await coach.startReview(ctx, "scout");
     if (!started) autoCoachStarted = false;
   }
 
@@ -448,9 +448,6 @@ After completing a step, include a [DONE:n] tag in your response.`;
     const ctx = ctxUnknown as ExtensionContext;
     if (executionMode && todoItems.length > 0) {
       await maybeStartCoach(ctx);
-      if (hasArtifact() && !options.coach?.enabled()) {
-        await options.coach?.considerRescue?.(ctx);
-      }
       if (todoItems.every((todo) => todo.completed)) {
         const completedList = todoItems.map((todo) => `~~${todo.text}~~`).join("\n");
         pi.sendMessage?.(

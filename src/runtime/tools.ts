@@ -65,6 +65,13 @@ export interface ToolContext {
   approve?: (request: ApprovalRequest) => Promise<boolean>;
   askUser?: (question: string) => Promise<string | undefined>;
   onReport?: (report: ReportPayload) => void;
+  /**
+   * Close coach gate (COACH-22). Return terminate to finish, continue to keep
+   * harvesting after an extend artifact, halt to stop for the operator.
+   */
+  beforeReport?: (
+    report: ReportPayload,
+  ) => Promise<"terminate" | "continue" | "halt">;
   onParked?: (parked: ParkedOutcome) => void;
   /** Counts one browser action against the task budget. */
   onStep?: () => void;
@@ -848,6 +855,24 @@ export function buildTools(context: ToolContext): AgentTool[] {
           ? (String(raw.status) as ReportPayload["status"])
           : "failed";
         const report: ReportPayload = { status, summary: String(raw.summary ?? "") };
+        const gate = context.beforeReport ? await context.beforeReport(report) : "terminate";
+        if (gate === "continue") {
+          return reply({
+            ...report,
+            status: "blocked",
+            summary: `${report.summary}\n[close coach] SUCCESS not met — continue harvest on the new guideline.`,
+            close: "extend",
+          });
+        }
+        if (gate === "halt") {
+          await closeSideTab();
+          const halted: ReportPayload = {
+            status: "blocked",
+            summary: `${report.summary}\n[close coach] Halted for the operator.`,
+          };
+          context.onReport?.(halted);
+          return { ...reply(halted, halted), terminate: true };
+        }
         await closeSideTab();
         context.onReport?.(report);
         // Terminate: the report ends the task, so no follow-up model turn is needed.

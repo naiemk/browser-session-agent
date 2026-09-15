@@ -53,6 +53,14 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   const sessionUi = {
     current: undefined as ExtensionContext["ui"] | undefined,
   };
+  let lastToolCtx: ExtensionContext | undefined;
+  const closeGate = {
+    beforeReport: undefined as
+      | ((report: { status: "success" | "blocked" | "failed"; summary: string }) => Promise<
+          "terminate" | "continue" | "halt"
+        >)
+      | undefined,
+  };
 
   const composed = composeAgent({
     card: {
@@ -99,6 +107,10 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
           `${request.request.kind} — ${request.reason}\n${request.url}`,
         );
       },
+      beforeReport: async (report) => {
+        if (!closeGate.beforeReport) return "terminate";
+        return closeGate.beforeReport(report);
+      },
     },
   });
 
@@ -112,6 +124,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       ...viewed,
       execute: async (id, params, signal, onUpdate, ctx) => {
         sessionUi.current = ctx.ui;
+        lastToolCtx = ctx;
         return execute(id, params, signal, onUpdate, ctx);
       },
     });
@@ -164,6 +177,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
   // Plan-mode and job session_start handlers follow, so they can filter the active set
   // after the browser tools are restored.
   let jobs: ReturnType<typeof bindJobCommands> | undefined;
+  let parentCalib = false;
   pi.on("before_agent_start", async (_event: unknown, ctxUnknown: unknown) => {
     const goalId = sessionGoal.id();
     const ctx = ctxUnknown as ExtensionContext | undefined;
@@ -171,6 +185,9 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       reconstructProgress(ctx?.sessionManager?.getEntries?.() ?? []),
     );
     const plan = await standingPlanPrompt(goalId);
+    parentCalib =
+      /magpie-admission:\s*calibration_required/i.test(plan) ||
+      /\bscout\b[\s\S]*\bcoach\b[\s\S]*\bharvest\b/i.test(plan);
     const scratch = await standingScratchPrompt(goalId);
     const job = await jobs?.injection();
     return {
@@ -185,7 +202,17 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     evidence,
     objective: MAGPIE_CHAT_OBJECTIVE,
     models,
+    parentCalibration: () => parentCalib,
   });
+  closeGate.beforeReport = async (report) => {
+    const ctx = lastToolCtx;
+    if (!ctx) return "terminate";
+    const result = await coach.considerClose(ctx, report);
+    if (result.action === "pass") return "terminate";
+    if (result.action === "halted") return "halt";
+    if (result.action === "started" || result.action === "none") return "continue";
+    return "terminate";
+  };
   bindPlanMode(pi, { coach, models });
   jobs = bindJobCommands(pi, { headless: process.env.BSA_HEADLESS === "1" });
   bindDurableCommands(pi, { surface: "magpie", worker: session.worker });

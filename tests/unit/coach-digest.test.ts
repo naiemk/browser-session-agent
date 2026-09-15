@@ -164,7 +164,7 @@ describe("AGENT-16-T01 trajectory digest", () => {
   });
 
   it("is pure: no Pi, Playwright, or node:fs in the coach digest modules", () => {
-    for (const name of ["digest.ts", "yield.ts", "strategy.ts", "rescue.ts"]) {
+    for (const name of ["digest.ts", "yield.ts", "strategy.ts", "rescue.ts", "occasion.ts"]) {
       const source = readFileSync(path.join(COACH_DIR, name), "utf8");
       for (const specifier of importSpecifiers(source)) {
         assert.doesNotMatch(specifier, /playwright/i);
@@ -173,5 +173,51 @@ describe("AGENT-16-T01 trajectory digest", () => {
         assert.doesNotMatch(specifier, /\/optimize\//);
       }
     }
+  });
+
+  it("scout view omits hole table; close keeps SUCCESS + holes without action dump", () => {
+    const events: LedgerEvent[] = [
+      ev(1, {
+        type: "action",
+        intent: "open list",
+        action: { kind: "click" },
+        before: { url: LIST, title: "Tagged", controls: 12 },
+        after: { url: LIST, title: "Tagged", changes: [] },
+        outcome: { ok: true },
+      }),
+      ev(2, yieldInput({ kind: "candidate_rejected", summary: "row", reason: "email unknown" })),
+      ev(3, yieldInput({ kind: "candidate_accepted", summary: "ok row" })),
+      ev(4, yieldInput({ kind: "route_affordance", summary: "grid scrolls" })),
+    ];
+    const scout = compileDigest(
+      {
+        events,
+        goalText: "Collect SaaS pricing rows with email",
+        criteria: ["email required"],
+        occasion: "scout",
+      },
+      "scout",
+    );
+    assert.equal(scout.digest.occasion, "scout");
+    assert.equal(scout.digest.holeQuotes, undefined);
+    assert.ok((scout.digest.actions?.length ?? 0) <= 6);
+
+    const close = compileDigest(
+      {
+        events,
+        goalText: "Collect SaaS pricing rows with email",
+        criteria: ["email required"],
+        reportSummary: "30 rows in matrix",
+        reportStatus: "success",
+        occasion: "close",
+      },
+      "close",
+    );
+    assert.equal(close.digest.occasion, "close");
+    assert.match(close.digest.goal, /SUCCESS|Collect SaaS/i);
+    assert.equal(close.digest.actions?.length ?? 0, 0);
+    assert.ok((close.digest.holeQuotes?.length ?? 0) >= 1);
+    assert.equal(close.digest.reportSummary, "30 rows in matrix");
+    assert.ok(close.bytes < COACH_DIGEST_MAX_BYTES);
   });
 });
