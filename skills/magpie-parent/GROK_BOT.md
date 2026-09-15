@@ -40,13 +40,13 @@ Grok Bot install / cost bootstrap that must stay in this saved skill.
 
 ### 1. Install Magpie (once per Agent Computer)
 
-**Package:** `@naiemk/magpi` on npm. **Latest published:** `0.1.5` (need **≥ 0.1.5**
-so `magpie --help` shows `--json` and `profiles`). Binary name is `magpie`.
-Need **Node ≥ 24**.
+**Package:** `@naiemk/magpi` on npm. **Latest published:** `0.1.6` (need **≥ 0.1.5**
+so `magpie --help` shows `--json` and `profiles`; prefer **0.1.6+** for coach
+occasion frames). Binary name is `magpie`. Need **Node ≥ 24**.
 
 ```bash
 node -v   # must be v24+
-npm install -g @naiemk/magpi@0.1.5
+npm install -g @naiemk/magpi@0.1.6
 # or always latest: npm install -g @naiemk/magpi
 export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
 mkdir -p "$MAGPIE_SESSION_DIR"
