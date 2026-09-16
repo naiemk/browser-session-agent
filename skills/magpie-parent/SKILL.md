@@ -56,13 +56,14 @@ On hosts that are not Grok Bot, use Magpie’s default session dir
 
 ### 1. Install / verify Magpie (once per machine)
 
-Need **Node ≥ 24**. Package **`@naiemk/magpi`**, latest published **`0.1.6`**.
+Need **Node ≥ 24**. Package **`@naiemk/magpi`**, latest published **`0.1.7`**.
 Need **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier open the TUI and hang
-headless); prefer **0.1.6+** for coach occasion frames. Binary is `magpie`.
+headless); prefer **0.1.7+** so unattended coder slices do not wait on a TUI confirm.
+Binary is `magpie`.
 
 ```bash
 node -v   # must be v24+
-npm install -g @naiemk/magpi@0.1.6
+npm install -g @naiemk/magpi@0.1.7
 # or always latest: npm install -g @naiemk/magpi
 export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
 mkdir -p "$MAGPIE_SESSION_DIR"
@@ -160,6 +161,10 @@ Rules:
 
 - Prefer Magpie’s `next_check_hint` for when to poll.
 - A refinement is `-p` on the existing session, not a new `--json` start.
+- `-p` is unattended: Magpie will **not** wait for a TUI “allow longer coder run”
+  click. Coder slices auto-extend only while Magpie still sees child JSONL/tools
+  (a silent coder is killed, not kept to the 15 min cap). If coder is locked,
+  instruct Magpie to finish from scratch files — do not try to click a Magpie confirm.
 - Do **not** write a new `plan.md` and start again while a session id is live.
 - Do **not** browse / scrape the harvest yourself in parallel (no Instagram / TikTok
   / similar in your own browser).

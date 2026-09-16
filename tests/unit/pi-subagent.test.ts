@@ -36,6 +36,7 @@ import {
   rewriteArgvModelFlag,
   ROUTER_MODEL,
   runWorker,
+  childIsAlive,
   type SpawnImpl,
 } from "../../src/host/pi-subagent/spawn.ts";
 import { piEntryPath } from "../../src/hosts/local-cli/launch.ts";
@@ -60,6 +61,28 @@ async function tempRoot(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "bsa-scratch-"));
   tmpDirs.push(dir);
   return dir;
+}
+
+function pulsingChild(intervalMs: number, line: string): ChildProcess {
+  const proc = new EventEmitter() as ChildProcess;
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+  const timer = setInterval(() => {
+    stdout.emit("data", `${line}\n`);
+  }, intervalMs);
+  Object.assign(proc, {
+    stdout,
+    stderr,
+    killed: false,
+    kill() {
+      clearInterval(timer);
+      (proc as ChildProcess & { killed: boolean }).killed = true;
+      queueMicrotask(() => proc.emit("close", 143));
+      return true;
+    },
+  });
+  queueMicrotask(() => stdout.emit("data", `${line}\n`));
+  return proc;
 }
 
 function hangingChild(): ChildProcess {
@@ -411,6 +434,61 @@ describe("worker spawn isolation", () => {
     assert.equal(result.aborted, false);
     assert.equal(result.exitCode, 0);
   });
+
+  it("treats recent JSONL as alive and silence as stuck", () => {
+    const now = 1_000_000;
+    assert.equal(childIsAlive({ lastActivityAt: now, now, stallMs: 90_000 }), true);
+    assert.equal(childIsAlive({ lastActivityAt: now - 89_000, now, stallMs: 90_000 }), true);
+    assert.equal(childIsAlive({ lastActivityAt: now - 90_001, now, stallMs: 90_000 }), false);
+  });
+
+  it("does not extend a silent child even when the host would confirm", async () => {
+    const scratchDir = await tempRoot();
+    const asks: Array<{ alive?: boolean; quietMs?: number }> = [];
+    const result = await runWorker({
+      agentName: "coder",
+      task: "hang",
+      scratchDir,
+      timeoutMs: 40,
+      confirmWaitMs: 10,
+      aliveWithinMs: 15,
+      maxExtensions: 2,
+      confirmExtend: async (request) => {
+        asks.push({ alive: request.alive, quietMs: request.quietMs });
+        return true;
+      },
+      spawnImpl: () => hangingChild(),
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+    });
+    assert.equal(asks.length, 0);
+    assert.equal(result.aborted, true);
+  });
+
+  it("extends a child that is still emitting tools", async () => {
+    const scratchDir = await tempRoot();
+    const asks: number[] = [];
+    const line = JSON.stringify({ type: "tool_execution_start", toolName: "bash" });
+    const result = await runWorker({
+      agentName: "coder",
+      task: "curl pages",
+      scratchDir,
+      timeoutMs: 40,
+      confirmWaitMs: 200,
+      aliveWithinMs: 80,
+      maxTotalMs: 10_000,
+      maxExtensions: 1,
+      confirmExtend: async () => {
+        asks.push(Date.now());
+        return true;
+      },
+      spawnImpl: () => pulsingChild(10, line),
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+    });
+    assert.equal(asks.length, 1);
+    assert.equal(result.aborted, true);
+  });
 });
 
 describe("subagent bind", () => {
@@ -750,6 +828,142 @@ describe("subagent bind", () => {
     assert.equal(third.terminate, true);
     assert.match(third.content[0]?.text ?? "", /Stopped automatic coder dispatch/);
     assert.equal(third.details?.halt, true);
+  });
+
+  it("does not wait on TUI confirm or select when unattended", async () => {
+    const previous = process.env.BSA_UNATTENDED;
+    process.env.BSA_UNATTENDED = "1";
+    try {
+      const root = await tempRoot();
+      const pi = createFakePi();
+      await pi.startSession();
+      pi.ctx.ui.select = () => new Promise(() => {
+        /* Grok Bot never answers Magpie TUI */
+      });
+      pi.ctx.ui.confirm = () => new Promise(() => {
+        /* hung confirm */
+      });
+      bindSubagent(pi, {
+        goalId: "goal_unattended_halt",
+        root,
+        runtime: {
+          async run() {
+            return {
+              agent: "coder",
+              text: "",
+              exitCode: 143,
+              stderr: "",
+              aborted: true,
+              errorMessage: "aborted",
+            };
+          },
+        },
+      });
+      await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "harvest newsletters" });
+      await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "find more newsletters" });
+      const third = await Promise.race([
+        runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "continue newsletter research" }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("hung waiting for Magpie TUI")), 400);
+        }),
+      ]);
+      assert.equal(third.terminate, true);
+      assert.match(third.content[0]?.text ?? "", /Stopped automatic coder dispatch/);
+    } finally {
+      if (previous === undefined) delete process.env.BSA_UNATTENDED;
+      else process.env.BSA_UNATTENDED = previous;
+    }
+  });
+
+  it("auto-extends coder slices when unattended instead of asking", async () => {
+    const previous = process.env.BSA_UNATTENDED;
+    process.env.BSA_UNATTENDED = "1";
+    try {
+      const root = await tempRoot();
+      const pi = createFakePi();
+      await pi.startSession();
+      pi.ctx.ui.confirm = () => new Promise(() => {
+        /* would hang in Grok Bot */
+      });
+      let confirmExtend: ((request: {
+        elapsedMs: number;
+        sliceMs: number;
+        extensionsUsed: number;
+        alive?: boolean;
+      }) => Promise<boolean>) | undefined;
+      bindSubagent(pi, {
+        goalId: "goal_unattended_extend",
+        root,
+        runtime: {
+          async run(input) {
+            confirmExtend = input.confirmExtend;
+            return { agent: "coder", text: "ok", exitCode: 0, stderr: "", aborted: false };
+          },
+        },
+      });
+      const result = await runTool(pi, SUBAGENT_TOOL_NAME, {
+        agent: "coder",
+        task: "extract zip into scratch",
+        timeoutMs: 600_000,
+      });
+      assert.equal(result.isError, false);
+      assert.ok(confirmExtend);
+      const ok = await Promise.race([
+        confirmExtend({ elapsedMs: 180_000, sliceMs: 180_000, extensionsUsed: 0, alive: true }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("hung waiting to extend")), 400);
+        }),
+      ]);
+      assert.equal(ok, true);
+      assert.equal(await confirmExtend({ elapsedMs: 180_000, sliceMs: 180_000, extensionsUsed: 0, alive: false }), false);
+    } finally {
+      if (previous === undefined) delete process.env.BSA_UNATTENDED;
+      else process.env.BSA_UNATTENDED = previous;
+    }
+  });
+
+  it("lets unattended extract proceed after harvest coder lock", async () => {
+    const previous = process.env.BSA_UNATTENDED;
+    process.env.BSA_UNATTENDED = "1";
+    try {
+      const root = await tempRoot();
+      const pi = createFakePi();
+      await pi.startSession();
+      pi.ctx.ui.select = () => new Promise(() => {
+        /* no TUI */
+      });
+      bindSubagent(pi, {
+        goalId: "goal_unattended_extract",
+        root,
+        runtime: {
+          async run(input) {
+            if (/parse the HTML/i.test(input.task)) {
+              return { agent: "coder", text: "wrote matrix.md", exitCode: 0, stderr: "", aborted: false };
+            }
+            return {
+              agent: "coder",
+              text: "",
+              exitCode: 143,
+              stderr: "",
+              aborted: true,
+            };
+          },
+        },
+      });
+      await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "harvest newsletters" });
+      await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "find more newsletters" });
+      const extract = await Promise.race([
+        runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "parse the HTML into matrix.md" }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("hung on coder lock")), 400);
+        }),
+      ]);
+      assert.equal(extract.isError, false);
+      assert.match(extract.content[0]?.text ?? "", /matrix.md|wrote matrix/);
+    } finally {
+      if (previous === undefined) delete process.env.BSA_UNATTENDED;
+      else process.env.BSA_UNATTENDED = previous;
+    }
   });
 
   it("reconstructs the failure streak after session_start", async () => {

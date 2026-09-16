@@ -127,6 +127,29 @@ describe("semantic work-stream fingerprint", () => {
     assert.equal(dispatchAllowed(state, fingerprintTask({ task })).allow, false);
   });
 
+  it("lets unattended Magpie change family without a TUI picker", () => {
+    let state = emptyProgressState();
+    const harvest = "harvest newsletters for Magpi";
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES; i++) {
+      const decision = evaluateAttempt(state, {
+        fingerprint: fingerprintTask({ task: harvest }),
+        attemptOk: false,
+        checkpoint: false,
+        elapsedMs: 180_000,
+        agent: "coder",
+        task: harvest,
+      });
+      state = decision.next;
+    }
+    const extract = fingerprintTask({ task: "parse the HTML into matrix.md" });
+    assert.equal(extract.strategyFamily, "extract");
+    assert.equal(dispatchAllowed(state, extract).allow, false);
+    const unattended = dispatchAllowed(state, extract, { unattended: true });
+    assert.equal(unattended.allow, true);
+    assert.equal(unattended.autoStrategyChange, true);
+    assert.equal(dispatchAllowed(state, fingerprintTask({ task: harvest }), { unattended: true }).allow, false);
+  });
+
   it("reconstructs consecutive failures from session entries", () => {
     const restored = reconstructProgress([
       {

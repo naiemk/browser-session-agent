@@ -338,7 +338,8 @@ export function evaluateAttempt(
 export function dispatchAllowed(
   state: SubagentProgressState,
   incoming: SemanticFingerprint,
-): { allow: boolean; reason?: string } {
+  options?: { unattended?: boolean },
+): { allow: boolean; reason?: string; autoStrategyChange?: boolean } {
   if (state.requiredFamily && incoming.strategyFamily !== state.requiredFamily) {
     return {
       allow: false,
@@ -349,6 +350,14 @@ export function dispatchAllowed(
   if (!state.blocked) return { allow: true };
   if (state.requiredFamily && incoming.strategyFamily === state.requiredFamily) {
     return { allow: true };
+  }
+  const previousFamily = state.fingerprint?.strategyFamily;
+  if (
+    options?.unattended &&
+    previousFamily &&
+    incoming.strategyFamily !== previousFamily
+  ) {
+    return { allow: true, autoStrategyChange: true };
   }
   return {
     allow: false,

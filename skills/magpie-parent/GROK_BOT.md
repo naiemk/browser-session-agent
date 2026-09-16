@@ -40,13 +40,13 @@ Grok Bot install / cost bootstrap that must stay in this saved skill.
 
 ### 1. Install Magpie (once per Agent Computer)
 
-**Package:** `@naiemk/magpi` on npm. **Latest published:** `0.1.6` (need **≥ 0.1.5**
-so `magpie --help` shows `--json` and `profiles`; prefer **0.1.6+** for coach
-occasion frames). Binary name is `magpie`. Need **Node ≥ 24**.
+**Package:** `@naiemk/magpi` on npm. **Latest published:** `0.1.7` (need **≥ 0.1.5**
+so `magpie --help` shows `--json` and `profiles`; prefer **0.1.7+** so coder slices
+do not wait on a TUI confirm). Binary name is `magpie`. Need **Node ≥ 24**.
 
 ```bash
 node -v   # must be v24+
-npm install -g @naiemk/magpi@0.1.6
+npm install -g @naiemk/magpi@0.1.7
 # or always latest: npm install -g @naiemk/magpi
 export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
 mkdir -p "$MAGPIE_SESSION_DIR"
@@ -147,6 +147,9 @@ magpie --session-dir "$MAGPIE_SESSION_DIR" --session <session_id> -p "<status or
 ```
 
 6. Return the harvest to the human. Do not dump CLI flags unless they ask.
+   `-p` is unattended: Magpie will not wait for a TUI “allow longer coder run”
+   click. A coder that is still emitting tools is extended; a silent one is killed.
+   If coder locks, steer Magpie to finish from scratch files.
 
 Hard blocks: missing `OPENROUTER_API_KEY`; Magpie older than 0.1.5 (no `--json`);
 Chrome/login needed and you cannot complete takeover. Then stop and say what is

@@ -373,9 +373,25 @@ export interface ExtendRequest {
   extensionsUsed: number;
   taskPreview?: string;
   latestTool?: string;
+  /** Ms since the last Pi JSONL event (tool/message). */
+  quietMs?: number;
+  /** False when the child has gone silent — do not extend. */
+  alive?: boolean;
 }
 
 export const HEARTBEAT_MS = 5_000;
+/** No JSONL for this long means the child is stuck, not still working. */
+export const ALIVE_WITHIN_MS = 90_000;
+
+export function childIsAlive(input: {
+  lastActivityAt: number;
+  now?: number;
+  stallMs?: number;
+}): boolean {
+  const now = input.now ?? Date.now();
+  const stallMs = input.stallMs ?? ALIVE_WITHIN_MS;
+  return now - input.lastActivityAt <= stallMs;
+}
 
 export interface RunWorkerOptions {
   agentName: string;
@@ -395,6 +411,8 @@ export interface RunWorkerOptions {
   agents?: AgentConfig[];
   onUpdate?: WorkerUpdate;
   heartbeatMs?: number;
+  /** Override silence window used to refuse extending a dead child. */
+  aliveWithinMs?: number;
 }
 
 export function resolveTimeoutMs(
@@ -460,7 +478,9 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
   const maxTotalMs = options.maxTotalMs ?? MAX_TOTAL_TIMEOUT_MS;
   const maxExtensions = options.maxExtensions ?? MAX_EXTENSIONS;
   const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
+  const aliveWithinMs = options.aliveWithinMs ?? ALIVE_WITHIN_MS;
   const started = Date.now();
+  let lastActivityAt = started;
 
   const snapshotDetails = (running: boolean, extra?: Record<string, unknown>) => {
     const elapsedMs = Date.now() - started;
@@ -530,6 +550,7 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           parsePiJsonLine(line, capture);
+          if (line.trim().startsWith("{")) lastActivityAt = Date.now();
           emitUpdate();
         }
       });
@@ -565,13 +586,15 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
           }
           const elapsed = Date.now() - started;
           const budget = maxTotalMs - elapsed;
+          const quietMs = Date.now() - lastActivityAt;
+          const alive = childIsAlive({ lastActivityAt, stallMs: aliveWithinMs });
           const canAsk =
-            Boolean(options.confirmExtend) && extensions < maxExtensions && budget > 0;
+            alive && Boolean(options.confirmExtend) && extensions < maxExtensions && budget > 0;
           if (!canAsk) {
             killProc();
             return;
           }
-          emitUpdate(true, { waiting: true });
+          emitUpdate(true, { waiting: true, alive, quietMs });
           const confirmClock = new AbortController();
           const stopConfirm = () => {
             if (!confirmClock.signal.aborted) confirmClock.abort();
@@ -584,6 +607,8 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
             extensionsUsed: extensions,
             taskPreview: options.task.replace(/\s+/g, " ").trim().slice(0, 80),
             latestTool: capture.toolPreviews.at(-1) ?? capture.tools.at(-1),
+            quietMs,
+            alive,
           }).then((value) => {
             ok = Boolean(value);
           });

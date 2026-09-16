@@ -1,6 +1,6 @@
 {
   "name": "@naiemk/magpi",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Pi-powered persistent browser operator with bounded Playwright tools",
   "type": "module",
   "keywords": [

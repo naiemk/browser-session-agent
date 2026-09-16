@@ -39,6 +39,7 @@ import {
   type SubagentProgressState,
 } from "./progress.ts";
 import { renderSubagentCall, renderSubagentResult } from "./view.ts";
+import { operatorCanConfirm } from "./unattended.ts";
 import {
   CONFIRM_WAIT_MS,
   DEFAULT_TIMEOUT_MS,
@@ -76,12 +77,15 @@ export const CHAT_WORKER_HINT =
   "For code, files, unzip, or public curl, call subagent with agent=coder. " +
   `That child is a real Pi coding agent in this goal's scratch directory. ` +
   `Default wall ${formatDurationMs(DEFAULT_TIMEOUT_MS)} (cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
-  `${MAX_EXTENSIONS} extensions); the host asks before extending. ` +
+  `${MAX_EXTENSIONS} extensions). Interactive Magpie asks before extending; ` +
+  `unattended / -p auto-extends while the child is still emitting JSONL/tools, up to the cap. ` +
+  `A silent child is killed, not extended. ` +
   "Files in scratch are the artifact — scratch_ls / scratch_read, not peek file://. " +
   "scratch_read is capped; pass offset to continue a truncated read. " +
   "Abort and provider quota kill the child; partial files may still be there. " +
   "Two failed coder slices without a checkpoint, or a work stream that does not " +
-  "advance the declared deliverable, stop and wait for the operator.";
+  "advance the declared deliverable, stop. Interactive Magpie asks what next; " +
+  "unattended / -p returns control (finish from scratch — do not wait for a click).";
 
 export function plannerModel(): string {
   return discoverPackagedAgents().find((agent) => agent.name === PLANNER_AGENT_NAME)?.model
@@ -288,6 +292,7 @@ async function confirmLongerRun(
 ): Promise<number> {
   const capped = Math.min(requestedMs, MAX_TOTAL_TIMEOUT_MS);
   if (!(capped > defaultMs)) return capped > 0 ? capped : defaultMs;
+  if (!operatorCanConfirm(ctx)) return capped;
   if (!ctx?.ui?.confirm) return defaultMs;
   const ok = await ctx.ui.confirm(
     "Allow a longer coder run?",
@@ -298,12 +303,18 @@ async function confirmLongerRun(
 
 function confirmExtend(ctx: ExtensionContext | undefined, task: string) {
   return async (request: ExtendRequest): Promise<boolean> => {
+    if (!operatorCanConfirm(ctx)) return request.alive !== false;
     if (!ctx?.ui?.confirm) return false;
+    if (request.alive === false) return false;
     const taskLine = previewTask(request.taskPreview ?? task, 72);
     const latest = request.latestTool ? ` Latest: ${request.latestTool}.` : "";
+    const quiet =
+      typeof request.quietMs === "number"
+        ? ` Last JSONL ${formatDurationMs(request.quietMs)} ago.`
+        : "";
     return ctx.ui.confirm(
       "Coder still running",
-      `${taskLine}\nAbout ${formatDurationMs(request.elapsedMs)} elapsed.${latest} Allow another ${formatDurationMs(request.sliceMs)}? ` +
+      `${taskLine}\nAbout ${formatDurationMs(request.elapsedMs)} elapsed.${latest}${quiet} Allow another ${formatDurationMs(request.sliceMs)}? ` +
         `(${request.extensionsUsed}/${MAX_EXTENSIONS} extensions used; confirm ignored after ${formatDurationMs(CONFIRM_WAIT_MS)}.)`,
     );
   };
@@ -322,7 +333,7 @@ async function askRecovery(
   state: SubagentProgressState,
 ): Promise<SubagentProgressState> {
   ctx?.ui.notify(formatHaltMessage(state, STAGNATION_CHOICES), "warning");
-  if (!ctx?.ui?.select) return state;
+  if (!operatorCanConfirm(ctx) || !ctx?.ui?.select) return state;
   const choice = await ctx.ui.select("Coder loop — what next?", [...STAGNATION_CHOICES]);
   if (!choice) return state;
   let reason: string | undefined;
@@ -354,8 +365,9 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       "Prefer agent=coder for files, unzip, public curl, extracts, or conversion.",
       `Agents: ${available}. Single mode only (agent + task).`,
       "The worker's cwd is this goal's scratch directory. It does not share the browser profile.",
-      `Default wall ${slice}; the host asks before extending (cap ${cap}, ${MAX_EXTENSIONS} extensions).`,
-      `timeoutMs is a request, not a grant: above the default needs operator confirm, never unbounded.`,
+      `Default wall ${slice}; interactive Magpie asks before extending (cap ${cap}, ${MAX_EXTENSIONS} extensions).`,
+      `Unattended / magpie -p auto-extends while JSONL/tools keep moving (cap ${cap}); a silent child is killed.`,
+      `timeoutMs is a request, not a grant: above the default needs operator confirm when a TUI is present, never unbounded.`,
       "The digest is short; files in scratch are the artifact. Use scratch_ls / scratch_read. Public curl only.",
       "The worker cwd is this goal's scratch; existing files are listed on the task.",
       "Abort and provider quota kill the child. Chunk work that may exceed one slice.",
@@ -405,17 +417,27 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
         task,
         planStep: latestPlanStep(ctx),
       });
-      const gate = dispatchAllowed(progress, incoming);
+      const unattended = !operatorCanConfirm(ctx);
+      const gate = dispatchAllowed(progress, incoming, { unattended });
+      if (gate.autoStrategyChange) {
+        Object.assign(
+          progress,
+          applyOperatorChoice(progress, "Change strategy or tool", incoming.strategyFamily),
+        );
+        persistProgress(options.host, progress);
+        const latest = progress.revisions.at(-1);
+        if (latest) await recordPlanRevision(options, latest);
+      }
       if (!gate.allow) {
         let next = progress;
-        if (ctx?.hasUI !== false) {
+        if (operatorCanConfirm(ctx)) {
           next = await askRecovery(ctx, { ...progress, blockReason: gate.reason ?? progress.blockReason });
           Object.assign(progress, next);
           persistProgress(options.host, progress);
           const latest = progress.revisions.at(-1);
           if (latest) await recordPlanRevision(options, latest);
         }
-        const retry = dispatchAllowed(progress, incoming);
+        const retry = dispatchAllowed(progress, incoming, { unattended });
         if (!retry.allow) {
           const text = formatHaltMessage(progress, STAGNATION_CHOICES);
           ctx?.ui.notify(text, "warning");
@@ -538,7 +560,9 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
             halt: true,
           });
         }
-        const recovered = await askRecovery(ctx, progress);
+        const recovered = operatorCanConfirm(ctx)
+          ? await askRecovery(ctx, progress)
+          : progress;
         Object.assign(progress, recovered);
         persistProgress(options.host, progress);
         const latest = progress.revisions.at(-1);

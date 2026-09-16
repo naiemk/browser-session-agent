@@ -12,6 +12,10 @@ Stay in the working directory you were started in. Do not read `../` goal ledger
 
 Public `curl` of URLs that do not need a login is allowed. Sessionful downloads are the parent's job.
 
-Wall clock is about 3 minutes per slice (the parent may extend if the operator confirms; there is a hard cap). Write files incrementally so a kill still leaves usable scratch. Do not sleep between dozens of sequential requests in one invocation.
+Wall clock is about 3 minutes per slice. Interactive Magpie asks the operator before
+extending (hard cap ~15 minutes). Unattended Magpie (`-p` / BSA_UNATTENDED) auto-extends
+only while this process still emits tool/JSONL events (silence of ~90s is treated as
+stuck and killed). Write files incrementally so a kill still leaves usable scratch.
+Do not sleep between dozens of sequential requests in one invocation.
 
 When finished, list files changed and the commands that mattered. Keep the parent-facing reply short; the files are the artifact.
