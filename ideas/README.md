@@ -28,3 +28,4 @@ An idea that fails the argument is marked `shelved` with the reason. Shelved is 
 | [parent-child-harness.md](./parent-child-harness.md) | ready | Visible-width TUI clip, parent scratch read, host-owned child clock, no stolen Execute turn, parent-tool evidence |
 | [exploration-vs-commit.md](./exploration-vs-commit.md) | ready | Recoverability vs authorization: explore/restore freely; ask only on Send/Pay/Delete |
 | [resume-from-scratch.md](./resume-from-scratch.md) | ready | Pageable scratch + name/size inventory as facts; continue vs redo stays the agents’; coder session deferred |
+| Hosted canvas | promoted | Sitemap in [`docs/web-ux-sitemap.yaml`](../docs/web-ux-sitemap.yaml); epic [`web-ux.md`](../work-items/epics/web-ux.md) |
