@@ -17,6 +17,7 @@ import {
   takeLaunchFlags,
 } from "../../src/hosts/local-cli/launch.ts";
 import { ROUTER_MODEL, modelAutoExtensionPath } from "../../src/host/pi-subagent/spawn.ts";
+import { BSA_UNATTENDED_ENV, operatorCanConfirm, shouldMarkUnattended } from "../../src/host/pi-subagent/unattended.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BIN = path.join(ROOT, "bin", "bsa-cli.mjs");
@@ -102,6 +103,18 @@ describe("local CLI (no VPS)", () => {
     assert.equal(result.code, 0);
   });
 
+  it("marks print/parent Magpie as unattended so coder does not wait for TUI", () => {
+    assert.equal(shouldMarkUnattended(["-p", "status"]), true);
+    assert.equal(shouldMarkUnattended(["--print", "hi"]), true);
+    assert.equal(shouldMarkUnattended(["--session", "abc"]), false);
+    assert.equal(shouldMarkUnattended([], {}, { stdinTty: false }), true);
+    assert.equal(shouldMarkUnattended([], {}, { stdinTty: true }), false);
+    assert.equal(shouldMarkUnattended([], { [BSA_UNATTENDED_ENV]: "1" }), true);
+    assert.equal(operatorCanConfirm({ hasUI: true }, { [BSA_UNATTENDED_ENV]: "1" }), false);
+    assert.equal(operatorCanConfirm({ hasUI: false }), false);
+    assert.equal(operatorCanConfirm({ hasUI: true }), true);
+  });
+
   it("strips --headless before forwarding to Pi", () => {
     const taken = takeHeadless(["--print", "--headless", "hi"], {});
     assert.equal(taken.headless, true);
@@ -126,6 +139,7 @@ describe("local CLI (no VPS)", () => {
     assert.match(text, /npm run web|UI-only/);
     assert.match(text, /--chromium/);
     assert.match(text, /Chrome/);
+    assert.match(text, /auto-extend/);
     assert.doesNotMatch(text, /BSA_PAIR_CODE/);
     assert.doesNotMatch(text, /install\.sh/);
   });

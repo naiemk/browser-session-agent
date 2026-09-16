@@ -23,6 +23,7 @@ import {
 } from "../../host/parent-session.ts";
 import { admitParentPlan, writeAdmittedPlan } from "../../host/parent-plan.ts";
 import { runProfilesCommand } from "../../host/parent-profiles.ts";
+import { BSA_UNATTENDED_ENV, shouldMarkUnattended } from "../../host/pi-subagent/unattended.ts";
 
 const root = repoRootFrom(import.meta.url);
 const raw = process.argv.slice(2);
@@ -124,6 +125,9 @@ process.stderr.write("In Pi: /login (once), then /browser-start <goal>\n");
 const env = { ...process.env };
 if (headless) env.BSA_HEADLESS = "1";
 env.BSA_BROWSER = browser;
+if (shouldMarkUnattended(extra, env, { stdinTty: Boolean(process.stdin.isTTY) })) {
+  env[BSA_UNATTENDED_ENV] = "1";
+}
 
 let piExtra = extra;
 if (parent.session || parent.sessionDir) {

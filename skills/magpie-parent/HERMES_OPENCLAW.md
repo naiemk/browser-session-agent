@@ -14,13 +14,13 @@ with you.
 
 ## Install Magpie
 
-**Package:** `@naiemk/magpi` · **Latest:** `0.1.6` (need ≥ 0.1.5 for `--json` /
-`profiles`; prefer **0.1.6+** for coach occasion frames). Binary: `magpie`.
-Need **Node ≥ 24**.
+**Package:** `@naiemk/magpi` · **Latest:** `0.1.7` (need ≥ 0.1.5 for `--json` /
+`profiles`; prefer **0.1.7+** so coder slices do not wait on a TUI confirm).
+Binary: `magpie`. Need **Node ≥ 24**.
 
 ```bash
 node -v   # v24+
-npm install -g @naiemk/magpi@0.1.6
+npm install -g @naiemk/magpi@0.1.7
 # or: npm install -g @naiemk/magpi
 magpie --help | head -40
 ```
@@ -74,4 +74,7 @@ EOF
   Mode B (`magpie --json`). See `skills/browser-harness/SKILL.md`.
 - Start once → keep `session_id` → status/instruct with `--session <id>` → return
   the result. Never start a second Magpie session for the same goal.
+- `-p` is unattended: Magpie auto-extends coder slices only while JSONL/tools
+  keep moving (no TUI confirm; a silent child is killed). If coder locks,
+  instruct Magpie to finish from scratch files.
 - Follow the fetched `SKILL.md` for plan.md shape, polling, and hard blocks.
