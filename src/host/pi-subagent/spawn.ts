@@ -18,6 +18,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentConfig } from "./discover.ts";
 import { discoverPackagedAgents, findAgent } from "./discover.ts";
+import {
+  EMPTY_MODEL_PINS,
+  loadMagpieModelPins,
+  loadShippedModelPins,
+  resolveModelPin,
+  type MagpieModelPins,
+} from "../pi-models.ts";
+import { coreRoot } from "../../core/paths.ts";
 
 const PI_CLI = path.join("@earendil-works", "pi-coding-agent", "dist", "cli.js");
 /** First wall-clock slice before the host asks to extend. */
@@ -113,14 +121,50 @@ export function childModelFlag(agentModel: string | undefined, extraExtensions: 
   return concrete || undefined;
 }
 
+/**
+ * Coder is a child `--model`. Prefer the operator `coder` pin, then the shipped
+ * config file, then packaged frontmatter. Empty operator coder must not fall
+ * through to Pi Router `@medium` (that is how harvest curls landed on luna).
+ */
+export function resolveAgentModel(
+  agent: Pick<AgentConfig, "name" | "model">,
+  pins: MagpieModelPins,
+  shipped: MagpieModelPins = EMPTY_MODEL_PINS,
+): string | undefined {
+  if (agent.name === "coder") {
+    return resolveModelPin(pins, "coder") ?? resolveModelPin(shipped, "coder") ?? agent.model;
+  }
+  return agent.model;
+}
+
 /** Positional user prompt. Never starts with `@` — Pi would treat that as a file include. */
-export function childPrompt(task: string): string {
-  return `Task: ${task}`;
+export interface ChildContract {
+  sliceMs: number;
+  capMs: number;
+  silenceMs: number;
+  maxExtensions: number;
+}
+
+export function formatChildContract(contract: ChildContract): string {
+  return [
+    "CONTRACT",
+    `slice: ${formatDurationMs(contract.sliceMs)}`,
+    `cap: ${formatDurationMs(contract.capMs)}`,
+    `silence-kill: ${formatDurationMs(contract.silenceMs)}`,
+    `extensions: ${contract.maxExtensions}`,
+    "SIGTERM is sudden; emit a tool or JSONL before silence-kill or you are treated as stuck.",
+    "Scratch files are the deliverable. Admit or refuse against this grant before long work.",
+  ].join("\n");
+}
+
+export function childPrompt(task: string, contract?: ChildContract): string {
+  if (!contract) return `Task: ${task}`;
+  return `${formatChildContract(contract)}\n\nTask: ${task}`;
 }
 
 /** Body of a Pi `@file` include so the child's first user message can carry a Router floor. */
-export function floorTaskFileBody(task: string, floor: string): string {
-  return `@${floor}\n${childPrompt(task)}\n`;
+export function floorTaskFileBody(task: string, floor: string, contract?: ChildContract): string {
+  return `@${floor}\n${childPrompt(task, contract)}\n`;
 }
 
 /** True when a spawn argv positional is a Router floor stuffed where Pi expects a path. */
@@ -174,6 +218,7 @@ export function buildChildInvocation(input: {
   extraExtensions?: string[];
   /** When set, passed as `@/abs/path` (Pi file include). Otherwise `Task: …`. */
   userFile?: string;
+  contract?: ChildContract;
 }): ChildInvocation {
   const args = [
     input.piEntry,
@@ -195,7 +240,7 @@ export function buildChildInvocation(input: {
   if (input.userFile) {
     args.push(`@${input.userFile}`);
   } else {
-    args.push(childPrompt(input.task));
+    args.push(childPrompt(input.task, input.contract));
   }
   return { command: process.execPath, args };
 }
@@ -409,6 +454,12 @@ export interface RunWorkerOptions {
   piEntry?: string;
   extraExtensions?: string[];
   agents?: AgentConfig[];
+  /** Magpie home for models.json. Tests pass a temp dir so they do not read ~/.browser-agent-core. */
+  modelsRoot?: string;
+  /** Skip disk; used by unit tests. */
+  pins?: MagpieModelPins;
+  /** Skip packaged config/models.json; tests pass EMPTY to keep frontmatter floors. */
+  shipped?: MagpieModelPins;
   onUpdate?: WorkerUpdate;
   heartbeatMs?: number;
   /** Override silence window used to refuse extending a dead child. */
@@ -443,18 +494,37 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
     };
   }
 
+  const pins =
+    options.pins ??
+    (await loadMagpieModelPins(options.modelsRoot ?? coreRoot()));
+  const shipped = options.shipped ?? loadShippedModelPins();
+  const resolvedAgent = { ...agent, model: resolveAgentModel(agent, pins, shipped) };
+
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const confirmWaitMs = options.confirmWaitMs ?? CONFIRM_WAIT_MS;
+  const maxTotalMs = options.maxTotalMs ?? MAX_TOTAL_TIMEOUT_MS;
+  const maxExtensions = options.maxExtensions ?? MAX_EXTENSIONS;
+  const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
+  const aliveWithinMs = options.aliveWithinMs ?? ALIVE_WITHIN_MS;
+  const contract: ChildContract = {
+    sliceMs: timeoutMs,
+    capMs: maxTotalMs,
+    silenceMs: aliveWithinMs,
+    maxExtensions,
+  };
+
   const tmp = await mkdtemp(path.join(os.tmpdir(), "bsa-worker-"));
   const promptFile = path.join(tmp, "prompt.md");
-  await writeFile(promptFile, agent.systemPrompt, { encoding: "utf8", mode: 0o600 });
+  await writeFile(promptFile, resolvedAgent.systemPrompt, { encoding: "utf8", mode: 0o600 });
 
   const extra = options.extraExtensions ?? [modelAutoExtensionPath()].filter(
     (item): item is string => Boolean(item),
   );
-  const floor = capabilityFloor(agent.model);
+  const floor = capabilityFloor(resolvedAgent.model);
   let userFile: string | undefined;
   if (floor && loadsModelAuto(extra)) {
     userFile = path.join(tmp, "task.txt");
-    await writeFile(userFile, floorTaskFileBody(options.task, floor), {
+    await writeFile(userFile, floorTaskFileBody(options.task, floor, contract), {
       encoding: "utf8",
       mode: 0o600,
     });
@@ -462,23 +532,18 @@ export async function runWorker(options: RunWorkerOptions): Promise<WorkerResult
 
   const invocation = buildChildInvocation({
     piEntry: options.piEntry ?? piCliPath(),
-    agent,
+    agent: resolvedAgent,
     task: options.task,
     promptFile,
     extraExtensions: extra,
     userFile,
+    contract,
   });
 
   const spawnImpl = options.spawnImpl ?? (spawn as SpawnImpl);
   const capture: JsonCapture = { messages: [], tools: [], toolPreviews: [], usage: emptyUsage() };
   let stderr = "";
   let aborted = false;
-  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
-  const confirmWaitMs = options.confirmWaitMs ?? CONFIRM_WAIT_MS;
-  const maxTotalMs = options.maxTotalMs ?? MAX_TOTAL_TIMEOUT_MS;
-  const maxExtensions = options.maxExtensions ?? MAX_EXTENSIONS;
-  const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
-  const aliveWithinMs = options.aliveWithinMs ?? ALIVE_WITHIN_MS;
   const started = Date.now();
   let lastActivityAt = started;
 

@@ -39,6 +39,7 @@ import {
 import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { clipWidgetLines } from "./pi-tool-view.ts";
 import { reconstructProgress } from "./pi-subagent/progress.ts";
+import { operatorCanConfirm } from "./pi-subagent/unattended.ts";
 import { firstOperatorGoal } from "./pi-operator-goal.ts";
 import { modelKey, type MagpieModelHost } from "./pi-models.ts";
 
@@ -467,7 +468,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
       return;
     }
 
-    if (!planModeEnabled || ctx?.hasUI === false) return;
+    if (!planModeEnabled || !operatorCanConfirm(ctx)) return;
 
     const messages = Array.isArray((event as { messages?: unknown[] })?.messages)
       ? ((event as { messages: unknown[] }).messages)

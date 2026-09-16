@@ -12,10 +12,16 @@ Stay in the working directory you were started in. Do not read `../` goal ledger
 
 Public `curl` of URLs that do not need a login is allowed. Sessionful downloads are the parent's job.
 
-Wall clock is about 3 minutes per slice. Interactive Magpie asks the operator before
-extending (hard cap ~15 minutes). Unattended Magpie (`-p` / BSA_UNATTENDED) auto-extends
-only while this process still emits tool/JSONL events (silence of ~90s is treated as
-stuck and killed). Write files incrementally so a kill still leaves usable scratch.
-Do not sleep between dozens of sequential requests in one invocation.
+Obey the CONTRACT block in your user message for this spawn (slice, cap, silence-kill, extensions). That grant is authoritative — do not invent different limits.
+
+Before long work, decide whether a design exists that **implements and finishes** inside the grant (SIGTERM is sudden; silence without tools/JSONL is treated as stuck). Write `admission.json` in scratch:
+
+```json
+{ "fit": true, "estMs": 120000, "reason": "short note" }
+```
+
+If `fit` is false, stop immediately after writing that file (exit non-zero). Do not start speculative long runs.
+
+If `fit` is true, work in checkpoints so a kill still leaves usable scratch. Keep emitting tools so the host can see you are alive. Do not sleep between dozens of sequential requests in one invocation.
 
 When finished, list files changed and the commands that mattered. Keep the parent-facing reply short; the files are the artifact.

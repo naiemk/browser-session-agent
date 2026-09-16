@@ -1,0 +1,6 @@
+{
+  "default": "openrouter/google/gemini-2.5-flash",
+  "plan": "openrouter/anthropic/claude-haiku-4.5",
+  "coach": "openrouter/openai/gpt-4o-mini",
+  "coder": "openrouter/deepseek/deepseek-v4.1-flash"
+}

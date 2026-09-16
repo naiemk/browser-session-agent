@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "../pi-api.ts";
 import { textResult } from "../pi-api.ts";
 import { parseStartArgs, type ActionInput } from "../session.ts";
 import type { SessionHandle } from "../host/session-handle.ts";
+import { operatorCanConfirm } from "../host/pi-subagent/unattended.ts";
 
 function stringify(value: unknown): string {
   return JSON.stringify(value, null, 2);
@@ -262,7 +263,9 @@ export function registerBrowserTools(pi: ExtensionAPI, session: SessionHandle): 
     ],
     execute: wrap("browser_ask_user", async (params, ctx) => {
       const question = String(params.question);
-      const typed = await ctx.ui.input("Browser agent", question);
+      const typed = operatorCanConfirm(ctx)
+        ? await ctx.ui.input("Browser agent", question)
+        : undefined;
       const answer = await session.askUser(question, params.runId as string | undefined, typed);
       return { question, answer };
     }),

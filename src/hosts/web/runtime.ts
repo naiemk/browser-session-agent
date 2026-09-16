@@ -11,6 +11,7 @@ import { MAGPIE_CHAT_OBJECTIVE } from "../../host/pi-operator-goal.ts";
 import { bindSessionGoal, type SessionGoal } from "../../host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt, PARENT_TOOL_NAMES } from "../../host/pi-subagent/bind.ts";
 import { reconstructProgress, standingLastCoderPrompt } from "../../host/pi-subagent/progress.ts";
+import { operatorCanConfirm } from "../../host/pi-subagent/unattended.ts";
 import { composeAgent } from "../../runtime/agent.ts";
 import { viewByName } from "../../runtime/view/index.ts";
 import { TOOL_OBSERVE } from "../../runtime/names.ts";
@@ -614,7 +615,8 @@ export class OperatorRuntime {
       },
       tools: {
         browser: this.rpcBrowser,
-        askUser: async (question) => this.host.input(question, "Your answer"),
+        askUser: async (question) =>
+          operatorCanConfirm() ? this.host.input(question, "Your answer") : undefined,
         // A chat session is the goal here, same as in the local CLI: the operator's
         // objective spans whatever runs they start inside the conversation.
         evidence: this.evidence,
@@ -633,10 +635,12 @@ export class OperatorRuntime {
         },
         policy: "ask",
         approve: async (request) =>
-          this.host.confirm(
-            "Approve irreversible action",
-            `${request.request.kind} — ${request.reason}\n${request.url}`,
-          ),
+          operatorCanConfirm()
+            ? this.host.confirm(
+                "Approve irreversible action",
+                `${request.request.kind} — ${request.reason}\n${request.url}`,
+              )
+            : false,
         onReport: () => abortCurrentPrompt(this.pi),
         beforeReport: async (report) => {
           if (!this.coach) return "terminate";

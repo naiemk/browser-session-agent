@@ -1,0 +1,6 @@
+{
+  "default": "xai/grok-4",
+  "plan": "xai/grok-4",
+  "coach": "xai/grok-4",
+  "coder": "xai/grok-4"
+}

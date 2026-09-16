@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   bindMagpieModels,
+  EMPTY_MODEL_PINS,
+  ensureShippedModelPins,
+  loadShippedModelPins,
   MAGPIE_MODELS_FILE,
   MODELS_COMMAND,
   parseMagpieModelPins,
   pinError,
   resolveModelPin,
+  shippedModelsPath,
 } from "../../src/host/pi-models.ts";
 import { createFakePi, runCommand } from "../helpers/fake-pi.ts";
 
@@ -29,18 +34,21 @@ async function tempRoot(): Promise<string> {
 
 describe("Magpie model pins", () => {
   it("resolve empty, session, default inherit, and cycles", () => {
-    assert.equal(resolveModelPin({ default: "", plan: "", coach: "" }, "coach"), undefined);
-    assert.equal(resolveModelPin({ default: "", plan: "session", coach: "" }, "plan"), undefined);
+    assert.equal(resolveModelPin({ ...EMPTY_MODEL_PINS }, "coach"), undefined);
+    assert.equal(resolveModelPin({ ...EMPTY_MODEL_PINS, plan: "session" }, "plan"), undefined);
     assert.equal(
-      resolveModelPin({ default: "fake/session", plan: "default", coach: "" }, "plan"),
+      resolveModelPin({ ...EMPTY_MODEL_PINS, default: "fake/session", plan: "default" }, "plan"),
       "fake/session",
     );
-    assert.equal(resolveModelPin({ default: "default", plan: "default", coach: "" }, "default"), undefined);
     assert.equal(
-      resolveModelPin({ default: "test/plan-opus", plan: "", coach: "default" }, "coach"),
+      resolveModelPin({ ...EMPTY_MODEL_PINS, default: "default", plan: "default" }, "default"),
+      undefined,
+    );
+    assert.equal(
+      resolveModelPin({ ...EMPTY_MODEL_PINS, default: "test/plan-opus", coach: "default" }, "coach"),
       "test/plan-opus",
     );
-    assert.equal(parseMagpieModelPins(undefined).coach, "");
+    assert.equal(parseMagpieModelPins(undefined).coder, "");
     assert.equal(parseMagpieModelPins({ coach: "  test/strong-coach  " }).coach, "test/strong-coach");
   });
 
@@ -56,8 +64,9 @@ describe("Magpie model pins", () => {
     const pi = createFakePi();
     bindMagpieModels(pi, home);
     await pi.startSession();
+    const shipped = loadShippedModelPins();
     await runCommand(pi, MODELS_COMMAND, "");
-    assert.match(pi.notifications.join("\n"), /coach: session/);
+    assert.ok(pi.notifications.join("\n").includes(`coder: ${shipped.coder}`));
     await runCommand(pi, MODELS_COMMAND, "coach test/strong-coach");
     assert.match(pi.notifications.join("\n"), /Pinned coach = test\/strong-coach/);
     const saved = JSON.parse(await readFile(path.join(home, MAGPIE_MODELS_FILE), "utf8")) as {
@@ -127,5 +136,41 @@ describe("Magpie model pins", () => {
     assert.match(pi.notifications.join("\n"), /skipped/);
     assert.equal(pi.currentModelId(), "fake/session");
     await models.leave(pi.ctx);
+  });
+
+  it("copies the packaged models.json on first start and leaves an existing file", async () => {
+    const home = await tempRoot();
+    const shipped = loadShippedModelPins();
+    assert.match(shipped.default, /\//);
+    assert.match(shipped.coder, /\//);
+    const copied = await ensureShippedModelPins(home);
+    assert.deepEqual(copied, shipped);
+    const packaged = await readFile(shippedModelsPath(), "utf8");
+    assert.equal(await readFile(path.join(home, MAGPIE_MODELS_FILE), "utf8"), packaged);
+
+    await writeFile(
+      path.join(home, MAGPIE_MODELS_FILE),
+      `${JSON.stringify({ ...EMPTY_MODEL_PINS, default: "test/keep-me" }, null, 2)}\n`,
+    );
+    const again = await ensureShippedModelPins(home);
+    assert.equal(again.default, "test/keep-me");
+    assert.equal(again.coder, "");
+  });
+
+  it("does not embed shipped model ids in TypeScript host modules", async () => {
+    const shipped = loadShippedModelPins();
+    const files = [
+      "src/host/pi-models.ts",
+      "src/host/parent-profiles.ts",
+      "src/host/pi-subagent/spawn.ts",
+      "src/host/pi-subagent/bind.ts",
+    ];
+    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    for (const rel of files) {
+      const body = await readFile(path.join(root, rel), "utf8");
+      for (const id of Object.values(shipped)) {
+        assert.equal(body.includes(id), false, `${rel} must not hard-code ${id}`);
+      }
+    }
   });
 });

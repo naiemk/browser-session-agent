@@ -7,6 +7,7 @@ import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { PLAN_MODE_CAPABILITY_DISABLED } from "./pi-plan-mode.ts";
 import { textResult, type ExtensionAPI, type ExtensionContext } from "../pi-api.ts";
 import type { JobDurableStatus } from "../jobs/types.ts";
+import { operatorCanConfirm } from "./pi-subagent/unattended.ts";
 
 const JOB_TOOLS = ["job_read", "job_update_draft", "job_propose_plan"] as const;
 
@@ -110,7 +111,9 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
     } catch {
       return "not_ready";
     }
-    const ok = await ctx.ui.confirm("Approve this job plan?", planConfirmMessage(spec));
+    const ok = operatorCanConfirm(ctx)
+      ? await ctx.ui.confirm("Approve this job plan?", planConfirmMessage(spec))
+      : false;
     if (!ok) {
       notify(ctx, "Okay — nothing runs until you confirm the plan.");
       return "declined";
@@ -300,8 +303,16 @@ export function bindJobCommands(pi: ExtensionAPI, options: JobBindOptions = {}):
       if (next.perishable || next.kind === "challenge" || next.kind === "identity") {
         const ready = await service.prepareHuman(activeJobId, next.id);
         notify(ctx, `Browser is yours for ${ready.id}: ${ready.reason}\n${ready.handoff}`);
+        if (!operatorCanConfirm(ctx)) {
+          notify(ctx, "Unattended Magpie cannot mark a human task done. Re-run interactively.");
+          return;
+        }
         const done = await ctx.ui.confirm("Human task", "Mark this item resolved after you acted?");
         if (done) await service.answerHuman(activeJobId, ready.id, "operator completed takeover");
+        return;
+      }
+      if (!operatorCanConfirm(ctx)) {
+        notify(ctx, "Unattended Magpie cannot answer a human-inbox question. Re-run interactively.");
         return;
       }
       const answer = await ctx.ui.input(next.reason, next.handoff);

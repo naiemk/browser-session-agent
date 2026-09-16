@@ -35,6 +35,7 @@ import {
   piCliPath,
   rewriteArgvModelFlag,
   ROUTER_MODEL,
+  resolveAgentModel,
   runWorker,
   childIsAlive,
   type SpawnImpl,
@@ -46,6 +47,7 @@ import { NodeHub } from "../../src/hosts/web/hub.ts";
 import { OperatorRuntime } from "../../src/hosts/web/runtime.ts";
 import { createFakePi, runCommand, runTool } from "../helpers/fake-pi.ts";
 import browserSessionAgent from "../../src/extension.ts";
+import { EMPTY_MODEL_PINS, loadShippedModelPins } from "../../src/host/pi-models.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -212,6 +214,15 @@ describe("worker spawn isolation", () => {
     assert.equal(childModelFlag("@medium", []), undefined);
     assert.equal(childModelFlag("anthropic/claude-opus-4-8", []), "anthropic/claude-opus-4-8");
     assert.equal(childPrompt("three jobs"), "Task: three jobs");
+    assert.match(
+      childPrompt("three jobs", {
+        sliceMs: 180_000,
+        capMs: 15 * 60_000,
+        silenceMs: 90_000,
+        maxExtensions: 3,
+      }),
+      /CONTRACT\nslice: 3 min\ncap: 15 min\nsilence-kill: (1\.5 min|90s)\nextensions: 3[\s\S]*Task: three jobs/,
+    );
   });
 
   it("resolves pi-model-auto even when package.json is not exported", () => {
@@ -271,7 +282,14 @@ describe("worker spawn isolation", () => {
       false,
     );
     assert.equal(calls[0]?.args.includes("--model"), false);
-    assert.ok(calls[0]?.args.includes("Task: three jobs"));
+    assert.ok(
+      calls[0]?.args.some((arg) => arg.includes("Task: three jobs")),
+      "positional prompt must include the task",
+    );
+    assert.ok(
+      calls[0]?.args.some((arg) => arg.includes("CONTRACT") && arg.includes("slice:")),
+      "positional prompt must stamp the live CONTRACT",
+    );
     assert.equal(calls[0]?.args.includes("@ultra"), false);
     assert.equal(calls[0]?.env.BSA_SUBAGENT, "1");
     assert.equal(calls[0]?.env.BSA_GOAL_ID, "goal_spawn");
@@ -306,6 +324,8 @@ describe("worker spawn isolation", () => {
       spawnImpl,
       piEntry: "/fake/cli.js",
       extraExtensions: ["/opt/pi-model-auto/src/index.ts"],
+      pins: EMPTY_MODEL_PINS,
+      shipped: EMPTY_MODEL_PINS,
     });
     assert.equal(result.exitCode, 0);
     assert.match(result.text, /done/);
@@ -314,8 +334,67 @@ describe("worker spawn isolation", () => {
     assert.equal(/^@(low|medium|high|ultra)(\s|$)/i.test(include ?? ""), false);
     assert.equal(include?.includes("Task:"), false);
     assert.equal(calls[0]?.args[calls[0].args.indexOf("--model") + 1], ROUTER_MODEL);
-    assert.match(calls[0]?.body ?? "", /^@medium\nTask: unzip the download/);
-    assert.equal(floorTaskFileBody("unzip the download", "medium"), calls[0]?.body);
+    assert.match(calls[0]?.body ?? "", /^@medium\nCONTRACT\n/);
+    assert.match(calls[0]?.body ?? "", /Task: unzip the download/);
+    assert.match(floorTaskFileBody("unzip the download", "medium", {
+      sliceMs: 180_000,
+      capMs: 15 * 60_000,
+      silenceMs: 90_000,
+      maxExtensions: 3,
+    }), /CONTRACT[\s\S]*Task: unzip the download/);
+  });
+
+  it("pins coder --model from shipped config, not @medium frontmatter", () => {
+    const shipped = loadShippedModelPins();
+    assert.match(shipped.coder, /\//);
+    assert.equal(
+      resolveAgentModel({ name: "coder", model: "@medium" }, EMPTY_MODEL_PINS, shipped),
+      shipped.coder,
+    );
+    assert.equal(
+      resolveAgentModel(
+        { name: "coder", model: "@medium" },
+        { ...EMPTY_MODEL_PINS, coder: "test/cheap-coder" },
+        shipped,
+      ),
+      "test/cheap-coder",
+    );
+    assert.equal(
+      resolveAgentModel({ name: "planner", model: "@ultra" }, EMPTY_MODEL_PINS, shipped),
+      "@ultra",
+    );
+    assert.equal(
+      resolveAgentModel({ name: "coder", model: "@medium" }, EMPTY_MODEL_PINS, EMPTY_MODEL_PINS),
+      "@medium",
+    );
+  });
+
+  it("runWorker passes the shipped coder pin as --model", async () => {
+    const root = await tempRoot();
+    const scratchDir = await ensureScratch("goal_coder_pin", root);
+    const calls: Array<{ args: string[] }> = [];
+    const spawnImpl: SpawnImpl = (_command, args) => {
+      calls.push({ args });
+      return fakeChild([
+        JSON.stringify({
+          type: "agent_end",
+          message: { role: "assistant", content: [{ type: "text", text: "ok" }] },
+        }),
+      ]);
+    };
+    const shipped = loadShippedModelPins();
+    const result = await runWorker({
+      agentName: "coder",
+      task: "extract the zip",
+      scratchDir,
+      spawnImpl,
+      piEntry: "/fake/cli.js",
+      extraExtensions: [],
+      pins: EMPTY_MODEL_PINS,
+    });
+    assert.equal(result.exitCode, 0);
+    assert.equal(calls[0]?.args[calls[0].args.indexOf("--model") + 1], shipped.coder);
+    assert.equal(calls[0]?.args.includes("@medium"), false);
   });
 
   it("parses Pi JSONL assistant text", () => {
@@ -503,9 +582,13 @@ describe("subagent bind", () => {
     assert.equal(pi.getActiveTools().includes(SUBAGENT_TOOL_NAME), true);
     assert.equal(pi.getActiveTools().includes("bash"), false);
     assert.match(CHAT_WORKER_HINT, /coder/);
+    assert.match(CHAT_WORKER_HINT, /models\.json coder/);
+    assert.match(CHAT_WORKER_HINT, /not @medium/);
     assert.doesNotMatch(CHAT_WORKER_HINT, /Opus/);
     assert.match(CHAT_WORKER_HINT, /\/plan toggles/);
     assert.match(CHAT_WORKER_HINT, /pass offset to continue/);
+    assert.match(CHAT_WORKER_HINT, /reserves at least one slice/);
+    assert.match(CHAT_WORKER_HINT, /admission\.json|not_feasible/);
     assert.doesNotMatch(CHAT_WORKER_HINT, /do not rebuild/i);
     assert.doesNotMatch(CHAT_WORKER_HINT, /you still have no shell/i);
   });
@@ -966,6 +1049,60 @@ describe("subagent bind", () => {
     }
   });
 
+  it("surfaces not_feasible on admission decline without locking the breaker", async () => {
+    const root = await tempRoot();
+    const pi = createFakePi();
+    await pi.startSession();
+    pi.ctx.ui.select = async () => undefined;
+    bindSubagent(pi, {
+      goalId: "goal_admission_decline",
+      root,
+      runtime: {
+        async run(input) {
+          const { writeFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          await writeFile(
+            join(input.scratchDir, "admission.json"),
+            JSON.stringify({
+              fit: false,
+              estMs: 600_000,
+              reason: "needs painted pages, not public curl",
+            }),
+          );
+          return {
+            agent: "coder",
+            text: "refused",
+            exitCode: 1,
+            stderr: "",
+            aborted: false,
+          };
+        },
+      },
+    });
+    const first = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "harvest newsletters" });
+    const second = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "find more newsletters" });
+    const third = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "coder", task: "continue newsletter research" });
+    assert.equal(first.isError, true);
+    assert.equal(first.details?.not_feasible, true);
+    assert.match(first.content[0]?.text ?? "", /not_feasible/);
+    assert.equal(second.isError, true);
+    assert.equal(second.details?.not_feasible, true);
+    assert.notEqual(third.terminate, true);
+    assert.equal(third.isError, true);
+    assert.equal(third.details?.not_feasible, true);
+  });
+
+  it("coder skill obeys CONTRACT without Magpie TUI trivia", async () => {
+    const body = await readFile(
+      path.join(ROOT, "src/host/pi-subagent/agents/coder.md"),
+      "utf8",
+    );
+    assert.match(body, /CONTRACT/);
+    assert.match(body, /admission\.json/);
+    assert.match(body, /fit/);
+    assert.doesNotMatch(body, /BSA_UNATTENDED|-p\b|Allow a longer/);
+  });
+
   it("reconstructs the failure streak after session_start", async () => {
     const root = await tempRoot();
     const pi = createFakePi();
@@ -1030,6 +1167,31 @@ describe("subagent bind", () => {
     const text = result.content.map((part) => ("text" in part ? part.text : "")).join("");
     assert.match(text, /Do not invent an answer/);
     assert.doesNotMatch(text, /Nobody available/);
+  });
+
+  it("ask_user does not hang on TUI input when unattended", async () => {
+    const previous = process.env.BSA_UNATTENDED;
+    process.env.BSA_UNATTENDED = "1";
+    try {
+      const pi = createFakePi();
+      browserSessionAgent(pi);
+      await pi.startSession();
+      pi.ctx.ui.input = () => new Promise(() => {
+        /* Grok Bot never answers */
+      });
+      const result = await Promise.race([
+        runTool(pi, "ask_user", { question: "Which platform?" }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("hung waiting for ask_user TUI")), 400);
+        }),
+      ]);
+      const text = result.content.map((part) => ("text" in part ? part.text : "")).join("");
+      assert.match(text, /Do not invent an answer|answered":false/);
+      assert.doesNotMatch(text, /Nobody available/);
+    } finally {
+      if (previous === undefined) delete process.env.BSA_UNATTENDED;
+      else process.env.BSA_UNATTENDED = previous;
+    }
   });
 });
 
@@ -1164,5 +1326,37 @@ describe("in-session plan mode", () => {
     assert.equal(runtime.host.getActiveTools().includes("bash"), false);
     assert.equal(runtime.host.getActiveTools().includes("write"), false);
     assert.equal(runtime.host.getActiveTools().includes("observe"), true);
+  });
+
+  it("does not hang on plan Execute picker when unattended", async () => {
+    const previous = process.env.BSA_UNATTENDED;
+    process.env.BSA_UNATTENDED = "1";
+    try {
+      const pi = createFakePi();
+      browserSessionAgent(pi);
+      await pi.startSession();
+      await runCommand(pi, PLAN_COMMAND, "");
+      pi.ctx.ui.select = () => new Promise(() => {
+        /* Grok Bot never answers Magpie TUI */
+      });
+      await Promise.race([
+        pi.emit("agent_end", {
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "Plan:\n1. Open the page first\n2. Collect listings next\n" }],
+            },
+          ],
+        }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("hung waiting for plan Execute TUI")), 400);
+        }),
+      ]);
+      assert.equal(pi.userMessages.some((text) => text.includes("Execute the plan")), false);
+      assert.equal(pi.getActiveTools().includes("act"), false);
+    } finally {
+      if (previous === undefined) delete process.env.BSA_UNATTENDED;
+      else process.env.BSA_UNATTENDED = previous;
+    }
   });
 });

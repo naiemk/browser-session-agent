@@ -1,6 +1,12 @@
 /**
- * Grok Bot / Hermes / `magpie -p` never see Magpie TUI dialogs. Coder extend and
- * recovery prompts must not wait for a click that will not happen.
+ * Operator presence for Magpie TUI waits.
+ *
+ * Print mode / Grok Bot / BSA_UNATTENDED still expose ui.confirm, select, input,
+ * and editor. Awaiting those methods hangs forever. Gate every Magpie await of
+ * those APIs on operatorCanConfirm — not on "the function exists."
+ *
+ * Fail closed: menus skip; questions return no answer; irreversible approves are
+ * false. Never auto-yes send/pay/delete.
  */
 
 export const BSA_UNATTENDED_ENV = "BSA_UNATTENDED";
@@ -11,8 +17,8 @@ export function envIsUnattended(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /**
- * True when an operator can answer Magpie confirm/select. Print mode, parent
- * `-p`, and BSA_UNATTENDED=1 are unattended even if Pi still exposes ui.confirm.
+ * True when an operator can answer Magpie confirm/select/input/editor.
+ * BSA_UNATTENDED=1 and hasUI === false are unattended even if ui.confirm exists.
  */
 export function operatorCanConfirm(
   ctx?: { hasUI?: boolean },
