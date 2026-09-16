@@ -14,13 +14,14 @@ with you.
 
 ## Install Magpie
 
-**Package:** `@naiemk/magpi` · **Latest:** `0.1.7` (need ≥ 0.1.5 for `--json` /
-`profiles`; prefer **0.1.7+** so coder slices do not wait on a TUI confirm).
+**Package:** `@naiemk/magpi` · **Latest:** `0.1.8` (need ≥ 0.1.5 for `--json` /
+`profiles`; prefer **0.1.8+** so unattended Magpie never hangs on TUI waits and
+coder admits or refuses against CONTRACT).
 Binary: `magpie`. Need **Node ≥ 24**.
 
 ```bash
 node -v   # v24+
-npm install -g @naiemk/magpi@0.1.7
+npm install -g @naiemk/magpi@0.1.8
 # or: npm install -g @naiemk/magpi
 magpie --help | head -40
 ```
@@ -48,24 +49,31 @@ skills. Do not burn parent-agent credits doing the harvest yourself.
 
 ## Low-cost model pins (recommended)
 
+Magpie copies `src/host/config/models.json` to Magpie home on first start if the
+pin file is missing. The `coder` key is a child `--model`, not a Pi Router floor.
+
 | Slot | Model | Role |
 | --- | --- | --- |
 | Worker (`default`) | `openrouter/z-ai/glm-5.3-flash` | Cheap harvest / operate loop |
 | Planner (`plan`) | `openrouter/z-ai/glm-5.3` | Admit / coarse plan |
 | Coach (`coach`) | `openrouter/z-ai/glm-5.3` | Strategy after scout |
-| Coding child | `openrouter/z-ai/glm-5.3` (or stronger coder if Magpie spawns `coder`) | Scratch extract / unzip / code — not the harvest loop |
+| Coding child (`coder`) | `openrouter/deepseek/deepseek-v4.1-flash` | Scratch extract / unzip / code — not the harvest loop |
 
 ```bash
 mkdir -p ~/.browser-agent-core
+# First Magpie session copies the shipped file if this is missing. Write or repair:
 cat > ~/.browser-agent-core/models.json <<'EOF'
 {
   "default": "openrouter/z-ai/glm-5.3-flash",
   "plan": "openrouter/z-ai/glm-5.3",
-  "coach": "openrouter/z-ai/glm-5.3"
+  "coach": "openrouter/z-ai/glm-5.3",
+  "coder": "openrouter/deepseek/deepseek-v4.1-flash"
 }
 EOF
-# Optional: magpie profiles recommend / apply budget — only after human confirm.
-# Writing models.json above is the preferred GLM low-cost setup.
+python3 -c "import json; print(json.load(open('$HOME/.browser-agent-core/models.json')))"
+# Interactive Magpie: /models          — show slots
+#                     /models coder    — pick a provider/id for the coding child
+# Same pins: magpie profiles apply budget   # only if human confirms
 ```
 
 ## Host chrome

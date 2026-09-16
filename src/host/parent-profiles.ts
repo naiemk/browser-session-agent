@@ -1,8 +1,9 @@
 /**
  * PARENT-01-T05 — Named Magpie cost profiles (operator policy, not a router).
  *
- * Writes `models.json` default/plan/coach pins as provider/id. Recommend prints;
- * apply is explicit. Keys never appear in output.
+ * Writes Magpie home `models.json` from packaged JSON under `src/host/config/`.
+ * Recommend prints; apply is explicit. Keys never appear in output. Pin ids are
+ * not declared in this module.
  */
 
 import { homedir } from "node:os";
@@ -13,6 +14,7 @@ import { KEY_ENV_NAMES, resolveKey } from "../runtime/model.ts";
 import {
   EMPTY_MODEL_PINS,
   MAGPIE_MODELS_FILE,
+  loadPackagedPins,
   type MagpieModelPins,
   modelsPath,
   parseMagpieModelPins,
@@ -24,45 +26,39 @@ export type ProfileName = "budget" | "balanced" | "grok";
 export interface ProfileDefinition {
   name: ProfileName;
   summary: string;
-  pins: MagpieModelPins;
+  /** JSON under src/host/config/. budget is the shipped Magpie models.json. */
+  file: string;
   /** When true, apply only if xAI appears authenticated. */
   requiresXai?: boolean;
 }
 
 /**
- * Concrete OpenRouter ids from Magpie's cheap preference list (LIVE_MODEL_PREFERENCE).
- * Not Pi Router floors. Update when the registry preference list changes.
+ * Named profiles bind Magpie home models.json. Pin ids live in the JSON files,
+ * not in this module.
  */
 export const PROFILE_DEFINITIONS: Record<ProfileName, ProfileDefinition> = {
   budget: {
     name: "budget",
-    summary: "Cheap OpenRouter flash/haiku class for operate + plan; stronger coach pin.",
-    pins: {
-      default: "openrouter/google/gemini-2.5-flash",
-      plan: "openrouter/google/gemini-2.5-flash",
-      coach: "openrouter/anthropic/claude-haiku-4.5",
-    },
+    summary: "Shipped Magpie stack: GLM Flash worker, GLM planner/coach, DeepSeek coder.",
+    file: MAGPIE_MODELS_FILE,
   },
   balanced: {
     name: "balanced",
     summary: "Flash operate, haiku plan, slightly stronger coach (still OpenRouter).",
-    pins: {
-      default: "openrouter/google/gemini-2.5-flash",
-      plan: "openrouter/anthropic/claude-haiku-4.5",
-      coach: "openrouter/openai/gpt-4o-mini",
-    },
+    file: "profiles/balanced.json",
   },
   grok: {
     name: "grok",
     summary: "Only if Pi reports xAI authenticated (RESEARCH-04 still unverified).",
     requiresXai: true,
-    pins: {
-      default: "xai/grok-4",
-      plan: "xai/grok-4",
-      coach: "xai/grok-4",
-    },
+    file: "profiles/grok.json",
   },
 };
+
+export function profilePins(name: ProfileName): MagpieModelPins {
+  const profile = PROFILE_DEFINITIONS[name];
+  return loadPackagedPins(profile.file);
+}
 
 export function listProfiles(): ProfileDefinition[] {
   return Object.values(PROFILE_DEFINITIONS);
@@ -143,7 +139,7 @@ export function recommendProfile(auth: AuthProviders): {
     return { name: "grok", reason: "xAI authenticated; no OpenRouter/Anthropic/OpenAI env seen" };
   }
   if (has("openrouter")) {
-    return { name: "budget", reason: "OpenRouter authenticated — prefer budget flash/haiku pins" };
+    return { name: "budget", reason: "OpenRouter authenticated — prefer shipped Magpie models.json pins" };
   }
   if (has("anthropic") || has("openai") || has("google")) {
     return {
@@ -174,7 +170,8 @@ export async function applyProfile(
   if (!profile) {
     return { ok: false, message: `unknown profile ${name}. Use budget, balanced, or grok.` };
   }
-  for (const id of Object.values(profile.pins)) {
+  const pins = profilePins(profile.name);
+  for (const id of Object.values(pins)) {
     const bad = pinError(id);
     if (bad) return { ok: false, message: bad };
   }
@@ -191,7 +188,6 @@ export async function applyProfile(
 
   const root = coreRoot(options.root);
   await mkdir(root, { recursive: true });
-  const pins = { ...profile.pins };
   await writeFile(modelsPath(root), `${JSON.stringify(pins, null, 2)}\n`, "utf8");
   return {
     ok: true,
@@ -202,10 +198,13 @@ export async function applyProfile(
 
 export function formatProfileList(): string {
   return listProfiles()
-    .map(
-      (p) =>
-        `${p.name}: ${p.summary}\n  default=${p.pins.default}\n  plan=${p.pins.plan}\n  coach=${p.pins.coach}`,
-    )
+    .map((p) => {
+      const pins = profilePins(p.name);
+      return (
+        `${p.name}: ${p.summary}\n` +
+        `  default=${pins.default}\n  plan=${pins.plan}\n  coach=${pins.coach}\n  coder=${pins.coder}`
+      );
+    })
     .join("\n\n");
 }
 

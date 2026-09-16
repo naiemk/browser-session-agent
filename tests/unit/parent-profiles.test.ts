@@ -3,11 +3,12 @@ import { afterEach, describe, it } from "node:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pinError } from "../../src/host/pi-models.ts";
+import { loadShippedModelPins, pinError } from "../../src/host/pi-models.ts";
 import {
   applyProfile,
   detectAuthProviders,
   formatRecommend,
+  profilePins,
   recommendProfile,
   runProfilesCommand,
 } from "../../src/host/parent-profiles.ts";
@@ -21,20 +22,21 @@ afterEach(async () => {
 });
 
 describe("PARENT-01-T05 cost profiles", () => {
-  it("applying budget writes models.json slots as provider/id", async () => {
+  it("applying budget writes the packaged models.json, including coder", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "bsa-profiles-"));
     homes.push(home);
     const result = await applyProfile("budget", { root: home });
     assert.equal(result.ok, true, result.message);
+    const shipped = loadShippedModelPins();
     const pins = JSON.parse(await readFile(path.join(home, "models.json"), "utf8")) as {
       default: string;
       plan: string;
       coach: string;
+      coder: string;
     };
-    assert.match(pins.default, /^openrouter\//);
-    assert.match(pins.plan, /^openrouter\//);
-    assert.match(pins.coach, /^openrouter\//);
-    assert.equal(pinError(pins.default), undefined);
+    assert.deepEqual(pins, shipped);
+    assert.deepEqual(profilePins("budget"), shipped);
+    assert.equal(pinError(pins.coder), undefined);
   });
 
   it("recommend with only OpenRouter env mocked suggests budget", async () => {
@@ -73,6 +75,7 @@ describe("PARENT-01-T05 cost profiles", () => {
     const listed = await runProfilesCommand(["list"], { root: home });
     assert.equal(listed.code, 0);
     assert.match(listed.stdout, /budget:/);
+    assert.match(listed.stdout, /coder=/);
     const applied = await runProfilesCommand(["apply", "budget"], {
       root: home,
       env: { OPENROUTER_API_KEY: "sk-or-test" },

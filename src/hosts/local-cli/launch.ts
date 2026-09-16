@@ -119,7 +119,7 @@ Commands:
   magpie --session <id> -p …  resume the same Pi session (print/unattended: no TUI
                               confirms; coder auto-extends only while JSONL is live)
   magpie profiles [list|recommend|apply <budget|balanced|grok>]
-                              named model pins (writes models.json; no auto-apply)
+                              named model pins from src/host/config (budget = shipped models.json)
   magpie [pi args]            forwarded to Pi (e.g. --print, --model)
 
 From a git checkout, npm run cli is the same command.

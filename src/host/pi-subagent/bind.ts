@@ -67,6 +67,7 @@ export const PARENT_TOOL_NAMES = [
   SCRATCH_READ_TOOL_NAME,
 ] as const;
 export const PLAN_FILE = "plan.md";
+export const ADMISSION_FILE = "admission.json";
 export const PLANNER_AGENT_NAME = "planner";
 /** About 500 tokens; the parent must not ingest the child transcript. */
 export const DIGEST_MAX_CHARS = 2000;
@@ -76,16 +77,18 @@ export const CHAT_WORKER_HINT =
   "/coach reviews a scout as a guideline (mutations off; Ctrl+P for a stronger class). " +
   "For code, files, unzip, or public curl, call subagent with agent=coder. " +
   `That child is a real Pi coding agent in this goal's scratch directory. ` +
-  `Default wall ${formatDurationMs(DEFAULT_TIMEOUT_MS)} (cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
-  `${MAX_EXTENSIONS} extensions). Interactive Magpie asks before extending; ` +
-  `unattended / -p auto-extends while the child is still emitting JSONL/tools, up to the cap. ` +
+  "Its --model is models.json coder (shipped config), not this session and not @medium. " +
+  `A spawn reserves at least one slice (${formatDurationMs(DEFAULT_TIMEOUT_MS)}; cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
+  `${MAX_EXTENSIONS} extensions) — spawn only when that reservation beats finishing in this session. ` +
+  `Interactive Magpie asks before extending; unattended / -p auto-extends while the child still emits JSONL/tools. ` +
   `A silent child is killed, not extended. ` +
   "Files in scratch are the artifact — scratch_ls / scratch_read, not peek file://. " +
   "scratch_read is capped; pass offset to continue a truncated read. " +
   "Abort and provider quota kill the child; partial files may still be there. " +
   "Two failed coder slices without a checkpoint, or a work stream that does not " +
   "advance the declared deliverable, stop. Interactive Magpie asks what next; " +
-  "unattended / -p returns control (finish from scratch — do not wait for a click).";
+  "unattended / -p returns control (finish from scratch — do not wait for a click). " +
+  "A child may refuse via admission.json (not_feasible); that is not a hung abort.";
 
 export function plannerModel(): string {
   return discoverPackagedAgents().find((agent) => agent.name === PLANNER_AGENT_NAME)?.model
@@ -167,7 +170,11 @@ export async function ensureScratch(goalId: string, root?: string): Promise<stri
 function defaultRuntime(options: SubagentHostOptions): SubagentRuntime {
   return {
     run(input) {
-      return runWorker({ ...input, goalId: resolveGoalId(options.goalId) });
+      return runWorker({
+        ...input,
+        goalId: resolveGoalId(options.goalId),
+        modelsRoot: options.root,
+      });
     },
   };
 }
@@ -217,6 +224,27 @@ async function formatWorkerReply(result: WorkerResult, scratchDir: string): Prom
 
 function workerIsError(result: WorkerResult): boolean {
   return result.exitCode !== 0 || result.aborted || Boolean(result.errorMessage);
+}
+
+export interface WorkerAdmission {
+  fit: boolean;
+  estMs?: number;
+  reason?: string;
+}
+
+export async function readWorkerAdmission(scratchDir: string): Promise<WorkerAdmission | undefined> {
+  try {
+    const raw = await readFile(path.join(scratchDir, ADMISSION_FILE), "utf8");
+    const parsed = JSON.parse(raw) as Partial<WorkerAdmission>;
+    if (typeof parsed.fit !== "boolean") return undefined;
+    return {
+      fit: parsed.fit,
+      estMs: typeof parsed.estMs === "number" ? parsed.estMs : undefined,
+      reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export class SubagentFailure extends Error {
@@ -365,13 +393,14 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       "Prefer agent=coder for files, unzip, public curl, extracts, or conversion.",
       `Agents: ${available}. Single mode only (agent + task).`,
       "The worker's cwd is this goal's scratch directory. It does not share the browser profile.",
-      `Default wall ${slice}; interactive Magpie asks before extending (cap ${cap}, ${MAX_EXTENSIONS} extensions).`,
-      `Unattended / magpie -p auto-extends while JSONL/tools keep moving (cap ${cap}); a silent child is killed.`,
+      `A spawn reserves at least one slice (${slice}; cap ${cap}, ${MAX_EXTENSIONS} extensions) — use only when that beats finishing here.`,
+      `Interactive Magpie asks before extending; unattended / -p auto-extends while JSONL/tools keep moving; a silent child is killed.`,
       `timeoutMs is a request, not a grant: above the default needs operator confirm when a TUI is present, never unbounded.`,
       "The digest is short; files in scratch are the artifact. Use scratch_ls / scratch_read. Public curl only.",
       "The worker cwd is this goal's scratch; existing files are listed on the task.",
       "Abort and provider quota kill the child. Chunk work that may exceed one slice.",
       "Do not retry the same harvest after the host stops the stream; wait for the operator.",
+      "The child may refuse via admission.json (not_feasible); choose another approach in this session.",
     ].join(" "),
     parameters: Type.Object({
       agent: Type.String({ description: `Worker to invoke (${available}). Use coder for code and files.` }),
@@ -500,6 +529,8 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       }
 
       const afterListings = await listScratchFiles(scratchDir);
+      const admission = await readWorkerAdmission(scratchDir);
+      const declined = admission?.fit === false;
       const fingerprint: SemanticFingerprint = fingerprintTask({
         task,
         planStep: incoming.planStep,
@@ -508,12 +539,13 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       });
       const decision = evaluateAttempt(progress, {
         fingerprint,
-        attemptOk: !workerIsError(result),
+        attemptOk: !workerIsError(result) && !declined,
         checkpoint: fingerprint.acceptedHashes.length > 0,
         elapsedMs: result.elapsedMs ?? Date.now() - started,
         agent,
         task,
         artifact: latestArtifact(afterListings),
+        declined,
       });
       Object.assign(progress, decision.next);
       const usageLine = result.usage ? formatUsageLine(result.usage, result.model) : undefined;
@@ -549,7 +581,16 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
         workStream: fingerprint.workStream,
         output: digestText(result.text),
         evaluation: decision.evaluation,
+        ...(admission ? { admission } : {}),
+        ...(declined ? { not_feasible: true } : {}),
       };
+
+      if (declined) {
+        const reason = admission?.reason?.trim() || "Child declined the grant.";
+        const reply = `${text}\n\nnot_feasible: ${reason}`;
+        recordParentTool(options, SUBAGENT_TOOL_NAME, reply);
+        throw new SubagentFailure(reply, details);
+      }
 
       if (decision.halt) {
         ctx?.ui.notify(formatHaltMessage(progress, STAGNATION_CHOICES), "warning");

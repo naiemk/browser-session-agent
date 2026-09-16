@@ -1,28 +1,36 @@
 /**
  * Operator pins for Magpie phases. Not a cost router (D12).
  *
- * Empty / "session" = leave Ctrl+P alone. "default" on plan/coach inherits the
+ * Empty / "session" = leave Ctrl+P alone. "default" on plan/coach/coder inherits the
  * default slot. Concrete values are Pi registry ids (`provider/id`). Floors like
  * `@ultra` are rejected — they do not switch an in-session Magpie turn.
+ *
+ * Shipped pins live in `config/models.json` (not TypeScript). First Magpie start
+ * copies that file to Magpie home when models.json is missing. Coder is a child
+ * argv `--model`, not the operate session.
  *
  * `enter` / `leave` stack so /plan → Execute → /coach restores the operate model,
  * and a manual /coach during plan restores the plan model.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { coreRoot } from "../core/paths.ts";
 import type { ExtensionAPI, ExtensionContext } from "../pi-api.ts";
+import { operatorCanConfirm } from "./pi-subagent/unattended.ts";
 
 export const MODELS_COMMAND = "models";
 export const MAGPIE_MODELS_FILE = "models.json";
 
-export type ModelSlot = "default" | "plan" | "coach";
+export type ModelSlot = "default" | "plan" | "coach" | "coder";
 
 export interface MagpieModelPins {
   default: string;
   plan: string;
   coach: string;
+  coder: string;
 }
 
 export interface MagpieModelHost {
@@ -33,11 +41,25 @@ export interface MagpieModelHost {
   setPin(slot: ModelSlot, value: string, ctx?: ExtensionContext): Promise<string | undefined>;
 }
 
-const SLOTS: readonly ModelSlot[] = ["default", "plan", "coach"];
+const SLOTS: readonly ModelSlot[] = ["default", "plan", "coach", "coder"];
 const SESSION_ALIASES = new Set(["", "session", "none"]);
 const FLOOR = /^(?:@(?:low|medium|high|ultra)|low|medium|high|ultra)$/i;
 
-export const EMPTY_MODEL_PINS: MagpieModelPins = { default: "", plan: "", coach: "" };
+export const EMPTY_MODEL_PINS: MagpieModelPins = {
+  default: "",
+  plan: "",
+  coach: "",
+  coder: "",
+};
+
+export function magpieConfigDir(from = import.meta.url): string {
+  return path.join(path.dirname(fileURLToPath(from)), "config");
+}
+
+/** Packaged Magpie stack. Operator home is a copy of this file. */
+export function shippedModelsPath(from = import.meta.url): string {
+  return path.join(magpieConfigDir(from), MAGPIE_MODELS_FILE);
+}
 
 export function modelsPath(root = coreRoot()): string {
   return path.join(root, MAGPIE_MODELS_FILE);
@@ -69,6 +91,7 @@ export function parseMagpieModelPins(raw: unknown): MagpieModelPins {
     default: normalizePin(record.default),
     plan: normalizePin(record.plan),
     coach: normalizePin(record.coach),
+    coder: normalizePin(record.coder),
   };
 }
 
@@ -121,17 +144,51 @@ export function formatPins(pins: MagpieModelPins, current?: string): string {
   };
   const now = current ? `session: ${current}` : "session: (unknown)";
   return (
-    `Magpie models (${now})\n${line("default")}\n${line("plan")}\n${line("coach")}\n` +
-    `Empty = this session's model. plan/coach may be "default".`
+    `Magpie models (${now})\n${line("default")}\n${line("plan")}\n${line("coach")}\n${line("coder")}\n` +
+    `Empty = this session's model. plan/coach/coder may be "default". ` +
+    `coder pins the subagent child (--model), not this chat.`
   );
 }
 
-async function readPinsFile(root: string): Promise<MagpieModelPins> {
+export async function loadMagpieModelPins(root = coreRoot()): Promise<MagpieModelPins> {
   try {
     const text = await readFile(modelsPath(root), "utf8");
     return parseMagpieModelPins(JSON.parse(text) as unknown);
   } catch {
     return { ...EMPTY_MODEL_PINS };
+  }
+}
+
+export function loadShippedModelPins(from = import.meta.url): MagpieModelPins {
+  return loadPackagedPins(MAGPIE_MODELS_FILE, from);
+}
+
+export function loadPackagedPins(relative: string, from = import.meta.url): MagpieModelPins {
+  try {
+    const text = readFileSync(path.join(magpieConfigDir(from), relative), "utf8");
+    return parseMagpieModelPins(JSON.parse(text) as unknown);
+  } catch {
+    return { ...EMPTY_MODEL_PINS };
+  }
+}
+
+/**
+ * First Magpie start with no models.json copies the packaged config.
+ * An existing file (even empty slots) is left alone.
+ */
+export async function ensureShippedModelPins(root = coreRoot()): Promise<MagpieModelPins> {
+  const dest = modelsPath(root);
+  try {
+    await readFile(dest, "utf8");
+    return loadMagpieModelPins(root);
+  } catch {
+    await mkdir(root, { recursive: true });
+    try {
+      await copyFile(shippedModelsPath(), dest);
+    } catch {
+      return { ...EMPTY_MODEL_PINS };
+    }
+    return loadMagpieModelPins(root);
   }
 }
 
@@ -153,7 +210,7 @@ export function bindMagpieModels(pi: ExtensionAPI, root = coreRoot()): MagpieMod
   const stack: unknown[] = [];
 
   async function load(): Promise<MagpieModelPins> {
-    return readPinsFile(root);
+    return loadMagpieModelPins(root);
   }
 
   async function switchTo(id: string, ctx: ExtensionContext): Promise<string | undefined> {
@@ -245,7 +302,7 @@ export function bindMagpieModels(pi: ExtensionAPI, root = coreRoot()): MagpieMod
   }
 
   pi.registerCommand(MODELS_COMMAND, {
-    description: "Pin Magpie models for default / plan / coach (empty = this session)",
+    description: "Pin Magpie models for default / plan / coach / coder (empty = this session)",
     handler: async (args, ctx) => {
       const pins = await load();
       const parts = args.trim().split(/\s+/).filter(Boolean);
@@ -257,12 +314,16 @@ export function bindMagpieModels(pi: ExtensionAPI, root = coreRoot()): MagpieMod
         return;
       }
       if (!SLOTS.includes(slot)) {
-        ctx.ui.notify(`Unknown slot ${slot}. Use default, plan, or coach.`, "error");
+        ctx.ui.notify(`Unknown slot ${slot}. Use default, plan, coach, or coder.`, "error");
         return;
       }
 
       let next = value;
       if (!next) {
+        if (!operatorCanConfirm(ctx)) {
+          ctx.ui.notify(`Usage: /models ${slot} <provider/id|session|default>`, "warning");
+          return;
+        }
         const choices = ["session", ...(slot === "default" ? [] : ["default"]), ...availableIds(ctx)];
         const picked = await ctx.ui.select(`Magpie ${slot} model`, choices);
         if (!picked) return;
@@ -282,6 +343,7 @@ export function bindMagpieModels(pi: ExtensionAPI, root = coreRoot()): MagpieMod
 
   pi.on("session_start", async (_event: unknown, ctxUnknown: unknown) => {
     const ctx = ctxUnknown as ExtensionContext;
+    await ensureShippedModelPins(root);
     await unwind(ctx);
     await applyDefault(ctx);
   });

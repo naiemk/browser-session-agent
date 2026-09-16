@@ -1,0 +1,6 @@
+{
+  "default": "openrouter/z-ai/glm-5.3-flash",
+  "plan": "openrouter/z-ai/glm-5.3",
+  "coach": "openrouter/z-ai/glm-5.3",
+  "coder": "openrouter/deepseek/deepseek-v4.1-flash"
+}

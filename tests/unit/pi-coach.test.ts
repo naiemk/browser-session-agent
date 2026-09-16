@@ -51,13 +51,17 @@ async function tempCore(): Promise<string> {
   const home = await mkdtemp(path.join(os.tmpdir(), "bsa-coach-"));
   homes.push(home);
   process.env.BSA_CORE_HOME = home;
+  await writePins(home, {});
   return home;
 }
 
-async function writePins(home: string, pins: { default?: string; plan?: string; coach?: string }): Promise<void> {
+async function writePins(
+  home: string,
+  pins: { default?: string; plan?: string; coach?: string; coder?: string },
+): Promise<void> {
   await writeFile(
     path.join(home, MAGPIE_MODELS_FILE),
-    `${JSON.stringify({ default: "", plan: "", coach: "", ...pins }, null, 2)}\n`,
+    `${JSON.stringify({ default: "", plan: "", coach: "", coder: "", ...pins }, null, 2)}\n`,
   );
 }
 

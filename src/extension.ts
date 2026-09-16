@@ -15,6 +15,7 @@ import { bindDurableCommands } from "./host/pi-durable.ts";
 import { bindSessionGoal, isSubagentProcess } from "./host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
 import { standingLastCoderPrompt, reconstructProgress } from "./host/pi-subagent/progress.ts";
+import { operatorCanConfirm } from "./host/pi-subagent/unattended.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
 import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
@@ -75,9 +76,10 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       // a side effect of starting a run.
       browser: WorkerBrowserPort.lazy(session.worker),
       askUser: async (question) => {
-        const typed = sessionUi.current
-          ? await sessionUi.current.input(question, "Your answer")
-          : undefined;
+        const typed =
+          sessionUi.current && operatorCanConfirm(lastToolCtx)
+            ? await sessionUi.current.input(question, "Your answer")
+            : undefined;
         try {
           await session.askUser(question, undefined, typed);
         } catch {
@@ -101,7 +103,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       },
       policy: "ask",
       approve: async (request) => {
-        if (!sessionUi.current) return false;
+        if (!sessionUi.current || !operatorCanConfirm(lastToolCtx)) return false;
         return sessionUi.current.confirm(
           "Approve irreversible action",
           `${request.request.kind} — ${request.reason}\n${request.url}`,

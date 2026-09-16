@@ -40,13 +40,13 @@ Grok Bot install / cost bootstrap that must stay in this saved skill.
 
 ### 1. Install Magpie (once per Agent Computer)
 
-**Package:** `@naiemk/magpi` on npm. **Latest published:** `0.1.7` (need **≥ 0.1.5**
-so `magpie --help` shows `--json` and `profiles`; prefer **0.1.7+** so coder slices
-do not wait on a TUI confirm). Binary name is `magpie`. Need **Node ≥ 24**.
+**Package:** `@naiemk/magpi` on npm. **Latest published:** `0.1.8` (need **≥ 0.1.5**
+so `magpie --help` shows `--json` and `profiles`; prefer **0.1.8+** so unattended
+Magpie never hangs on TUI waits and coder admits or refuses against CONTRACT). Binary name is `magpie`. Need **Node ≥ 24**.
 
 ```bash
 node -v   # must be v24+
-npm install -g @naiemk/magpi@0.1.7
+npm install -g @naiemk/magpi@0.1.8
 # or always latest: npm install -g @naiemk/magpi
 export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
 mkdir -p "$MAGPIE_SESSION_DIR"
@@ -83,32 +83,38 @@ Do not burn Grok Bot credits doing the harvest yourself.
 
 ### 3. Low-cost model pins (recommended default)
 
-Magpie slots: **default** = browser worker (harvest/operate), **plan** = admit /
-coarse plan, **coach** = strategy critic after scout. Coding children are separate.
+Magpie slots: **default** = browser worker, **plan** = admit, **coach** = strategy
+after scout, **coder** = coding child `--model`. Magpie copies
+`src/host/config/models.json` to Magpie home on first start if the pin file is
+missing. The `coder` key is not Ctrl+P and not a Pi Router floor (`@medium`
+resolves to a paid scout model).
 
-**Recommended cheap harvest stack (OpenRouter):**
+**Shipped cheap harvest stack (OpenRouter):**
 
 | Slot | Model | Why |
 | --- | --- | --- |
 | Worker (`default`) | `openrouter/z-ai/glm-5.3-flash` | Cheap loop for peek / qualify / navigate |
 | Planner (`plan`) | `openrouter/z-ai/glm-5.3` | Stronger admit / coarse plan |
 | Coach (`coach`) | `openrouter/z-ai/glm-5.3` | Strategy after scout (same class as plan) |
-| Coding child | `openrouter/z-ai/glm-5.3` or a stronger coder if Magpie spawns `coder` | File extract / unzip / scratch code — not the harvest loop |
+| Coding child (`coder`) | `openrouter/deepseek/deepseek-v4.1-flash` | File extract / unzip / scratch code — not the harvest loop |
 
 Write Magpie’s pin file (paths under Magpie home; do not invent a second home):
 
 ```bash
 mkdir -p ~/.browser-agent-core
+# First Magpie session copies the shipped file if this is missing. Write or repair:
 cat > ~/.browser-agent-core/models.json <<'EOF'
 {
   "default": "openrouter/z-ai/glm-5.3-flash",
   "plan": "openrouter/z-ai/glm-5.3",
-  "coach": "openrouter/z-ai/glm-5.3"
+  "coach": "openrouter/z-ai/glm-5.3",
+  "coder": "openrouter/deepseek/deepseek-v4.1-flash"
 }
 EOF
-# Optional named profile (older defaults); prefer the models.json above for GLM:
-#   magpie profiles recommend
-#   magpie profiles apply budget   # only if human confirms; GLM pins above win if written after
+python3 -c "import json; print(json.load(open('$HOME/.browser-agent-core/models.json')))"
+# Interactive Magpie: /models          — show slots
+#                     /models coder    — pick a provider/id for the coding child
+# Same pins: magpie profiles apply budget   # only if human confirms
 ```
 
 Do **not** auto-switch to a paid API-key backend the human did not approve.

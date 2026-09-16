@@ -242,6 +242,8 @@ export interface AttemptObservation {
   task: string;
   artifact?: string;
   now?: string;
+  /** Child declined the grant (admission.json fit:false). Not a hung abort. */
+  declined?: boolean;
 }
 
 export interface AttemptDecision {
@@ -275,6 +277,16 @@ export function evaluateAttempt(
     continueReason: undefined,
     requiredFamily: previous.requiredFamily,
   };
+
+  if (observation.declined) {
+    next.consecutiveFailures = 0;
+    next.stagnantAttempts = 0;
+    next.stagnantStartedAt = undefined;
+    next.evaluation = "replan";
+    next.blocked = false;
+    next.blockReason = undefined;
+    return { evaluation: "replan", next, semanticProgress: false };
+  }
 
   if (observation.attemptOk) {
     next.consecutiveFailures = 0;

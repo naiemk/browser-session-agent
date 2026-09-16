@@ -56,14 +56,15 @@ On hosts that are not Grok Bot, use Magpie’s default session dir
 
 ### 1. Install / verify Magpie (once per machine)
 
-Need **Node ≥ 24**. Package **`@naiemk/magpi`**, latest published **`0.1.7`**.
+Need **Node ≥ 24**. Package **`@naiemk/magpi`**, latest published **`0.1.8`**.
 Need **≥ 0.1.5** for `--json` / `profiles` (0.1.4 and earlier open the TUI and hang
-headless); prefer **0.1.7+** so unattended coder slices do not wait on a TUI confirm.
+headless); prefer **0.1.8+** so unattended Magpie never hangs on TUI waits and coder
+admits or refuses against the stamped CONTRACT.
 Binary is `magpie`.
 
 ```bash
 node -v   # must be v24+
-npm install -g @naiemk/magpi@0.1.7
+npm install -g @naiemk/magpi@0.1.8
 # or always latest: npm install -g @naiemk/magpi
 export MAGPIE_SESSION_DIR="${MAGPIE_SESSION_DIR:-/workspace/magpie/sessions}"
 mkdir -p "$MAGPIE_SESSION_DIR"
@@ -86,31 +87,43 @@ test -n "$OPENROUTER_API_KEY" || {
 }
 ```
 
-**Recommended cheap stack** (worker cheap, planner/coach stronger, coding not the
-harvest loop):
+**Recommended cheap stack** (worker cheap, planner/coach stronger, coding child
+not the harvest loop). Magpie **ships** this as `src/host/config/models.json` and
+copies it to Magpie home on first start if `models.json` is missing.
 
-| Slot | Pin |
-| --- | --- |
-| Worker (`default`) | `openrouter/z-ai/glm-5.3-flash` |
-| Planner (`plan`) | `openrouter/z-ai/glm-5.3` |
-| Coach (`coach`) | `openrouter/z-ai/glm-5.3` |
-| Coding child | Prefer `openrouter/z-ai/glm-5.3` (or stronger) when Magpie spawns `coder` |
+| Slot | Pin | Role |
+| --- | --- | --- |
+| Worker (`default`) | `openrouter/z-ai/glm-5.3-flash` | Cheap harvest / operate loop |
+| Planner (`plan`) | `openrouter/z-ai/glm-5.3` | Admit / coarse plan |
+| Coach (`coach`) | `openrouter/z-ai/glm-5.3` | Strategy after scout |
+| Coding child (`coder`) | `openrouter/deepseek/deepseek-v4.1-flash` | curl / extract / scratch files |
+
+**How to pin** (including the coding child). Paths under Magpie home; do not invent
+a second home. The `coder` key is a child `--model`. It is not Ctrl+P and not a
+Pi Router floor (`@medium` is how harvest curls burned luna).
 
 ```bash
 mkdir -p ~/.browser-agent-core
+# First Magpie session copies the shipped file if this is missing. Write or repair:
 cat > ~/.browser-agent-core/models.json <<'EOF'
 {
   "default": "openrouter/z-ai/glm-5.3-flash",
   "plan": "openrouter/z-ai/glm-5.3",
-  "coach": "openrouter/z-ai/glm-5.3"
+  "coach": "openrouter/z-ai/glm-5.3",
+  "coder": "openrouter/deepseek/deepseek-v4.1-flash"
 }
 EOF
+# Confirm:
+python3 -c "import json; print(json.load(open('$HOME/.browser-agent-core/models.json')))"
+# Interactive Magpie: /models          — show slots
+#                     /models coder    — pick a provider/id for the coding child
+# Same pins: magpie profiles apply budget   # only if human confirms
 ```
 
-Optional named profiles (`magpie profiles recommend` / `apply budget|balanced|grok`)
-exist for older defaults. Prefer the GLM `models.json` above for low-cost harvests.
-Ask the human before `magpie profiles apply …`. Do not auto-apply a paid profile.
-If `profiles` hangs or opens a TUI, the build is too old — upgrade and stop.
+Ask the human before `magpie profiles apply …`. `profiles recommend` only prints;
+it does not write. `apply budget` is the shipped file. Do not auto-apply a paid
+profile (`balanced` / `grok`). If `profiles` hangs or opens a TUI, the build is
+too old — upgrade and stop.
 
 Use Magpie for **long-running repetitive** browser work (multi-site qualify, list
 scroll+peek, campaigns). Keep tiny one-URL lookups on the parent. After delegate,

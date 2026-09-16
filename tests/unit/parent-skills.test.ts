@@ -19,6 +19,8 @@ describe("PARENT-01-T04 host skills", () => {
     assert.match(body, /second Magpie session|second session/i);
     assert.match(body, /not.*browse.*harvest|not.*scrape the harvest|not.*in parallel/i);
     assert.match(body, /profiles recommend/);
+    assert.match(body, /\/models coder/);
+    assert.match(body, /src\/host\/config\/models\.json/);
     assert.match(body, /only the \*\*goal\*\*|only the goal/i);
     assert.match(body, /deliverable|return the \*\*result\*\*/i);
     assert.match(body, /current-job\.json/);
@@ -45,5 +47,19 @@ describe("PARENT-01-T04 host skills", () => {
     assert.match(body, /Mode A|one-shot ACP/i);
     assert.match(body, /Mode B|Pi-session|magpie --json/i);
     assert.match(body, /Do not send|not.*ACP path by default/i);
+  });
+
+  it("parent skills quote the shipped models.json recipe including coder", async () => {
+    const shipped = JSON.parse(
+      await readFile(path.join(ROOT, "src", "host", "config", "models.json"), "utf8"),
+    ) as Record<string, string>;
+    for (const file of [PARENT, GROK, HERMES]) {
+      const body = await readFile(file, "utf8");
+      for (const id of Object.values(shipped)) {
+        assert.ok(body.includes(id), `${path.basename(file)} missing shipped pin ${id}`);
+      }
+      assert.match(body, /"coder"/);
+      assert.match(body, /\/models coder/);
+    }
   });
 });
