@@ -1,0 +1,271 @@
+# Magpie hosted web — canvas sitemap (guideline, not a running app)
+#
+# Replaces the chat-first shell in src/hosts/web/public/{index.html,app.js,app.css}.
+# Protocol: AG-UI (https://docs.ag-ui.com). AG-UI is the runtime event layer,
+# not a generative-UI spec and not our chrome. We keep Magpie chrome; we speak
+# AG-UI events on the existing WebSocket.
+#
+# Authority: work-items/epics/web-ux.md · WEB-01-T01 (this file) · WEB-01-T02 (import)
+# Does not replace R1.E2 / E-QUAL / R6. Parallel Track C.
+
+meta:
+  id: magpie-canvas
+  product: magpie-hosted-web
+  status: guideline
+  captured: 2026-09-16
+  protocol:
+    name: AG-UI
+    docs: https://docs.ag-ui.com
+    packages:
+      events: "@ag-ui/core"
+      client: "@ag-ui/client"
+      encoder: "@ag-ui/encoder"
+      genui_runtime: "@ag-ui/a2ui-middleware"
+    not_the_app:
+      - "@copilotkit/react-ui" # Next/chat kit; we own chrome
+      - MCP-UI iframes         # arbitrary HTML from the child is refused
+  thread_id: "Pi session id / goal_* (D59). Never mint a second AG-UI session namespace."
+  transport: "Reuse /chat WebSocket. Map Pi + hub frames to AG-UI events. Do not add a second SSE bus."
+
+# --- Why this exists ----------------------------------------------------------
+
+problem:
+  today: >
+    Hosted UX is a chat transcript plus a command bar plus a connection pill,
+    with live view as a side column. Human asks (ui_request cards) and scratch
+    files live inside that chat. The operator cannot work the artifact without
+    scrolling the log. The coder cannot emit UI without the parent inventing
+    HTML. Overnight harvests look like empty chat even when scratch is full.
+  target: >
+    A run canvas: browser + agent-rendered surfaces first; transcript as a dock.
+    A human slider for everything that is not a chat turn (HITL, scratch,
+    takeover, custom widgets). Session rail instead of one implicit thread.
+
+principles:
+  - Canvas is the product. Chat is a log of the canvas, not the app.
+  - Human–agent interaction that is not a sentence lives on the slider, never as a bubble.
+  - Scratch is a first-class file surface (upload, list, download, pageable read). Peek file:// stays forbidden.
+  - Generative UI uses a closed catalog (A2UI-style JSON). The child never ships raw HTML/JS to eval.
+  - Files win if chat and cwd disagree (D31). Inventory is names/sizes, not sermons.
+  - Parent does not ingest the child transcript (D29). Surfaces are files or AG-UI activities.
+  - Coder emits AG-UI from baseline skill + vendored encoder. No npm install in scratch.
+  - Ctrl+P / floors stay D12. Per-call child model stays deferred.
+
+# --- Current shell (do not polish; replace) -----------------------------------
+
+current:
+  entry: /
+  files:
+    - src/hosts/web/public/index.html
+    - src/hosts/web/public/app.js
+    - src/hosts/web/public/app.css
+  chrome:
+    - id: topbar
+      holds: [brand, node-pill, takeover-pill, model, thinking, pair]
+    - id: pair-panel
+      holds: [pair-code, install-hints]
+    - id: commands
+      holds: [browser-*, plan, coach, durable-*]
+  panes:
+    - id: chat-pane
+      primary: true
+      holds: [commands, messages, ui_request cards, composer]
+    - id: live-pane
+      primary: false
+      holds: [screencast, live-empty]
+  missing:
+    - session rail / goal list
+    - scratch upload list download
+    - human slider outside chat
+    - agent-rendered surfaces
+    - AG-UI event mapping (stateSync / agentEvent / ui_request are ad-hoc)
+
+# --- Target information architecture ------------------------------------------
+
+shell:
+  id: canvas-shell
+  layout: "session-rail | canvas | human-slider ; transcript-dock under canvas"
+  breakpoints:
+    desktop: "rail 240px | canvas 1fr | slider 360px (collapsible)"
+    tablet: "canvas 1fr; rail and slider as drawers"
+    mobile: "canvas; chrome tabs for rail / slider / transcript"
+
+regions:
+  - id: auth
+    route: /signin
+    purpose: Account cookie (V1-01). Unchanged contract; restyle only.
+    agui: false
+
+  - id: chrome
+    purpose: Connection and run identity. Never a chat system message.
+    widgets:
+      - id: connection
+        maps_from: [stateSync.nodeConnected, nodeStatus]
+        agui: STATE_SNAPSHOT.connection
+      - id: takeover
+        maps_from: [stateSync.takeover]
+        agui: STATE_SNAPSHOT.takeover
+      - id: model-thinking
+        maps_from: [models, state.model, state.thinking]
+        note: Display + change. Not Ctrl+P on the child (D12).
+      - id: pair
+        maps_from: [pair-panel]
+      - id: run-clock
+        purpose: Wall of the current coder/parent slice (extend / abort). Host clock, not Pi.
+        agui: ACTIVITY_SNAPSHOT activityType=run-clock
+
+  - id: session-rail
+    purpose: Pick the thread. Replaces "one implicit hosted session".
+    widgets:
+      - id: goal-list
+        items: [goal_id, title, updated, status]
+        thread_id: goal_id
+      - id: new-goal
+      - id: search
+    agui: MESSAGES_SNAPSHOT on select; do not reload Chrome profile (D2)
+
+  - id: canvas
+    purpose: Where the work is. Browser + generative surfaces.
+    default_view: split
+    widgets:
+      - id: live-browser
+        maps_from: [frame jpeg]
+        note: Read-only until takeover. Takeover does not live here; it lives on the slider.
+      - id: surfaces
+        purpose: Closed-catalog AG-UI activities from parent or coder.
+        source: scratch/ui/*.jsonl plus live ACTIVITY_* events
+        refuse: [raw_html, iframe_srcdoc, eval, file_url_peek]
+      - id: empty
+        copy: "Pair a computer, or open a goal."
+
+  - id: human-slider
+    purpose: Agent–human interaction that is not a chat turn.
+    default: open-when-interrupt
+    peek: 48px handle when idle
+    sections:
+      - id: interrupts
+        agui: RUN_FINISHED.outcome.interrupt
+        reasons: [confirmation, input_required, tool_call]
+        maps_from: [ui_request, ask_user, commit gate, coder extend confirm]
+      - id: scratch
+        purpose: Goal scratch as a file tray.
+        actions: [upload, list, download, open-in-canvas]
+        maps_from: [scratch_ls, scratch_read, scratch_write]
+        paging: "scratch_read offset in the text footer; no sermons"
+      - id: takeover
+        purpose: Enable live input, then resume.
+        maps_from: [browser-takeover, browser-resume]
+      - id: durable
+        purpose: Job status / tick / cancel without slash commands as the only UI.
+        maps_from: [durable-status, durable-tick, durable-cancel]
+    out_of_slider: [model picker, pair install, transcript]
+
+  - id: transcript-dock
+    purpose: Streaming text + tool log. Collapsed by default on desktop.
+    maps_from: [agentEvent text_delta, tool lines]
+    agui: TEXT_MESSAGE_* , TOOL_CALL_*
+    composer: true
+    note: Composer still sends a user message on the thread. It is not the only input; slider resumes are RunAgentInput.resume[].
+
+  - id: commands-overflow
+    purpose: Power commands that have no slider widget yet.
+    maps_from: COMMANDS in app.js
+    retire_when: slider covers the same verb
+
+routes:
+  - path: /signin
+    region: auth
+  - path: /
+    name: canvas
+    regions: [chrome, session-rail, canvas, human-slider, transcript-dock]
+    default: true
+  - path: /g/{goalId}
+    name: goal-canvas
+    regions: [chrome, session-rail, canvas, human-slider, transcript-dock]
+    thread_id: goalId
+  - path: /g/{goalId}/scratch
+    name: scratch-focus
+    note: Deep-link that opens the slider scratch section and lists files.
+  - path: /g/{goalId}/ui/{surfaceId}
+    name: surface-focus
+    note: One generative surface full-bleed. Catalog still closed.
+
+# --- Closed generative-UI catalog (coder + parent) ----------------------------
+
+catalog:
+  id: magpie.surfaces.v1
+  spec: A2UI-compatible JSON, rendered by host, not by the child
+  emit:
+    parent: ACTIVITY_SNAPSHOT / ACTIVITY_DELTA
+    coder: "scratch/ui/<id>.jsonl (JSONL of AG-UI events or A2UI ops). Host tails and relays."
+  allow:
+    - id: harvest-table
+      use: rows of extracted records
+    - id: file-tray
+      use: names, sizes, download, offset hint
+    - id: progress
+      use: step list + clock
+    - id: form
+      use: structured ask_user / input_required
+    - id: confirm
+      use: gate / extend / send
+    - id: markdown
+      use: short digest; cap 2k; page with offset
+    - id: empty-state
+      use: what to do next, not a sermon
+  deny:
+    - raw HTML / inline script
+    - arbitrary iframe
+    - navigation away from Magpie origin
+    - peek of file:// or data documents
+    - dumping the child transcript into the parent
+
+# --- AG-UI mapping from today's websocket -------------------------------------
+
+agui_map:
+  hello_ok: RUN_STARTED
+  stateSync: STATE_SNAPSHOT
+  nodeStatus: STATE_DELTA /connection
+  notify: TEXT_MESSAGE_* role=system or CUSTOM
+  ui_request: interrupt (slider), not a chat card
+  frame: STATE_DELTA /live.jpeg or a Magpie custom activity
+  agentEvent.text_delta: TEXT_MESSAGE_CONTENT
+  agentEvent.tool: TOOL_CALL_*
+  abort: RUN_ERROR or RUN_FINISHED
+  composer send: RunAgentInput.messages append
+  slider resume: RunAgentInput.resume[]
+  coder subagent: SUBAGENT_* attribution; files remain the artifact (D29)
+
+best_practices:
+  - Adapt Pi events with middleware (@ag-ui/client). Do not rewrite Pi as an HTTP AG-UI server first.
+  - Snapshot on connect; delta after. Do not resend the transcript every frame.
+  - Interrupts end the run and resume on the same threadId (goal_*).
+  - Client tools (slider actions) are passed in RunAgentInput.tools; backend tools stay Pi/browser.
+  - Compact verbose tool streams (compactEvents) before the dock.
+  - Subagent events name the coder; parent still only sees digest + inventory.
+
+# --- Coder baseline (WEB-01-T02) ----------------------------------------------
+
+coder_baseline:
+  why: "Install-in-scratch costs a slice and fails the wall. Skill + lib must already be there."
+  skill: skills/ag-ui-surfaces/SKILL.md
+  spawn: "buildChildInvocation adds --skill <packaged skill> for agent=coder only. Still --no-session until a later spike."
+  lib: "Workspace dependency @ag-ui/encoder (and core types). Coder writes JSONL; does not npm install."
+  cwd: goal scratch
+  output: scratch/ui/
+  forbid:
+    - npm install in scratch
+    - putting session jsonl inside scratch
+    - parent reading the coder Pi transcript
+
+# --- Out of scope -------------------------------------------------------------
+
+out_of_scope:
+  - Magpie TUI chrome (Pi TUI stays)
+  - Replacing Pi session ids with AG-UI thread UUIDs
+  - CopilotKit as the hosted app
+  - Persistent coder Pi session (ideas/resume-from-scratch.md; still --no-session)
+  - Raising 180s / auto-approve extend
+  - YC/LinkedIn playbooks
+  - Per-call child model
+  - MCP-UI / Open-JSON-UI until the closed catalog is shipping
