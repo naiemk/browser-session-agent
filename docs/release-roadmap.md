@@ -19,7 +19,8 @@ AGENT-16-T01..T03, T05, and T06 FakePi are in tree.
 
 **Parallel build (does not replace those two):** **Track B / R6** parent-agent Pi
 sessions. Cheap gate is `npm run test:parent-supervisor` with an OpenRouter key, not
-a Grok Bot harvest.
+a Grok Bot harvest. **Track C / R7** hosted canvas (AG-UI sitemap + import) is chrome,
+not harvest quality.
 
 Do not spend the next cycle on QUAL/PERF *behavioral* tickets, default-on challenge or
 approval flags, AGENT-13-T04, or AGENT-16-T04 (that is R3).
@@ -36,9 +37,11 @@ the gates**, not a second spec.
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
 | R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
 | R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **R6.1–R6.4 + E1/E2 landed; R6.E3 / exit auth open** |
+| R7 | Hosted canvas: AG-UI protocol, human slider, scratch tray (not chat-first) | **R7.1 sitemap done; R7.2 import open** |
 
 Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 [`docs/parent-agent.md`](parent-agent.md),
+[`docs/web-ux-sitemap.yaml`](web-ux-sitemap.yaml),
 [`docs/jobs-v2-evaluation.md`](jobs-v2-evaluation.md),
 [`docs/live-run-investigation-plan.md`](live-run-investigation-plan.md),
 [`docs/live-run-evidence-log.md`](live-run-evidence-log.md),
@@ -98,6 +101,8 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 - Building MCP, `@macpie/grok`, or a Magpie daemon before PARENT-01-T01..T03.
 - Claiming Cursor Grok Bot access means Magpie can call Grok without a key
   (RESEARCH-04/05).
+- Restyling hosted chat (`app.js`) instead of following
+  [`docs/web-ux-sitemap.yaml`](web-ux-sitemap.yaml). Import AG-UI (R7.2) before pixels.
 
 ---
 
@@ -498,7 +503,42 @@ sessions (Track B), already listed above.
 
 ---
 
+## Track C / R7 — Hosted canvas (AG-UI)
+
+Chrome, not harvest quality. Does not replace R1.E2, E-QUAL, or R6.
+Sitemap: [`docs/web-ux-sitemap.yaml`](web-ux-sitemap.yaml)
+Epic: [`work-items/epics/web-ux.md`](../work-items/epics/web-ux.md)
+
+Today’s hosted UX is chat + command bar + connection pill + live sidebar
+(`src/hosts/web/public`). Target is a run **canvas**, a **session rail**, and a
+**human slider** (HITL, scratch upload/list/download, closed-catalog surfaces).
+Chat becomes a dock. AG-UI is the event protocol; CopilotKit is not the app;
+`threadId` is Pi `goal_*`.
+
+### Build
+
+- [x] **R7.1** WEB-01-T01 — sitemap YAML + AG-UI mapping + closed catalog
+- [ ] **R7.2** WEB-01-T02 — import `@ag-ui/core` + encoder; coder `--skill`; no
+      scratch `npm install`
+- [ ] **R7.3** (later story) — implement shell regions; `ui_request` leaves chat
+      cards for the slider
+
+### Evaluation
+
+- [x] Unit: sitemap names rail, canvas, slider, scratch, catalog deny list
+- [ ] T02: coder argv has `--skill`; fixture JSONL encodes without cwd install
+
+### Exit (not this PR)
+
+- [ ] Operator can upload a file, see a coder table on the canvas, and answer a
+      gate on the slider without opening the transcript dock
+
+Do **not** claim R7 shipped at T01. Do **not** restyle `app.js` before T02.
+
+---
+
 ## Suggested near-term sequence (this month)
+
 
 1. Land **R1.E2** (live coached party.txt after T05) and **E-QUAL**
    (different-domain collection) in parallel. Leave challenge/approval flags **off**
@@ -512,6 +552,8 @@ sessions (Track B), already listed above.
 6. **R6** parent-agent: PARENT-00-T01 canary, then T01+T02 (no provider), then
    **R6.E2** OpenRouter supervisor proxy. Do not use a Grok Bot campaign as the
    first test. Do not let this displace R1.E2 / E-QUAL.
+7. **R7** hosted canvas: T02 import is the next chrome ticket. Do not restyle
+   chat. Do not let this displace R1.E2 / E-QUAL.
 
 ---
 
@@ -542,5 +584,5 @@ sessions (Track B), already listed above.
       skills / cost profiles / R6 exit still open; do not claim R6 shipped. |
 | 2026-09-14 | COACH-20: `goal_mtz1c1ar001` cheap-fetch vs JS portals. Coach
       prompt + harvest hint escalate shells/unknown fields to observe. Not R1.E2. |
-| 2026-09-15 | Coach occasion frames (scout / steer / close): mechanical gates,
-      digest views, report intercept. Evidence `goal_mtz1c1ar001`. Not R1.E2. |
+| 2026-09-16 | Track C / R7 hosted canvas. WEB-01-T01 sitemap YAML + AG-UI
+      mapping (`docs/web-ux-sitemap.yaml`). R7.2 import still open. Not R1.E2. |
