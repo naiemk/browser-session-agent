@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { ChildProcess } from "node:child_process";
 import { afterEach, describe, it } from "node:test";
 import { ensureGoalDirs, goalPaths } from "../../src/core/paths.ts";
+import { GoalStore } from "../../src/core/state.ts";
 import {
   bindSubagent,
   CHAT_WORKER_HINT,
@@ -20,6 +21,7 @@ import {
   standingPlanPrompt,
   standingScratchPrompt,
   SUBAGENT_TOOL_NAME,
+  FACTS_FILE,
   SubagentFailure,
   withScratchInventory,
 } from "../../src/host/pi-subagent/bind.ts";
@@ -587,8 +589,9 @@ describe("subagent bind", () => {
     assert.doesNotMatch(CHAT_WORKER_HINT, /Opus/);
     assert.match(CHAT_WORKER_HINT, /\/plan toggles/);
     assert.match(CHAT_WORKER_HINT, /pass offset to continue/);
-    assert.match(CHAT_WORKER_HINT, /reserves at least one slice/);
-    assert.match(CHAT_WORKER_HINT, /admission\.json|not_feasible/);
+    assert.match(CHAT_WORKER_HINT, /For date, files/);
+    assert.match(CHAT_WORKER_HINT, /wall-clock cap/);
+    assert.match(CHAT_WORKER_HINT, /scratch\/facts\.json/);
     assert.doesNotMatch(CHAT_WORKER_HINT, /do not rebuild/i);
     assert.doesNotMatch(CHAT_WORKER_HINT, /you still have no shell/i);
   });
@@ -611,6 +614,13 @@ describe("subagent bind", () => {
       content: "nope",
     });
     assert.equal(escaped.isError, true);
+
+    const inferred = await runTool(pi, "scratch_write", {
+      content: "group,address\nOldie,0x1\n",
+    });
+    assert.equal(inferred.isError, false);
+    const csv = path.join(root, "goals", "goal_scratch", "scratch", "artifact.csv");
+    assert.match(await readFile(csv, "utf8"), /0x1/);
   });
 
   it("lists and reads scratch, and refuses a path that escapes it", async () => {
@@ -781,6 +791,20 @@ describe("subagent bind", () => {
     const root = await tempRoot();
     await ensureScratch("goal_empty_scratch", root);
     assert.equal(await standingScratchPrompt("goal_empty_scratch", root), "");
+  });
+
+  it("mirrors remembered notes to scratch/facts.json and hides the coach blob", async () => {
+    const root = await tempRoot();
+    const store = await GoalStore.open(root, "goal_facts", "harvest");
+    await store.mergeGoalFacts({
+      "addr1-0x7fAd": { value: "Oldie empty", evidence: "ev1", at: "2026-09-16T18:00:00.000Z" },
+      strategyArtifact: { summary: "not harvest rows" },
+    });
+    const snippet = await standingScratchPrompt("goal_facts", root);
+    assert.match(snippet, new RegExp(FACTS_FILE));
+    const body = await readFile(path.join(root, "goals", "goal_facts", "scratch", FACTS_FILE), "utf8");
+    assert.match(body, /Oldie empty/);
+    assert.doesNotMatch(body, /not harvest rows/);
   });
 
   it("prepends a name/size list to the child task without continue/rebuild advice", () => {

@@ -26,6 +26,7 @@ describe("task card", () => {
     assert.match(card, /no shell here/);
     assert.match(card, /no repository/);
     assert.match(card, /agent=coder/);
+    assert.match(card, /For date, files/);
     assert.doesNotMatch(card, /working directory/i);
   });
 

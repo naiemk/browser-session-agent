@@ -28,6 +28,46 @@ import {
 
 const TAB_PREFIX = "bsa:";
 
+/** The bits of a Playwright page needed to run script after a navigation has settled. */
+export type EvaluablePage = Pick<Page, "evaluate" | "isClosed" | "waitForLoadState">;
+
+export function isDestroyedExecutionContext(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /Execution context was destroyed|most likely because of a navigation|Target closed|Target page, context or browser has been closed|Session closed|frame was detached|Cannot find context with specified id/i.test(
+    msg,
+  );
+}
+
+/**
+ * Run `page.evaluate` across the brief window where a new tab has no document yet.
+ *
+ * `context.on("page")` fires while Chromium is still swapping about:blank for the
+ * real URL (`window.open`, target=_blank, a redirect). Evaluating in that gap throws
+ * "Execution context was destroyed", and a fire-and-forget listener used to take the
+ * whole process down with it.
+ */
+export async function evaluateOnLivePage(
+  page: EvaluablePage,
+  expression: string,
+  attempts = 8,
+): Promise<unknown> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    if (page.isClosed()) {
+      throw last instanceof Error ? last : new Error("Page closed");
+    }
+    try {
+      return await page.evaluate(expression);
+    } catch (err) {
+      last = err;
+      if (!isDestroyedExecutionContext(err)) throw err;
+      await page.waitForLoadState("domcontentloaded", { timeout: 2_000 }).catch(() => undefined);
+      await delay(50);
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
+
 export interface WorkerOptions {
   home: string;
   headless?: boolean;
@@ -132,6 +172,7 @@ export class BrowserWorker {
   private launchedHere = false;
   private trackedPids: number[] = [];
   private readonly pages = new Map<string, Page>();
+  private readonly tracking = new WeakMap<Page, Promise<string>>();
   private readonly consoleErrors = new Map<string, string[]>();
   private readonly lastObservation = new Map<string, Observation>();
   private info: WorkerInfo | null = null;
@@ -682,28 +723,69 @@ export class BrowserWorker {
     const context = this.requireContext();
     this.pages.clear();
     for (const page of context.pages()) {
-      await this.track(page);
+      await this.track(page).catch(() => undefined);
     }
     if (this.pages.size === 0) {
       await this.track(await context.newPage());
     }
     context.on("page", (page) => {
-      void this.track(page);
+      // `newPage` / `window.open` also emit this. Never let a mid-navigation
+      // evaluate become an unhandled rejection — pi treats those as fatal.
+      void this.track(page).catch(() => undefined);
     });
   }
 
-  private async track(page: Page): Promise<string> {
+  private track(page: Page): Promise<string> {
+    const inflight = this.tracking.get(page);
+    if (inflight) return inflight;
+    const run = this.adoptPage(page);
+    this.tracking.set(page, run);
+    void run.catch(() => {
+      if (this.tracking.get(page) === run) this.tracking.delete(page);
+    });
+    return run;
+  }
+
+  private async adoptPage(page: Page): Promise<string> {
+    for (const [id, tracked] of this.pages) {
+      if (tracked === page) return id;
+    }
+    if (page.isClosed()) {
+      throw new AgentError("worker_error", "Page closed before it could be tracked");
+    }
+
     const prefix = JSON.stringify(TAB_PREFIX);
-    const existing = (await page.evaluate(
-      `window.name.startsWith(${prefix}) ? window.name.slice(${TAB_PREFIX.length}) : ""`,
-    )) as string;
+    let existing = "";
+    try {
+      existing = String(
+        (await evaluateOnLivePage(
+          page,
+          `window.name.startsWith(${prefix}) ? window.name.slice(${TAB_PREFIX.length}) : ""`,
+        )) ?? "",
+      );
+    } catch (err) {
+      if (page.isClosed()) {
+        throw new AgentError("worker_error", "Page closed before it could be tracked");
+      }
+      if (!isDestroyedExecutionContext(err)) throw err;
+    }
+
     const tabId = existing || shortId("tab");
-    const assigned = JSON.stringify(TAB_PREFIX + tabId);
-    await page.evaluate(
-      `if (!window.name.startsWith(${prefix})) window.name = ${assigned}`,
-    );
+    try {
+      const assigned = JSON.stringify(TAB_PREFIX + tabId);
+      await evaluateOnLivePage(
+        page,
+        `if (!window.name.startsWith(${prefix})) window.name = ${assigned}`,
+      );
+    } catch (err) {
+      if (page.isClosed()) {
+        throw new AgentError("worker_error", "Page closed before it could be tracked");
+      }
+      if (!isDestroyedExecutionContext(err)) throw err;
+    }
+
     this.pages.set(tabId, page);
-    this.consoleErrors.set(tabId, []);
+    this.consoleErrors.set(tabId, this.consoleErrors.get(tabId) ?? []);
     page.on("console", (msg) => {
       if (msg.type() === "error") {
         const list = this.consoleErrors.get(tabId) ?? [];

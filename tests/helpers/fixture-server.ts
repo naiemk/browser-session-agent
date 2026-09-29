@@ -60,6 +60,9 @@ const ROUTES: Record<string, string> = {
   "/grid": "grid.html",
   "/profile-stats": "profile-stats.html",
   "/overlay-card": "overlay-card.html",
+  "/chooser": "chooser.html",
+  "/day-grid": "day-grid.html",
+  "/icon-click": "icon-click.html",
 };
 
 /**

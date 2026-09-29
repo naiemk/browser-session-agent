@@ -129,7 +129,10 @@ export function chooseControls(controls: readonly Control[], limit: number): Con
 
   const rank = (control: Control): number => {
     if (isEditorLike(control) || control.required) return 0;
-    return control.chrome ? 2 : 1;
+    // A layer that just appeared beats content that was already on the page, and
+    // both beat chrome. Dialogs still own the pool above this ranking.
+    if (control.fresh) return 1;
+    return control.chrome ? 3 : 2;
   };
 
   const kept = new Set(

@@ -68,7 +68,7 @@ function coachInstructions(occasion: CoachOccasion): string {
     "\nDo not rewrite qualification criteria, grants, send, or follow policy. Do not skip approval. " +
     "Coach is a guideline generator, not a second planner. The loop is a trial, not a lock: " +
     "doNot may name wasted routes already in this digest; do not forbid untested pools. " +
-    "If yield counts are zero, say so and demand recording — do not lock a pool. " +
+    "Yield counts are goal lifetime; sinceCheckpoint is this slice only. If lifetime accepted is zero, say so and demand recording — do not lock a pool. " +
     "This turn uses a stronger thinking class; it is restored after the artifact.\n" +
     "Efficiency is waste-reduction (peek instead of losing the list), not inventing a new campaign. " +
     "Put unknown in remember reasons when a required field is missing so later gates can see it.\n\n" +
@@ -457,7 +457,7 @@ export function bindCoach(pi: ExtensionAPI, options: CoachBindOptions): CoachHan
       const at = Date.parse(latest!.at);
       return !Number.isFinite(ts) || !Number.isFinite(at) || ts >= at;
     });
-    const offTrack = offTrackFromDigest(compiled.digest, countFactEstablished(since));
+    const offTrack = offTrackFromDigest(compiled.digest, countFactEstablished(events));
     const decision = steerGateDecision({
       siteActionsWithoutCandidateYield: siteActionsWithoutCandidateYield(since),
       navigationCycles: compiled.digest.navigationCycles.length,

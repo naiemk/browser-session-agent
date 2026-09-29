@@ -43,6 +43,15 @@ export interface Control {
    * card, so containment in the dialog node is the signal, not occlusion alone.
    */
   dialog?: boolean;
+  /**
+   * This ref was not on the previous snapshot.
+   *
+   * A layer that just opened (a suggestion row, a day cell) has to outrank the nav
+   * that was already there, or the cap spends its slots on furniture and the new
+   * thing never reaches the model. Absent on the first look: everything is new then,
+   * and "new" would stop meaning anything.
+   */
+  fresh?: boolean;
 }
 
 /** One compact, ephemeral view of a page. Never persisted into model context long-term. */

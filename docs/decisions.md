@@ -650,6 +650,14 @@ Proof that a supervising LLM will use the CLI is an opt-in OpenRouter proxy suit
 (PARENT-13..16), not default CI (D37). A real Grok Bot install is later research,
 not that gate.
 
+## D60. Clickable means a person could click it; a unique chooser is harness work
+
+A control is not only the tags HTML calls interactive. A visible node is a control when it is one of those, or when it has `cursor: pointer`, a non-negative `tabindex`, or its own click handler. Descendants count. The ancestor is the click; the child is not a second one. A wrapper does not replace a real control inside it. No class name, z-index, or site shape is a signal (that already missed a descendant row).
+
+The parent only clicks refs (D5) and does not steer from pictures (D16). A chooser that appears because of a type often unmounts before the next model turn, and a cheap model will not win that race. When the type produced exactly one new control whose name contains the typed text, `act` clicks it before it returns (D17). Zero or several matches are left as refs. Guessing the first match is a wrong commit.
+
+This is the collector the parent sees (`src/core/perceive.ts`), not the legacy worker script.
+
 ## D30. Rehearsal is deferred, not rejected
 
 Status: deferred. Walking a risky flow to the last pre-commit step, cancelling, and verifying no trace is the closest browser analogue to learning where the point of no return is. It needs a cancel affordance, trace verification, and first-use approval, and it only pays when an archetype recurs. The cheap substitute is D23: do not commit until the given criteria pass, and ask the first time. Revisit if the suite shows tasks failing specifically for want of foreknowledge at the commit step.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   defaultParentSessionDir,
+  persistSessionFile,
   printParentHandle,
   resumeParentSession,
   startParentSession,
@@ -114,6 +115,58 @@ describe("PARENT-01-T01 parent session CLI", () => {
       () => resumeParentSession({ session: "does-not-exist", sessionDir: path.join(home, "pi-sessions") }),
       (err: unknown) => err instanceof ParentSessionError && /unknown session/.test(err.message),
     );
+  });
+
+  it("resumes a TUI session from Pi's default dir when Magpie home is empty", async () => {
+    const home = await tempRoot();
+    const cwd = path.join(home, "proj");
+    const agentDir = path.join(home, "agent");
+    await mkdir(cwd, { recursive: true });
+    const previous = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    try {
+      const created = SessionManager.create(cwd);
+      created.appendCustomEntry(MAGPIE_GOAL_ENTRY, { goalId: "goal_tui1" });
+      await persistSessionFile(created);
+      const resumed = await resumeParentSession({
+        session: created.getSessionId(),
+        root: home,
+        cwd,
+      });
+      assert.equal(resumed.goal_id, "goal_tui1");
+      assert.equal(resumed.session_id, created.getSessionId());
+      assert.equal(resumed.session_dir, path.dirname(created.getSessionFile()!));
+    } finally {
+      if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previous;
+    }
+  });
+
+  it("does not fall back to the TUI dir when --session-dir is explicit", async () => {
+    const home = await tempRoot();
+    const cwd = path.join(home, "proj");
+    const agentDir = path.join(home, "agent");
+    await mkdir(cwd, { recursive: true });
+    const previous = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    try {
+      const created = SessionManager.create(cwd);
+      created.appendCustomEntry(MAGPIE_GOAL_ENTRY, { goalId: "goal_tui1" });
+      await persistSessionFile(created);
+      await assert.rejects(
+        () =>
+          resumeParentSession({
+            session: created.getSessionId(),
+            sessionDir: path.join(home, "pi-sessions"),
+            root: home,
+            cwd,
+          }),
+        (err: unknown) => err instanceof ParentSessionError && /unknown session/.test(err.message),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previous;
+    }
   });
 
   it("printParentHandle is one JSON object parsers can take as the last line", () => {

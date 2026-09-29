@@ -7,6 +7,7 @@
  */
 
 import { visibleText } from "./perceive.ts";
+import { uniqueChooserHit } from "./chooser.ts";
 import { describeCheck, describePredicate, evaluatePredicate, optionalPredicate, verify } from "./predicates.ts";
 import { describeVerification, settleVerification, DEFAULT_SETTLE_MS } from "./settle.ts";
 import type { BrowserPort } from "./browser.ts";
@@ -87,6 +88,12 @@ export async function act(
     }
     case "type": {
       await browser.fill(request.tabId, request.ref!, request.text ?? "", timeout);
+      const typed = request.text ?? "";
+      const opened = await browser.observe(request.tabId);
+      const hit = uniqueChooserHit(typed, before.controls, opened.controls);
+      if (hit && hit.ref !== request.ref) {
+        await browser.click(request.tabId, hit.ref, timeout);
+      }
       break;
     }
     case "select": {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { act } from "../../src/core/act.ts";
 import { peek } from "../../src/core/peek.ts";
 import { WorkerBrowserPort } from "../../src/host/worker-browser-port.ts";
@@ -98,6 +99,34 @@ describe("the worker behind the agent's port", () => {
     assert.match(result.observation.title, /Dana/);
     assert.equal(result.origin.unchanged, true);
     assert.match((await port.observe(tab)).url, /\/roster$/);
+  });
+
+  it("tracks a popup that navigates immediately without crashing the worker", async () => {
+    // `window.open(url)` creates a page at about:blank then navigates. The worker used
+    // to evaluate window.name in that gap, throw, and take pi down with an uncaught
+    // exception because the page listener was fire-and-forget.
+    const tab = await worker.openTab(`${origin}/apply`);
+    const page = worker.trackedPages().find(([id]) => id === tab)?.[1];
+    assert.ok(page, "the opened tab must be tracked");
+    const before = worker.listTabs().length;
+    const rejections: unknown[] = [];
+    const onReject = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onReject);
+    try {
+      const popup = page.waitForEvent("popup");
+      await page.evaluate((url) => window.open(url), `${origin}/jobs`);
+      await popup;
+      for (let i = 0; i < 40 && worker.listTabs().length <= before; i++) {
+        await delay(50);
+      }
+      assert.equal(rejections.length, 0, String(rejections[0]));
+      assert.ok(worker.listTabs().length > before, "the popup must be tracked");
+      assert.ok(worker.workerInfo, "the worker must still be alive");
+    } finally {
+      process.off("unhandledRejection", onReject);
+    }
   });
 
   it("leaves the browser running when the agent is done with it", async () => {

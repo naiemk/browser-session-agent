@@ -15,6 +15,7 @@ import { TOOL_REMEMBER } from "../../src/runtime/names.ts";
 import { PLACEHOLDER } from "../../src/runtime/prune.ts";
 import { PLAN_COMMAND, PLAN_MODE_CONTEXT, SCOUT_EXECUTE_HINT, HARVEST_EXECUTE_HINT } from "../../src/host/pi-plan-mode.ts";
 import {
+  assembleStepNumber,
   coachStepNumber,
   executorRemaining,
   extractTodoItems,
@@ -166,6 +167,18 @@ describe("AGENT-16-T03 interactive /coach", () => {
     assert.equal(result.details?.error, "coach_not_a_worker");
   });
 
+  it("rejects subagent({ agent: planner }) so coder stays the worker", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    const result = await runTool(pi, SUBAGENT_TOOL_NAME, { agent: "planner", task: "Your job as coach" });
+    const text = result.content.map((part) => ("text" in part ? part.text : "")).join("");
+    assert.match(text, /\/plan/);
+    assert.match(text, /agent=coder/);
+    assert.equal(result.details?.error, "planner_not_a_worker");
+  });
+
   it("hosted /coach disables act on the real session tools", async () => {
     await tempCore();
     const notes: string[] = [];
@@ -278,6 +291,10 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     const harvest = executorRemaining(items, true);
     assert.ok(harvest.some((item) => /^Harvest/i.test(item.text)));
     assert.equal(harvest.some((item) => /^Coach:/i.test(item.text)), false);
+    assert.equal(harvest.some((item) => /^Deliver/i.test(item.text)), false);
+    assert.ok(harvest.some((item) => /Dedupe/i.test(item.text)));
+    assert.equal(assembleStepNumber(items), 7);
+    assert.equal(executorRemaining(items, true, true).length, 0);
   });
 
   it("Execute remaining-steps omit Coach: Submit and Harvest until an artifact exists", async () => {
@@ -348,6 +365,28 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     assert.match(pi.notifications.join("\n"), /mutations off/i);
   });
 
+  it("does not mark a step [DONE] while the same turn still has a mutation tool call", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    browserSessionAgent(pi);
+    await pi.startSession();
+    await executeNumberedPlan(pi, CALIBRATION_PLAN);
+    await pi.emit("turn_end", {
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Writing the list now [DONE:7]" },
+          { type: "toolCall", name: "save_artifact", arguments: { content: "a,b\n1,2" } },
+        ],
+      },
+    });
+    const plan = [...pi.entries].reverse().find((entry) => entry.customType === "plan-mode") as
+      | { data?: { todos?: Array<{ step: number; completed: boolean }> } }
+      | undefined;
+    const deliver = plan?.data?.todos?.find((todo) => todo.step === 7);
+    assert.equal(deliver?.completed, false, "the write has not run yet, so Deliver is not done");
+  });
+
   it("accepted artifact marks the coach todo complete and injects Harvest, not a second review", async () => {
     await tempCore();
     const pi = createFakePi();
@@ -378,6 +417,7 @@ describe("AGENT-16-T05 Magpie Execute invokes /coach", () => {
     assert.doesNotMatch(harvestExec?.content ?? "", /^@medium\n/);
     assert.match(harvestExec?.content ?? "", new RegExp(HARVEST_EXECUTE_HINT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(harvestExec?.content ?? "", /Coach: Submit/);
+    assert.doesNotMatch(harvestExec?.content ?? "", /Deliver:/);
     assert.doesNotMatch(harvestExec?.content ?? "", /scout only/i);
     const reviewStarts = pi.userMessages.filter((text) => text.includes("[COACH REVIEW]"));
     assert.equal(reviewStarts.length, 1);
@@ -450,13 +490,14 @@ async function runCalibrationToArtifact(pi: ReturnType<typeof createFakePi>): Pr
 }
 
 describe("AGENT-16-T06 Magpie closed-loop coach", () => {
-  it("removes subagent while awaiting host coach and restores it after the artifact", async () => {
+  it("keeps subagent while awaiting host coach so scout can spawn coder", async () => {
     await tempCore();
     const pi = createFakePi();
     browserSessionAgent(pi);
     await pi.startSession();
     await executeNumberedPlan(pi, CALIBRATION_PLAN);
-    assert.equal(pi.getActiveTools().includes("subagent"), false);
+    assert.equal(pi.getActiveTools().includes("subagent"), true);
+    assert.equal(pi.getActiveTools().includes("scratch_write"), false);
     assert.equal(pi.getActiveTools().includes("act"), true);
     await pi.emit("turn_end", {
       message: { role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" },
@@ -464,11 +505,13 @@ describe("AGENT-16-T06 Magpie closed-loop coach", () => {
     await pi.emit("agent_end", {
       messages: [{ role: "assistant", content: "[DONE:1] [DONE:2] [DONE:3]" }],
     });
-    assert.equal(pi.getActiveTools().includes("subagent"), false);
+    assert.equal(pi.getActiveTools().includes("subagent"), false, "coach review still takes mutations");
     await pi.emit("turn_end", {
       message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
     });
     assert.equal(pi.getActiveTools().includes("subagent"), true);
+    assert.equal(pi.getActiveTools().includes("scratch_write"), false, "Magpie writes the harvest file");
+    assert.equal(pi.getActiveTools().includes("save_artifact"), false);
     assert.equal(pi.getActiveTools().includes("act"), true);
   });
 
@@ -839,6 +882,52 @@ describe("coach occasion frames (FakePi)", () => {
     });
     assert.equal((await held).action, "started");
     assert.equal(coach.lastDecision(), "extend");
+  });
+
+  it("does not steer off-track when lifetime facts exist and the latest slice is quiet", async () => {
+    await tempCore();
+    const pi = createFakePi();
+    const evidence = memoryEvidence();
+    const coach = bindCoach(pi, {
+      evidence,
+      objective: "Collect SaaS rows with email",
+      criteria: ["email required"],
+    });
+    await pi.startSession();
+    const ctx = pi.ctx;
+    assert.equal(await coach.startReview(ctx, "scout"), true);
+    await pi.emit("turn_end", {
+      message: { role: "assistant", content: JSON.stringify(ARTIFACT) },
+    });
+    assert.equal(coach.hasArtifact(), true);
+
+    for (let i = 0; i < 5; i++) {
+      await evidence.ledger.append(yieldInput({ kind: "candidate_accepted", summary: `row ${i}` }));
+    }
+    await evidence.ledger.append(yieldInput({ kind: "fact_established", summary: "pricing table" }));
+
+    assert.equal(await coach.startReview(ctx, "steer"), true);
+    await pi.emit("turn_end", {
+      message: {
+        role: "assistant",
+        content: JSON.stringify({
+          ...ARTIFACT,
+          occasion: "steer",
+          decision: "continue",
+          summary: "Keep the loop.",
+        }),
+      },
+    });
+
+    await evidence.ledger.append({
+      type: "action",
+      intent: "one more click",
+      action: { kind: "click" },
+      after: { url: "https://example.test/list", title: "List", changes: [] },
+      outcome: { ok: true },
+    });
+
+    assert.equal(await coach.considerSteer(ctx), "none");
   });
 
   it("startReview defaults to scout when no artifact", async () => {

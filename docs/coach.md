@@ -175,7 +175,7 @@ prompt state.
 
 - goal text and immutable qualification criteria
 - declared scout/harvest strategy (if any)
-- counts: accepted / rejected / duplicate / visited URLs
+- counts: accepted / rejected / duplicate / visited URLs (goal lifetime; a checkpoint does not reset them). When a checkpoint is present, `sinceCheckpoint` repeats those four totals for the slice only
 - rejection reason histogram (capped)
 - action sequence as `{turn, tool, intent, pageIdentity, summary, ok, elapsedMs, costUsd?}`
 - repeated observation hashes, zero-change reads, navigation cycles

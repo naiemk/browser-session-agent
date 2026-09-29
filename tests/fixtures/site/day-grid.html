@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Days</title>
+    <style>
+      .day { cursor: pointer; display: inline-block; width: 28px; height: 28px; }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="/n1">Nav 1</a><a href="/n2">Nav 2</a><a href="/n3">Nav 3</a>
+      <a href="/n4">Nav 4</a><a href="/n5">Nav 5</a><a href="/n6">Nav 6</a>
+      <a href="/n7">Nav 7</a><a href="/n8">Nav 8</a><a href="/n9">Nav 9</a>
+      <a href="/n10">Nav 10</a><a href="/n11">Nav 11</a><a href="/n12">Nav 12</a>
+      <a href="/n13">Nav 13</a><a href="/n14">Nav 14</a><a href="/n15">Nav 15</a>
+      <a href="/n16">Nav 16</a><a href="/n17">Nav 17</a><a href="/n18">Nav 18</a>
+      <a href="/n19">Nav 19</a><a href="/n20">Nav 20</a>
+    </nav>
+    <button id="when" type="button">When</button>
+    <div id="grid" hidden></div>
+    <script>
+      const grid = document.getElementById("grid");
+      document.getElementById("when").addEventListener("click", () => {
+        grid.hidden = false;
+        for (let day = 1; day <= 30; day += 1) {
+          const cell = document.createElement("div");
+          cell.className = "day";
+          cell.textContent = String(day);
+          grid.appendChild(cell);
+        }
+      });
+    </script>
+  </body>
+</html>
