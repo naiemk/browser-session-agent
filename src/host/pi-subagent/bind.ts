@@ -3,12 +3,13 @@
  * Coding builtins stay off on this session. /plan is in-session plan-mode, not a worker.
  */
 
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import {
   formatScratchInventory,
   formatScratchRead,
+  inferTextFileName,
   listScratchFiles,
   readScratchFile,
   type ScratchListing,
@@ -68,6 +69,7 @@ export const PARENT_TOOL_NAMES = [
 ] as const;
 export const PLAN_FILE = "plan.md";
 export const ADMISSION_FILE = "admission.json";
+export const FACTS_FILE = "facts.json";
 export const PLANNER_AGENT_NAME = "planner";
 /** About 500 tokens; the parent must not ingest the child transcript. */
 export const DIGEST_MAX_CHARS = 2000;
@@ -75,15 +77,16 @@ export const DIGEST_MAX_CHARS = 2000;
 export const CHAT_WORKER_HINT =
   "/plan toggles read-only plan mode in this session (same model; Ctrl+P to change). " +
   "/coach reviews a scout as a guideline (mutations off; Ctrl+P for a stronger class). " +
-  "For code, files, unzip, or public curl, call subagent with agent=coder. " +
+  "For date, files, unzip, or public curl, call subagent with agent=coder. " +
   `That child is a real Pi coding agent in this goal's scratch directory. ` +
   "Its --model is models.json coder (shipped config), not this session and not @medium. " +
-  `A spawn reserves at least one slice (${formatDurationMs(DEFAULT_TIMEOUT_MS)}; cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
-  `${MAX_EXTENSIONS} extensions) — spawn only when that reservation beats finishing in this session. ` +
+  `Default slice ${formatDurationMs(DEFAULT_TIMEOUT_MS)} (cap ${formatDurationMs(MAX_TOTAL_TIMEOUT_MS)}, ` +
+  `${MAX_EXTENSIONS} extensions) is a wall-clock cap, not a reason to skip a short spawn. ` +
   `Interactive Magpie asks before extending; unattended / -p auto-extends while the child still emits JSONL/tools. ` +
   `A silent child is killed, not extended. ` +
   "Files in scratch are the artifact — scratch_ls / scratch_read, not peek file://. " +
   "scratch_read is capped; pass offset to continue a truncated read. " +
+  "Remembered notes are mirrored to scratch/facts.json. Magpie assembles harvest CSVs from those files via coder after harvest — do not emit the file as a tool argument in this session. " +
   "Abort and provider quota kill the child; partial files may still be there. " +
   "Two failed coder slices without a checkpoint, or a work stream that does not " +
   "advance the declared deliverable, stop. Interactive Magpie asks what next; " +
@@ -113,8 +116,45 @@ export async function standingPlanPrompt(goalId: string, root?: string): Promise
   ].join("\n\n");
 }
 
+const HOST_FACT_SKIP = new Set(["siteSkill", "site_skill", "strategyArtifact", "strategy_artifact"]);
+
+/** Remembered notes the coder can read. Coach/site blobs stay out — they are not harvest rows. */
+export function rememberedFactsForScratch(facts: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(facts).filter(([key]) => !HOST_FACT_SKIP.has(key)));
+}
+
+/**
+ * Mirror goal.json remember notes into scratch/facts.json.
+ *
+ * The parent emitting a harvest CSV as a tool argument after a long session is how
+ * OpenRouter idle-timeouts the write. The notes are already on disk; this puts them
+ * where coder can read them without the parent generating the file.
+ */
+export async function syncRememberedFactsToScratch(
+  goalId: string,
+  root?: string,
+): Promise<string | undefined> {
+  const paths = goalPaths(coreRoot(root), goalId);
+  const raw = await readFile(paths.goalFile, "utf8").catch(() => "");
+  if (!raw.trim()) return undefined;
+  let facts: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(raw) as { facts?: Record<string, unknown> };
+    facts = parsed.facts ?? {};
+  } catch {
+    return undefined;
+  }
+  const remembered = rememberedFactsForScratch(facts);
+  if (Object.keys(remembered).length === 0) return undefined;
+  await mkdir(paths.scratchDir, { recursive: true });
+  const file = path.join(paths.scratchDir, FACTS_FILE);
+  await writeFile(file, `${JSON.stringify(remembered, null, 2)}\n`, "utf8");
+  return file;
+}
+
 /** Newest-first names and sizes. No continue/rebuild advice — the agents choose. */
 export async function standingScratchPrompt(goalId: string, root?: string): Promise<string> {
+  await syncRememberedFactsToScratch(goalId, root);
   const scratchDir = goalPaths(coreRoot(root), goalId).scratchDir;
   const listings = await listScratchFiles(scratchDir);
   if (listings.length === 0) return "";
@@ -380,6 +420,24 @@ async function askRecovery(
   return applyOperatorChoice(state, choice, reason);
 }
 
+/** Magpie commands that are not packaged workers. Hiding `subagent` to stop these also hid coder. */
+function commandNotWorker(agent: string): { error: string; text: string } | undefined {
+  switch (agent.toLowerCase()) {
+    case "coach":
+      return {
+        error: "coach_not_a_worker",
+        text: "Coach is the /coach command (review phase), not a subagent. The executor must not spawn a coach.",
+      };
+    case "planner":
+      return {
+        error: "planner_not_a_worker",
+        text: "Planning is the /plan command, not a subagent. For date, files, unzip, or public curl, use agent=coder.",
+      };
+    default:
+      return undefined;
+  }
+}
+
 export function subagentTool(options: SubagentHostOptions): RegisteredTool {
   const runtime = options.runtime ?? defaultRuntime(options);
   const available = agentList();
@@ -390,10 +448,10 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
     label: "Subagent",
     description: [
       "Delegate one task to a packaged coding worker with isolated context.",
-      "Prefer agent=coder for files, unzip, public curl, extracts, or conversion.",
+      "Prefer agent=coder for date, files, unzip, public curl, extracts, or conversion.",
       `Agents: ${available}. Single mode only (agent + task).`,
       "The worker's cwd is this goal's scratch directory. It does not share the browser profile.",
-      `A spawn reserves at least one slice (${slice}; cap ${cap}, ${MAX_EXTENSIONS} extensions) — use only when that beats finishing here.`,
+      `Default slice ${slice} (cap ${cap}, ${MAX_EXTENSIONS} extensions) is a wall-clock cap; a short spawn is valid.`,
       `Interactive Magpie asks before extending; unattended / -p auto-extends while JSONL/tools keep moving; a silent child is killed.`,
       `timeoutMs is a request, not a grant: above the default needs operator confirm when a TUI is present, never unbounded.`,
       "The digest is short; files in scratch are the artifact. Use scratch_ls / scratch_read. Public curl only.",
@@ -429,16 +487,9 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
       if (!agent || !task) {
         return finish(options, SUBAGENT_TOOL_NAME, textResult("Need agent and task.", { error: "bad_args" }, true));
       }
-      if (agent.toLowerCase() === "coach") {
-        return finish(
-          options,
-          SUBAGENT_TOOL_NAME,
-          textResult(
-            "Coach is the /coach command (review phase), not a subagent. The executor must not spawn a coach.",
-            { error: "coach_not_a_worker", agent },
-            true,
-          ),
-        );
+      const blocked = commandNotWorker(agent);
+      if (blocked) {
+        return finish(options, SUBAGENT_TOOL_NAME, textResult(blocked.text, { error: blocked.error, agent }, true));
       }
 
       const progress = options.progress ?? (options.progress = emptyProgressState());
@@ -491,6 +542,7 @@ export function subagentTool(options: SubagentHostOptions): RegisteredTool {
         ? await confirmLongerRun(ctx, requested, defaultMs)
         : defaultMs;
       const scratchDir = await ensureScratch(resolveGoalId(options.goalId), options.root);
+      await syncRememberedFactsToScratch(resolveGoalId(options.goalId), options.root);
       const listings = await listScratchFiles(scratchDir);
       const started = Date.now();
       applyLiveUi(ctx, {
@@ -632,20 +684,26 @@ export function scratchWriteTool(options: SubagentHostOptions): RegisteredTool {
     name: SCRATCH_WRITE_TOOL_NAME,
     label: "Write scratch",
     description:
-      "Write a text file into this goal's scratch directory, where the coder subagent can read it. " +
-      "Use this instead of save_artifact when the next step is code. Paths stay inside scratch.",
+      "Write a small text file into this goal's scratch directory, where the coder subagent can read it. " +
+      "Use this instead of save_artifact when the next step is code. Paths stay inside scratch. " +
+      "Harvest CSVs are assembled by Magpie from facts.json; this tool is not for that write.",
     parameters: Type.Object({
-      name: Type.String({ description: "Relative path under scratch, e.g. notes.md or extracts/job-1.md" }),
+      name: Type.Optional(
+        Type.String({
+          description:
+            "Relative path under scratch, e.g. notes.md or extracts/job-1.md. If omitted, Magpie infers artifact.csv / .md / .json / .txt from the content.",
+        }),
+      ),
       content: Type.String({ description: "File contents" }),
     }),
     async execute(_id, params) {
-      const name = typeof params.name === "string" ? params.name : "";
       const content = typeof params.content === "string" ? params.content : "";
+      const name = inferTextFileName(typeof params.name === "string" ? params.name : undefined, content);
       if (!name.trim()) {
         return finish(
           options,
           SCRATCH_WRITE_TOOL_NAME,
-          textResult("scratch_write needs a file name.", { error: "bad_args" }, true),
+          textResult("scratch_write needs content (and a file name if the content is empty).", { error: "bad_args" }, true),
         );
       }
       const scratchDir = await ensureScratch(resolveGoalId(options.goalId), options.root);
@@ -678,6 +736,7 @@ export function scratchLsTool(options: SubagentHostOptions): RegisteredTool {
     parameters: Type.Object({}),
     async execute() {
       const scratchDir = await ensureScratch(resolveGoalId(options.goalId), options.root);
+      await syncRememberedFactsToScratch(resolveGoalId(options.goalId), options.root);
       const listings = await listScratchFiles(scratchDir);
       return finish(
         options,

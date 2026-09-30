@@ -5,6 +5,24 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+/**
+ * Pick a file name when the model omits one.
+ *
+ * GLM (and others) often send `save_artifact` / `scratch_write` with only `content`.
+ * A required `name` in the schema then makes Pi drop the call with no toolResult, so
+ * the agent retries forever and the operator sees nothing saved.
+ */
+export function inferTextFileName(name: string | undefined, content: string): string {
+  const trimmed = (name ?? "").trim();
+  if (trimmed) return trimmed;
+  if (!content.trim()) return "";
+  const first = content.trimStart().split(/\r?\n/, 1)[0] ?? "";
+  if (first.startsWith("{") || first.startsWith("[")) return "artifact.json";
+  if (first.startsWith("#") || first.startsWith("---")) return "artifact.md";
+  if (first.includes(",") && !first.includes("<")) return "artifact.csv";
+  return "artifact.txt";
+}
+
 export function confinedPath(root: string, relative: string): string | undefined {
   const trimmed = relative.trim();
   if (!trimmed || path.isAbsolute(trimmed)) return undefined;

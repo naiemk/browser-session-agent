@@ -150,4 +150,16 @@ describe("choosing which controls get the slots", () => {
     assert.ok(kept.some((entry) => entry.name === "Close"));
     assert.ok(kept.some((entry) => entry.name === "person1"));
   });
+
+  it("spends the slots on a layer that just appeared, ahead of the nav", () => {
+    const nav = Array.from({ length: 20 }, (_, index) =>
+      control({ ref: `n${index}`, role: "link", name: `Nav ${index}`, chrome: true }),
+    );
+    const days = Array.from({ length: 30 }, (_, index) =>
+      control({ ref: `d${index}`, role: "clickable", name: String(index + 1), fresh: true }),
+    );
+    const kept = chooseControls([...nav, ...days], 40);
+    assert.ok(kept.some((entry) => entry.name === "10"));
+    assert.ok(kept.filter((entry) => entry.chrome).length < nav.length);
+  });
 });

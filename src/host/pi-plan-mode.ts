@@ -25,17 +25,22 @@ import {
 } from "../runtime/names.ts";
 import type { CustomSessionMessage, ExtensionAPI, ExtensionContext } from "../pi-api.ts";
 import {
+  assistantHasToolCalls,
   assistantText,
   coachStepNumber,
   executorRemaining,
   extractTodoItems,
+  isAssembleRoleText,
   isAssistantMessage,
+  markAssembleComplete,
   markCoachRoleComplete,
   markCompletedSteps,
   markPreCoachComplete,
+  preAssembleComplete,
   preCoachComplete,
   type TodoItem,
 } from "./pi-plan-todos.ts";
+import type { PlanExecuteAssemble } from "./pi-assemble.ts";
 import { capabilityCoordinator } from "./pi-capabilities.ts";
 import { clipWidgetLines } from "./pi-tool-view.ts";
 import { reconstructProgress } from "./pi-subagent/progress.ts";
@@ -89,6 +94,8 @@ Classify the objective before you write the plan:
 - known_flow: a short reversible flow you can already script. No coach step.
 - criteria_unsettled: success, sources, or outreach still undefined. Ask the operator. Do not plan a harvest.
 
+A harvest CSV or deliverable file is Magpie's to assemble from remember notes after harvest. Number that step (Output CSV / Deliver). Do not ask the operate agent to paste the file.
+
 Create a detailed numbered plan under a "Plan:" header:
 
 Plan:
@@ -113,6 +120,7 @@ export interface PlanExecuteCoach {
 
 export interface PlanModeBindOptions {
   coach?: PlanExecuteCoach;
+  assemble?: PlanExecuteAssemble;
   models?: MagpieModelHost;
 }
 
@@ -134,14 +142,36 @@ export const HARVEST_EXECUTE_HINT =
   "When a required field is missing, put unknown in the remember reason. " +
   "Clicks that return ok are not progress. If the named route is falsified, stop — do not " +
   "invent a second plan. Magpie will run /coach again. Do not treat Do-not as covering " +
-  "lists the scout never tried.";
+  "lists the scout never tried. " +
+  "Do not paste the harvest CSV into scratch_write or save_artifact. Magpie assembles " +
+  "that file from remembered notes after these steps.";
 
-/** While scout is waiting for host /coach, planner/coder cannot stand in as a critic. */
-export const AWAITING_COACH_DISABLED_TOOLS = new Set<string>(["subagent", "scratch_write"]);
+export const REPORT_EXECUTE_HINT =
+  "Magpie already wrote the harvest file into scratch. scratch_read it and report what " +
+  "is there. Do not regenerate it in this session.";
+
+/**
+ * While scout is waiting for host /coach, the parent must not write harvest files.
+ * Hiding `subagent` here is why a scout that planned "coder writes the manifest"
+ * (and later `date`) concluded it had no coding child and never looked again.
+ * Planner-as-coach is refused on the tool, not by taking coder away.
+ */
+export const AWAITING_COACH_DISABLED_TOOLS = new Set<string>(["scratch_write"]);
+
+/** Parent must not dump the harvest file; Magpie's coder writes it from facts.json. */
+export const HOST_ASSEMBLE_DISABLED_TOOLS = new Set<string>(["scratch_write", TOOL_SAVE]);
+
+/** While coder is assembling, the parent sits still. */
+export const ASSEMBLING_DISABLED_TOOLS = new Set<string>([
+  "scratch_write",
+  TOOL_SAVE,
+  "subagent",
+  TOOL_ACT,
+]);
 
 export function formatExecuteMessage(
   remaining: readonly TodoItem[],
-  phase: "scout" | "harvest" | "all",
+  phase: "scout" | "harvest" | "report" | "all",
 ): string {
   const list = remaining.map((todo) => `${todo.step}. ${todo.text}`).join("\n");
   const first = remaining[0]?.text ?? "";
@@ -164,6 +194,16 @@ ${list}
 Start with: ${first}
 After completing a step, include a [DONE:n] tag in your response.
 ${HARVEST_EXECUTE_HINT}`;
+  }
+  if (phase === "report") {
+    return `Execute the plan.
+
+Remaining steps:
+${list}
+
+Start with: ${first}
+After completing a step, include a [DONE:n] tag in your response.
+${REPORT_EXECUTE_HINT}`;
   }
   return `Execute the plan.
 
@@ -201,6 +241,8 @@ export function bindPlanMode(pi: ExtensionAPI, options: PlanModeBindOptions = {}
   let executionMode = false;
   let todoItems: TodoItem[] = [];
   let autoCoachStarted = false;
+  let autoAssembleStarted = false;
+  let deliverableReady = false;
   /** True after a successful models.enter("plan"); Execute and /plan off must leave once. */
   let planHeld = false;
   /** ISO time Execute began; plan-mode ledger yields before this must not trip coach. */
@@ -210,8 +252,14 @@ export function bindPlanMode(pi: ExtensionAPI, options: PlanModeBindOptions = {}
     return Boolean(options.coach?.hasArtifact());
   }
 
+  function assembleSpec(): { step: number; text: string } | undefined {
+    const item = todoItems.find((todo) => isAssembleRoleText(todo.text));
+    if (!item) return undefined;
+    return { step: item.step, text: item.text };
+  }
+
   function remainingForExecutor(): TodoItem[] {
-    return executorRemaining(todoItems, hasArtifact());
+    return executorRemaining(todoItems, hasArtifact(), deliverableReady);
   }
 
   function awaitingHostCoach(): boolean {
@@ -242,7 +290,7 @@ ${todoList}
 
 Execute each step in order.
 After completing a step, include a [DONE:n] tag in your response.
-${HARVEST_EXECUTE_HINT}`;
+${deliverableReady ? REPORT_EXECUTE_HINT : HARVEST_EXECUTE_HINT}`;
       }
       return `[EXECUTING PLAN - Full tool access enabled]
 
@@ -274,11 +322,52 @@ After completing a step, include a [DONE:n] tag in your response.`;
     if (!started) autoCoachStarted = false;
   }
 
+  async function maybeStartAssemble(ctx: ExtensionContext): Promise<void> {
+    const assemble = options.assemble;
+    const spec = assembleSpec();
+    if (!executionMode || !assemble || !spec) return;
+    if (autoAssembleStarted || assemble.enabled()) return;
+    if (awaitingHostCoach()) return;
+    if (!preAssembleComplete(todoItems)) return;
+    if (await assemble.hasDeliverable(spec)) {
+      deliverableReady = true;
+      markAssembleComplete(todoItems);
+      constrainHostAssemble();
+      updateStatus(ctx);
+      persistState();
+      return;
+    }
+    autoAssembleStarted = true;
+    capabilities.constrain("assembling", { disable: ASSEMBLING_DISABLED_TOOLS });
+    updateStatus(ctx);
+    persistState();
+    const started = await assemble.startAssemble(ctx, spec);
+    if (!started) {
+      autoAssembleStarted = false;
+      capabilities.release("assembling");
+      constrainHostAssemble();
+    }
+  }
+
   function constrainAwaitingCoach(): void {
     if (awaitingHostCoach()) {
       capabilities.constrain("awaiting-coach", { disable: AWAITING_COACH_DISABLED_TOOLS });
     } else {
       capabilities.release("awaiting-coach");
+    }
+  }
+
+  function constrainHostAssemble(): void {
+    const spec = assembleSpec();
+    if (
+      executionMode &&
+      spec &&
+      !deliverableReady &&
+      !awaitingHostCoach()
+    ) {
+      capabilities.constrain("host-assemble", { disable: HOST_ASSEMBLE_DISABLED_TOOLS });
+    } else {
+      capabilities.release("host-assemble");
     }
   }
 
@@ -334,6 +423,8 @@ After completing a step, include a [DONE:n] tag in your response.`;
     executionMode = false;
     todoItems = [];
     autoCoachStarted = false;
+    autoAssembleStarted = false;
+    deliverableReady = false;
     executeStartedAt = undefined;
     options.coach?.setScoutEpoch?.(undefined);
     enablePlanModeTools();
@@ -362,9 +453,13 @@ After completing a step, include a [DONE:n] tag in your response.`;
     executionMode = false;
     todoItems = [];
     autoCoachStarted = false;
+    autoAssembleStarted = false;
+    deliverableReady = false;
     executeStartedAt = undefined;
     options.coach?.setScoutEpoch?.(undefined);
     restoreNormalModeTools();
+    capabilities.release("host-assemble");
+    capabilities.release("assembling");
     if (planHeld) {
       await options.models?.leave(ctx);
       planHeld = false;
@@ -439,6 +534,9 @@ After completing a step, include a [DONE:n] tag in your response.`;
     if (!executionMode || todoItems.length === 0) return;
     const message = (event as { message?: unknown })?.message;
     if (!isAssistantMessage(message)) return;
+    // [DONE:n] in the same bubble as save_artifact used to complete the step
+    // before the write ran — and if the call was invalid, it never ran at all.
+    if (assistantHasToolCalls(message)) return;
     if (markCompletedSteps(assistantText(message), todoItems) > 0) {
       updateStatus(ctx as ExtensionContext);
     }
@@ -449,6 +547,8 @@ After completing a step, include a [DONE:n] tag in your response.`;
     const ctx = ctxUnknown as ExtensionContext;
     if (executionMode && todoItems.length > 0) {
       await maybeStartCoach(ctx);
+      await maybeStartAssemble(ctx);
+      constrainHostAssemble();
       if (todoItems.every((todo) => todo.completed)) {
         const completedList = todoItems.map((todo) => `~~${todo.text}~~`).join("\n");
         pi.sendMessage?.(
@@ -462,6 +562,10 @@ After completing a step, include a [DONE:n] tag in your response.`;
         executionMode = false;
         todoItems = [];
         autoCoachStarted = false;
+        autoAssembleStarted = false;
+        deliverableReady = false;
+        capabilities.release("host-assemble");
+        capabilities.release("assembling");
         updateStatus(ctx);
         persistState();
       }
@@ -504,6 +608,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
       planModeEnabled = false;
       executionMode = true;
       autoCoachStarted = false;
+      autoAssembleStarted = false;
       executeStartedAt = new Date().toISOString();
       options.coach?.setScoutEpoch?.(executeStartedAt);
       restoreNormalModeTools();
@@ -512,6 +617,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
         planHeld = false;
       }
       constrainAwaitingCoach();
+      constrainHostAssemble();
       const goal = firstOperatorGoal(ctx.sessionManager?.getEntries?.() ?? []);
       if (goal) options.coach?.setPlanSlice?.({ objective: goal });
       updateStatus(ctx);
@@ -587,6 +693,11 @@ After completing a step, include a [DONE:n] tag in your response.`;
       markPreCoachComplete(todoItems);
       markCoachRoleComplete(todoItems);
     }
+    const spec = assembleSpec();
+    if (spec && options.assemble) {
+      deliverableReady = await options.assemble.hasDeliverable(spec);
+      if (deliverableReady) markAssembleComplete(todoItems);
+    }
 
     planHeld = false;
     if (planModeEnabled) {
@@ -596,10 +707,16 @@ After completing a step, include a [DONE:n] tag in your response.`;
         if (modelError) ctx.ui.notify(modelError, "error");
         else planHeld = true;
       }
-    } else if (executionMode) constrainAwaitingCoach();
+    } else if (executionMode) {
+      constrainAwaitingCoach();
+      constrainHostAssemble();
+    }
     updateStatus(ctx);
     // Resume only: do not coach on cold start without a scout turn after executeStartedAt.
-    if (executionMode) void maybeStartCoach(ctx);
+    if (executionMode) {
+      void maybeStartCoach(ctx);
+      void maybeStartAssemble(ctx);
+    }
   });
 
   options.coach?.onArtifact((ctx) => {
@@ -607,6 +724,30 @@ After completing a step, include a [DONE:n] tag in your response.`;
     capabilities.release("awaiting-coach");
     markPreCoachComplete(todoItems);
     markCoachRoleComplete(todoItems);
+    constrainHostAssemble();
+    updateStatus(ctx);
+    persistState();
+    const remaining = remainingForExecutor();
+    if (remaining.length === 0) {
+      void maybeStartAssemble(ctx);
+      return;
+    }
+    pi.sendMessage?.(
+      {
+        customType: "plan-mode-execute",
+        content: formatExecuteMessage(remaining, "harvest"),
+        display: true,
+      },
+      { triggerTurn: true, deliverAs: "followUp" },
+    );
+  });
+
+  options.assemble?.onDeliverable((ctx, _file) => {
+    if (!executionMode) return;
+    deliverableReady = true;
+    markAssembleComplete(todoItems);
+    capabilities.release("assembling");
+    capabilities.release("host-assemble");
     updateStatus(ctx);
     persistState();
     const remaining = remainingForExecutor();
@@ -614,7 +755,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     pi.sendMessage?.(
       {
         customType: "plan-mode-execute",
-        content: formatExecuteMessage(remaining, "harvest"),
+        content: formatExecuteMessage(remaining, "report"),
         display: true,
       },
       { triggerTurn: true, deliverAs: "followUp" },

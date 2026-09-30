@@ -141,11 +141,29 @@ export async function startParentSession(options: {
   };
 }
 
+/**
+ * Directories to search for `--session`, in order.
+ *
+ * Interactive `magpie` / `npm run cli` writes Pi's cwd-hashed default
+ * (`~/.pi/agent/sessions/<encoded-cwd>/`). `--json` writes Magpie home
+ * (`~/.browser-agent-core/pi-sessions`). Looking only in Magpie home is why
+ * resuming a TUI harvest printed `unknown session`.
+ *
+ * An explicit `--session-dir` stays exclusive — no fallback.
+ */
+export function parentSessionSearchDirs(options: {
+  sessionDir?: string;
+  root?: string;
+}): Array<string | undefined> {
+  if (options.sessionDir !== undefined) return [options.sessionDir];
+  return [defaultParentSessionDir(options.root), undefined];
+}
+
 export async function resolveSessionPath(
-  sessionDir: string,
+  sessionDir: string | undefined,
   sessionArg: string,
   cwd = process.cwd(),
-): Promise<{ path: string; id: string }> {
+): Promise<{ path: string; id: string; sessionDir: string }> {
   if (sessionArg.includes("/") || sessionArg.includes("\\") || sessionArg.endsWith(".jsonl")) {
     const resolved = path.resolve(cwd, sessionArg);
     try {
@@ -154,17 +172,22 @@ export async function resolveSessionPath(
       throw new ParentSessionError(`unknown session: ${sessionArg}`);
     }
     const manager = SessionManager.open(resolved, sessionDir, cwd);
-    return { path: resolved, id: manager.getSessionId() };
+    return { path: resolved, id: manager.getSessionId(), sessionDir: sessionDir ?? path.dirname(resolved) };
   }
 
-  const listed = await SessionManager.list(cwd, sessionDir);
+  let listed: Awaited<ReturnType<typeof SessionManager.list>> = [];
+  try {
+    listed = await SessionManager.list(cwd, sessionDir);
+  } catch {
+    listed = [];
+  }
   const match =
     listed.find((row) => row.id === sessionArg) ??
     listed.find((row) => row.id.startsWith(sessionArg));
   if (!match) {
     throw new ParentSessionError(`unknown session: ${sessionArg}`);
   }
-  return { path: match.path, id: match.id };
+  return { path: match.path, id: match.id, sessionDir: sessionDir ?? path.dirname(match.path) };
 }
 
 export async function resumeParentSession(options: {
@@ -175,22 +198,34 @@ export async function resumeParentSession(options: {
   state?: ParentSessionState;
   nextCheckHint?: string;
 }): Promise<ParentSessionHandle> {
-  const sessionDir = options.sessionDir ?? defaultParentSessionDir(options.root);
   const cwd = options.cwd ?? process.cwd();
-  const resolved = await resolveSessionPath(sessionDir, options.session, cwd);
-  const manager = SessionManager.open(resolved.path, sessionDir, cwd);
-  const goalId = restoreGoalId(manager.getEntries());
-  if (!goalId) {
-    throw new ParentSessionError(`session ${resolved.id} has no magpie-goal entry`);
+  const dirs = parentSessionSearchDirs({ sessionDir: options.sessionDir, root: options.root });
+  let lastError: ParentSessionError | undefined;
+  for (const dir of dirs) {
+    try {
+      const resolved = await resolveSessionPath(dir, options.session, cwd);
+      const manager = SessionManager.open(resolved.path, resolved.sessionDir, cwd);
+      const goalId = restoreGoalId(manager.getEntries());
+      if (!goalId) {
+        throw new ParentSessionError(`session ${resolved.id} has no magpie-goal entry`);
+      }
+      return {
+        session_id: manager.getSessionId(),
+        goal_id: goalId,
+        state: options.state ?? "ready",
+        next_check_hint: options.nextCheckHint ?? "magpie --session <id> -p \"status\"",
+        session_dir: resolved.sessionDir,
+        session_file: resolved.path,
+      };
+    } catch (err) {
+      if (err instanceof ParentSessionError && /unknown session/.test(err.message)) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
   }
-  return {
-    session_id: manager.getSessionId(),
-    goal_id: goalId,
-    state: options.state ?? "ready",
-    next_check_hint: options.nextCheckHint ?? "magpie --session <id> -p \"status\"",
-    session_dir: sessionDir,
-    session_file: resolved.path,
-  };
+  throw lastError ?? new ParentSessionError(`unknown session: ${options.session}`);
 }
 
 export function printParentHandle(handle: ParentSessionHandle): string {

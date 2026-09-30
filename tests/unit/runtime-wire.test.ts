@@ -32,8 +32,9 @@ function observation(overrides: Partial<Observation> = {}): Observation {
 describe("what the model sees", () => {
   it("drops empty fields rather than sending nulls", () => {
     const wire = toWireObservation(observation());
-    assert.deepEqual(Object.keys(wire).sort(), ["controls", "title", "url"]);
+    assert.deepEqual(Object.keys(wire).sort(), ["capturedAt", "controls", "title", "url"]);
     assert.deepEqual(Object.keys(wire.controls[0]!).sort(), ["name", "ref", "role"]);
+    assert.match(wire.capturedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
   });
 
   it("includes flags only when they are true", () => {

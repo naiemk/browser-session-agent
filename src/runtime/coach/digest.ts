@@ -56,17 +56,22 @@ export interface NavigationCycle {
   lostPlace: boolean;
 }
 
+/** Goal-lifetime yield totals. The action window does not reset these. */
+export interface YieldTotals {
+  accepted: number;
+  rejected: number;
+  duplicate: number;
+  visitedUrls: number;
+}
+
 export interface CoachDigest {
   goal: string;
   criteria: string[];
   occasion?: Exclude<CoachDigestView, "full">;
   declaredStrategy?: string;
-  counts: {
-    accepted: number;
-    rejected: number;
-    duplicate: number;
-    visitedUrls: number;
-  };
+  counts: YieldTotals;
+  /** Slice since the coaching checkpoint. Absent when there is no checkpoint. */
+  sinceCheckpoint?: YieldTotals;
   rejectionReasons: Array<{ reason: string; count: number }>;
   unknownShare?: number;
   holeQuotes?: Array<{ reason: string; quote: string }>;
@@ -280,6 +285,17 @@ function lastPage(
   return undefined;
 }
 
+function countBundle(events: readonly LedgerEvent[]): YieldTotals {
+  const yields = yieldCounts(events);
+  return {
+    accepted: yields.accepted,
+    rejected: yields.rejected,
+    duplicate: yields.duplicate,
+    visitedUrls: visitedUrls(events),
+  };
+}
+
+/** Drop oldest trajectory lines first. Never drop criteria, counts, or sinceCheckpoint. */
 function capDigest(digest: CoachDigest, maxBytes = COACH_DIGEST_MAX_BYTES): CompiledDigest {
   let truncated = false;
   const jsonOf = (value: CoachDigest) => JSON.stringify(value);
@@ -354,6 +370,7 @@ export function compileDigest(
   const events = eventsSince(input.events, input.checkpoint);
   const metrics = input.metrics ?? [];
   const yields = yieldCounts(events);
+  const hasCheckpoint = Boolean(input.checkpoint?.eventId || input.checkpoint?.at);
   const actionEvents = events.filter(
     (event) => event.type === "action" || event.type === "probe" || event.type === "yield" || event.type === "failure",
   );
@@ -375,12 +392,8 @@ export function compileDigest(
   const digest: CoachDigest = {
     goal: clip(input.goalText, 1500),
     criteria: input.criteria.map((item) => clip(item, 400)),
-    counts: {
-      accepted: yields.accepted,
-      rejected: yields.rejected,
-      duplicate: yields.duplicate,
-      visitedUrls: visitedUrls(events),
-    },
+    counts: countBundle(input.events),
+    ...(hasCheckpoint ? { sinceCheckpoint: countBundle(events) } : {}),
     rejectionReasons: yields.rejectionReasons,
     actions,
     repeatedObservationHashes: obs.repeatedObservationHashes,

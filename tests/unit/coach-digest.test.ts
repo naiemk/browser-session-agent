@@ -117,6 +117,33 @@ describe("AGENT-16-T01 trajectory digest", () => {
     assert.doesNotMatch(compiled.json, /controls:/);
   });
 
+  it("keeps lifetime accepts across a checkpoint and windows the action list", () => {
+    const events: LedgerEvent[] = [
+      ev(1, {
+        ts: "2026-09-16T22:00:00.000Z",
+        ...yieldInput({ kind: "candidate_accepted", summary: "banked row" }),
+      }),
+      ev(2, {
+        ts: "2026-09-16T23:00:00.000Z",
+        type: "action",
+        intent: "wander after coach",
+        action: { kind: "click" },
+        after: { url: LIST, title: "Tagged", changes: [] },
+        outcome: { ok: true },
+      }),
+    ];
+    const compiled = compileDigest({
+      events,
+      goalText: "Find party-goers",
+      criteria: ["nightlife"],
+      checkpoint: { at: "2026-09-16T22:30:00.000Z" },
+    });
+    assert.equal(compiled.digest.counts.accepted, 1);
+    assert.equal(compiled.digest.sinceCheckpoint?.accepted, 0);
+    assert.equal(compiled.digest.actions.length, 1);
+    assert.match(compiled.digest.actions[0]?.intent ?? "", /wander after coach/);
+  });
+
   it("truncates oldest action lines first and keeps criteria plus yield totals", () => {
     const events: LedgerEvent[] = [
       ev(0, yieldInput({ kind: "candidate_accepted", summary: "keep-me" })),

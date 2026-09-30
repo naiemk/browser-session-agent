@@ -10,6 +10,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import { inferTextFileName } from "../core/scratch.ts";
 import type { BrowserPort } from "../core/browser.ts";
 import { guardedAct, type ApprovalMode, type ApprovalRequest } from "../core/gate.ts";
 import { peek, readOpenedTab } from "../core/peek.ts";
@@ -554,14 +555,21 @@ export function buildTools(context: ToolContext): AgentTool[] {
       description: "Write a text document to this goal's artifacts.",
       promptSnippet: "Persist a document here, not on a paste site.",
       parameters: Type.Object({
-        name: Type.String({ description: "File name, e.g. outreach-tracker.md" }),
+        name: Type.Optional(
+          Type.String({
+            description:
+              "File name, e.g. portfolio.csv. If omitted, Magpie infers artifact.csv / .md / .json / .txt from the content.",
+          }),
+        ),
         content: Type.String({ description: "The full document" }),
       }),
       execute: async (_id: string, params: unknown) => {
         const raw = params as { name?: unknown; content?: unknown };
-        const name = safeArtifactName(String(raw.name ?? ""));
         const content = String(raw.content ?? "");
-        if (!name) return reply({ error: "save_artifact needs a file name" });
+        const name = safeArtifactName(
+          inferTextFileName(typeof raw.name === "string" ? raw.name : undefined, content),
+        );
+        if (!name) return reply({ error: "save_artifact needs content (and a file name if the content is empty)" });
         const dir = context.evidence.ledger.artifactsDir;
         if (!dir) return reply({ error: "this session has nowhere to write artifacts" });
         const file = path.join(dir, name);
@@ -574,7 +582,13 @@ export function buildTools(context: ToolContext): AgentTool[] {
           outcome: { ok: true, detail: file },
           artifacts: [file],
         });
-        return reply({ saved: name, path: file, bytes: Buffer.byteLength(content, "utf8"), evidence: event?.id ?? null });
+        return reply({
+          saved: name,
+          path: file,
+          bytes: Buffer.byteLength(content, "utf8"),
+          evidence: event?.id ?? null,
+          ...(typeof raw.name === "string" && raw.name.trim() ? {} : { inferredName: true }),
+        });
       },
     },
     {

@@ -3,27 +3,14 @@
 Living checklist. Tick boxes here as work lands. Do not rewrite a ticked step; add a
 dated note under it if the outcome was partial.
 
-**As of 2026-09-12.** Current position: **R1.5 FakePi landed; R1.E2 live next.**
-Track B / R6 parent-agent sessions are planned (D59); they do not replace E2.
-Interactive Magpie chat works. `/plan` Execute leases `/coach` after scout, harvest
-is a trial loop with yield-breaker rescue, review uses a stronger thinking class.
-Do not treat `goal_mtumeewm001` / `mtvqt1a6001` as E2. PR #55 is on `main`.
-AGENT-16-T01..T03, T05, and T06 FakePi are in tree.
+**As of 2026-09-30.** Priority stack: **P0 long-running jobs → P1 important
+perf/reliability → P2 next idea (unnamed).** Evidence runs (R1.E2, E-QUAL) and
+chrome (R6 polish, R7) stay valuable; they do **not** own the queue.
 
-**Next two pieces of work, in parallel — not a single queue:**
-
-1. **R1.E2** — live party.txt `/plan` then Execute **after T06**. Prove less wandering
-   without typing `/coach`.
-2. **E-QUAL** — one more comparable collection run on a **different domain**, then the
-   decision review.
-
-**Parallel build (does not replace those two):** **Track B / R6** parent-agent Pi
-sessions. Cheap gate is `npm run test:parent-supervisor` with an OpenRouter key, not
-a Grok Bot harvest. **Track C / R7** hosted canvas (AG-UI sitemap + import) is chrome,
-not harvest quality.
-
-Do not spend the next cycle on QUAL/PERF *behavioral* tickets, default-on challenge or
-approval flags, AGENT-13-T04, or AGENT-16-T04 (that is R3).
+Interactive Magpie chat works. `/plan` Execute leases `/coach` after scout; host
+assemble writes the harvest file from remember notes. Clickable perception + unique
+chooser (D60) are in tree. R2 engine + Magpie/hosted bind + L5/L6/E4 landed; **R2.E3
+open**. R6.E2 green. R7.1 sitemap on `main` (PR #77).
 
 Authority for tickets stays in the specs and work items. This file is the **order and
 the gates**, not a second spec.
@@ -31,13 +18,13 @@ the gates**, not a second spec.
 | Release | What the operator can do | Status |
 | --- | --- | --- |
 | R0 | Drive a browser from chat; hosted Pre-V1/V1 surface | Shipped |
-| R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **T06 FakePi landed; R1.E2 live next** |
-| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **R2.E1 L5 + R2.2/E2 L6 + R2.E4; R2.E3 open** |
-| R3 | Job itself schedules scout → coach → harvest | After R1 and R2 |
+| R1 | Cheap harvest after a coached loop (`/plan` + `/coach`) | **Build FakePi done; R1.E2 evidence open (not queue head)** |
+| R2 | Durable job ticks on the Magpie browser (V2 is the product path) | **P0 — R2.E3 / R2.3 / cutover next** |
+| R3 | Job itself schedules scout → coach → harvest | **P0 after R2.E3 path; build may start** |
 | R4 | Collection quality tickets that survive the live-run review | After evidence gate E-QUAL |
-| R5 | Recurring multi-case campaigns over calendar time | After R2 proven live |
-| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **R6.1–R6.4 + E1/E2 landed; R6.E3 / exit auth open** |
-| R7 | Hosted canvas: AG-UI protocol, human slider, scratch tray (not chat-first) | **R7.1 sitemap done; R7.2 import open** |
+| R5 | Recurring multi-case campaigns over calendar time | **P0 after R2 exit** |
+| R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **E2 landed; R6.E3 / exit auth deferred** |
+| R7 | Hosted canvas: AG-UI protocol, human slider, scratch tray (not chat-first) | **R7.1 done; R7.2 deferred behind P0/P1** |
 
 Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 [`docs/parent-agent.md`](parent-agent.md),
@@ -60,49 +47,52 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 3. A **release** ticks only when its exit criteria are all ticked. Soft cutover is
    not a release.
 4. Do not start the next release's *product claim* until that release's evaluation
-   gate is ticked. Parallel *build* on a later release is allowed only where the
-   table says so (R1 and E-QUAL; R1 T04 compiler vs R2 host; Track B / R6 parent
-   sessions vs R1.E2).
+   gate is ticked. Parallel *build* is allowed for P0/P1; do not let R1.E2, E-QUAL,
+   R6.E3, or R7 steal the queue from long-running jobs and named perf wins.
 
 ---
 
 ## Do this / do not do this
 
-**Do next**
+**Do next (priority order)**
 
-- Run **R1.E2**: same `docs/example-prompts/party.txt`, `/plan` then Execute
-  (T06 closed-loop host `/coach`). Compare wandering vs `goal_mtrvevpq001`. Do not
-  treat `goal_mtumeewm001` (fake planner) or `goal_mtvqt1a6001` (coach fired, harvest
-  ignored) as E2. Append an evidence-log row. Do not call coach a success until this
-  lands.
-- Run **E-QUAL**: a collection task on SaaS / conference CFPs / apartments. Not
-  Berlin checkout, not Magpie coder harvest, not another Instagram tagged-feed
-  recipe. Prompt class: `docs/example-prompts/sas.txt` /
-  `conference.txt` / `find-apartment.txt`.
-- Start **R2.2** whenever Magpie/web can own `registerDurablePiCommands` bind.
-- Optional live checks of already-landed instrumentation: a switched-model chat for
-  PERF-01 turn rows; headed `BSA_CHALLENGE_BEHAVIOR=1` on a challenge fixture.
-- Optional parallel: PARENT-00-T01 Pi `-p`/`--session` canary, then R6.1/R6.2. Do
-  not treat this as the next harvest live run.
+**P0 — Long-running jobs**
+
+- **R2.E3** — two controlled L7 smokes on the Magpie profile (live-run review each).
+- **R2.3** — AGENT-13/14/15 on a real durable host + CAMPAIGN-04-T04 residual.
+- **R2.4** / MIGRATE — delete prototype `src/jobs` authority only after R2.E*.
+- **R3** build (compiler / materialize / review-phase coach) once R2.E3 is in flight
+  or done; product claim still needs R1.E2 + R2.1.
+- **R5** only after R2 exit.
+
+**P1 — Important performance / reliability**
+
+- Landed: D60 clickable controls + unique chooser; host assemble from `facts.json`.
+- Next build (does **not** wait on E-QUAL prompt review): **PERF-02** bounds,
+  **PERF-06** context rollover, **PERF-07** phase-scoped tool schemas.
+- Still collect: PERF-01 switched-model live rows; PERF-10 duplicate-probe sample.
+
+**P2 — Next idea**
+
+- Placeholder only. Name it after P0/P1 land. Do not start a new product surface
+  while R2.E3 / R2.3 are open.
+
+**Valuable, not the queue head**
+
+- **R1.E2** live coached `party.txt` (do not treat `goal_mtumeewm001` /
+  `goal_mtvqt1a6001` as E2).
+- **E-QUAL** second-domain collection + decision review.
+- Optional headed `BSA_CHALLENGE_BEHAVIOR=1` fixture checks.
 
 **Do not do yet**
 
-- QUAL-01..06 or PERF-02..09 *behavioral* changes (prompt, tools, model routing,
-  perception).
-- COST-01.
-- Default-on `BSA_CHALLENGE_BEHAVIOR` or `BSA_GATE_EFFECT_AWARE`.
-- AGENT-13-T04 (challenge mitigation / profile-pacing experiment).
-- AGENT-16-T04 product claim (R3). Compiler tests may start now that T01/T02 exist.
-- Treating `goal_mtu4ujai001` as E-QUAL closed.
-- Treating R1 as shipped before R1.E2.
-- Treating R2 as shipped before R2.E1 / R2.E3.
-- Treating a Grok Bot install as the first parent-agent test. Run PARENT-01-T03
-  (OpenRouter supervisor proxy) first.
-- Building MCP, `@macpie/grok`, or a Magpie daemon before PARENT-01-T01..T03.
-- Claiming Cursor Grok Bot access means Magpie can call Grok without a key
-  (RESEARCH-04/05).
-- Restyling hosted chat (`app.js`) instead of following
-  [`docs/web-ux-sitemap.yaml`](web-ux-sitemap.yaml). Import AG-UI (R7.2) before pixels.
+- QUAL-01..06 or PERF perception/prompt tickets (PERF-04/05/09) before E-QUAL
+  decision review. PERF-08 waits on PERF-01 live evidence.
+- COST-01; default-on challenge/approval flags; AGENT-13-T04.
+- Claiming R1 shipped before R1.E2; R2 shipped before R2.E3.
+- R6.E3 / Magpie→Grok subscription auth as the next build.
+- Building MCP, `@macpie/grok`, or a Magpie daemon ahead of jobs cutover.
+- **R7.2** AG-UI import or restyling `app.js` while P0/P1 own the cycle.
 
 ---
 
@@ -503,9 +493,17 @@ sessions (Track B), already listed above.
 
 ---
 
+## P2 — Next idea (unnamed)
+
+Slot only. Fill the name and tickets after **P0** (R2.E3 / R2.3 at minimum) and
+named **P1** perf wins land. Do not invent a release letter here until the idea is
+chosen. Pitch materials under `pitch/` are not roadmap authority.
+
+---
+
 ## Track C / R7 — Hosted canvas (AG-UI)
 
-Chrome, not harvest quality. Does not replace R1.E2, E-QUAL, or R6.
+Chrome. Deferred behind P0/P1. Does not replace jobs cutover or named perf.
 Sitemap: [`docs/web-ux-sitemap.yaml`](web-ux-sitemap.yaml)
 Epic: [`work-items/epics/web-ux.md`](../work-items/epics/web-ux.md)
 
@@ -539,21 +537,17 @@ Do **not** claim R7 shipped at T01. Do **not** restyle `app.js` before T02.
 
 ## Suggested near-term sequence (this month)
 
-
-1. Land **R1.E2** (live coached party.txt after T05) and **E-QUAL**
-   (different-domain collection) in parallel. Leave challenge/approval flags **off**
-   on comparable live runs.
-2. Do not merge QUAL/PERF behavior until E-QUAL's decision review.
-3. Do not call coach a product success until R1.E2.
-4. **R2.1** + **R2.2** + **R2.E1** + **R2.E2** + **R2.E4** landed. Next R2 work is
-   **R2.E3** (L7 smokes) / **R2.3** (challenge attach) — not R2.4 delete until R2.E*.
-   Do not claim R2 shipped until R2.E3.
-5. **R3** product claim only after R1 exit + R2.1.
-6. **R6** parent-agent: PARENT-00-T01 canary, then T01+T02 (no provider), then
-   **R6.E2** OpenRouter supervisor proxy. Do not use a Grok Bot campaign as the
-   first test. Do not let this displace R1.E2 / E-QUAL.
-7. **R7** hosted canvas: T02 import is the next chrome ticket. Do not restyle
-   chat. Do not let this displace R1.E2 / E-QUAL.
+1. **P0:** **R2.E3** L7 smokes, then **R2.3** real-host challenge/approval attach.
+   Do not claim R2 shipped; do not **R2.4** delete until R2.E*.
+2. **P0 parallel build:** **R3** compiler/materialize when R2.E3 is underway.
+   Product claim still waits on R1.E2 + R2.1.
+3. **P1:** ship loop/cost wins — PERF-02, PERF-06, PERF-07 — plus PERF-01/10 live
+   samples. Keep QUAL and perception/prompt PERF gated on E-QUAL review.
+4. **P2:** name the next idea only after those land.
+5. Evidence when capacity allows (not queue head): **R1.E2**, **E-QUAL**. Leave
+   challenge/approval flags **off** on comparable live runs.
+6. Deferred: R6.E3 notes, **R7.2** AG-UI import. Do not restyle chat ahead of T02.
+7. **R5** only after R2 exit.
 
 ---
 
@@ -561,6 +555,9 @@ Do **not** claim R7 shipped at T01. Do **not** restyle `app.js` before T02.
 
 | Date | What |
 | --- | --- |
+| 2026-09-30 | Re-prioritized: P0 long-running jobs (R2.E3/R2.3 → R3 → R5), P1
+      perf (D60/assemble landed; PERF-02/06/07 next), P2 next-idea placeholder.
+      R1.E2 / E-QUAL / R6.E3 / R7.2 deferred from queue head. |
 | 2026-09-09 | Document created. R0 ticked from existing epics; R1–R5 open. |
 | 2026-09-09 | R1.1–R1.3 + R1.E1 ticked (AGENT-16-T01..T03). PR #55 on main.
       Next: R1.E2 live coach run and E-QUAL. |

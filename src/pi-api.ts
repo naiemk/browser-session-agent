@@ -14,9 +14,14 @@ export interface ToolResult {
  *
  * Declared here rather than imported from pi-tui so that drawing one line on screen does
  * not put a TUI library in this package's dependency graph.
+ *
+ * `invalidate` is not decorative. Pi wraps this object in MouseRegion and calls
+ * `child.invalidate()` with no optional chaining. A `{ render }` object draws and then
+ * crashes the TUI when a theme or grammar reload invalidates the tree.
  */
 export interface Component {
   render(width: number): string[];
+  invalidate(): void;
 }
 
 export interface ToolRenderResultOptions {

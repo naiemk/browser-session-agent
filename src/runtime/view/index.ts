@@ -174,6 +174,7 @@ export const leanActionView: ViewStrategy = {
       ...rest,
       url: observation?.url,
       title: observation?.title,
+      capturedAt: observation?.capturedAt,
       changes: observation?.changes,
       note: "snapshot omitted because the action succeeded; observe for fresh refs",
     };

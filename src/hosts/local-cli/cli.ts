@@ -62,7 +62,7 @@ if (parent.json) {
     if (parent.session) {
       const handle = await resumeParentSession({
         session: parent.session,
-        sessionDir,
+        sessionDir: parent.sessionDir,
       });
       process.stdout.write(`${printParentHandle(handle)}\n`);
       process.exit(0);
@@ -131,18 +131,20 @@ if (shouldMarkUnattended(extra, env, { stdinTty: Boolean(process.stdin.isTTY) })
 
 let piExtra = extra;
 if (parent.session || parent.sessionDir) {
-  const sessionDir = parent.sessionDir ?? defaultParentSessionDir();
   if (parent.session) {
     try {
-      await resumeParentSession({ session: parent.session, sessionDir });
+      const handle = await resumeParentSession({
+        session: parent.session,
+        sessionDir: parent.sessionDir,
+      });
+      piExtra = withSessionDirArgs(["--session", handle.session_id, ...piExtra], handle.session_dir);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`${message}\n`);
       process.exit(1);
     }
-    piExtra = withSessionDirArgs(["--session", parent.session, ...piExtra], sessionDir);
   } else {
-    piExtra = withSessionDirArgs(piExtra, sessionDir);
+    piExtra = withSessionDirArgs(piExtra, parent.sessionDir ?? defaultParentSessionDir());
   }
 }
 

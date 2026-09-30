@@ -225,6 +225,8 @@ describe("subagent renderer", () => {
     assert.match(lines.join("\n"), /subagent/);
     assert.match(lines.join("\n"), /coder/);
     assert.match(lines.join("\n"), /harvest newsletters/);
+    assert.equal(typeof view.invalidate, "function");
+    view.invalidate();
   });
 
   it("shows live elapsed tool status on a partial result", () => {

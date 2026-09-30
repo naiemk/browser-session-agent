@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Icon</title>
+  </head>
+  <body>
+    <button type="button">Ignore</button>
+    <div id="go" style="cursor: pointer; width: 32px; height: 32px" aria-label="Open search"></div>
+    <script>
+      document.getElementById("go").addEventListener("click", () => {
+        document.title = "Opened";
+      });
+    </script>
+  </body>
+</html>

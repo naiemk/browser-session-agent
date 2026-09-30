@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chooser</title>
+    <style>
+      .row { cursor: pointer; padding: 4px 8px; }
+    </style>
+  </head>
+  <body>
+    <label>
+      City
+      <input id="city" aria-label="City" autocomplete="off" />
+    </label>
+    <div id="list"></div>
+    <p>Committed: <span id="committed"></span></p>
+    <script>
+      const mode = new URLSearchParams(location.search).get("mode") || "unique";
+      const city = document.getElementById("city");
+      const list = document.getElementById("list");
+      const committed = document.getElementById("committed");
+      let applying = false;
+
+      function row(text) {
+        const el = document.createElement("div");
+        el.className = "row";
+        const name = document.createElement("span");
+        name.textContent = text;
+        el.appendChild(name);
+        el.addEventListener("click", () => {
+          applying = true;
+          committed.textContent = text;
+          city.value = text;
+          list.replaceChildren();
+          applying = false;
+        });
+        return el;
+      }
+
+      city.addEventListener("input", () => {
+        if (applying) return;
+        list.replaceChildren();
+        const value = city.value;
+        if (!value) return;
+        if (mode === "ambiguous") {
+          list.appendChild(row("United States"));
+          list.appendChild(row("United States of America"));
+          return;
+        }
+        const hit = row("Tbilisi TBS");
+        list.appendChild(hit);
+        setTimeout(() => {
+          if (list.contains(hit) && !committed.textContent) list.replaceChildren();
+        }, 1200);
+      });
+    </script>
+  </body>
+</html>

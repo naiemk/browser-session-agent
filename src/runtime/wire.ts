@@ -36,6 +36,14 @@ export interface WireObservation {
   consoleErrors?: string[];
   failedRequests?: string[];
   changes?: string[];
+  /**
+   * When this snapshot was taken (ISO UTC).
+   *
+   * The parent has no bash, so it cannot run `date`. The host already stamps every
+   * observation; dropping that field is why a harvest peeks calendar websites to learn
+   * a clock the snapshot already carried.
+   */
+  capturedAt?: string;
   identity?: { heading?: string; stats?: Array<{ label: string; value: string }> };
   note?: string;
 }
@@ -87,6 +95,7 @@ export function toWireObservation(observation: Observation): WireObservation {
   if (consoleErrors) wire.consoleErrors = consoleErrors;
   if (failedRequests) wire.failedRequests = failedRequests;
   if (changes) wire.changes = changes;
+  if (observation.capturedAt) wire.capturedAt = observation.capturedAt;
   if (dropped > 0) {
     wire.note = `${controls.length} of ${total} controls shown; probe with a selector to narrow down`;
   }

@@ -117,6 +117,20 @@ export function clipWidgetLines(lines: string[], width = WIDGET_LINE_MAX): strin
 }
 
 /**
+ * A width-safe component Pi's MouseRegion can wrap.
+ *
+ * `invalidate` is a no-op because Magpie lines have no cached layout. Omitting it is how
+ * `scratch_write` (and every other custom renderer) died on `this.child.invalidate is not
+ * a function` after a full TUI invalidate.
+ */
+export function tuiComponent(render: (width: number) => string[]): Component {
+  return {
+    render,
+    invalidate() {},
+  };
+}
+
+/**
  * One line, or the whole payload when the operator asks for it.
  *
  * Expanding reads the model-facing text rather than the summary, because the question
@@ -129,23 +143,21 @@ export function renderToolResult(
 ): Component {
   if (options.expanded) {
     const text = extractText(result.content) ?? "";
-    return {
-      render: (width: number) => {
-        const lines = wrapToWidth(text, width);
-        const shown =
-          lines.length > MAX_EXPANDED_LINES
-            ? [
-                ...lines.slice(0, MAX_EXPANDED_LINES),
-                `… ${lines.length - MAX_EXPANDED_LINES} more lines, in payloads.jsonl`,
-              ]
-            : lines;
-        return shown.map((line) => fitLine(line, width));
-      },
-    };
+    return tuiComponent((width: number) => {
+      const lines = wrapToWidth(text, width);
+      const shown =
+        lines.length > MAX_EXPANDED_LINES
+          ? [
+              ...lines.slice(0, MAX_EXPANDED_LINES),
+              `… ${lines.length - MAX_EXPANDED_LINES} more lines, in payloads.jsonl`,
+            ]
+          : lines;
+      return shown.map((line) => fitLine(line, width));
+    });
   }
 
   const summary = summarizeToolResult(toolName, result.details);
-  return { render: (width) => [fitLine(summary, width)] };
+  return tuiComponent((width) => [fitLine(summary, width)]);
 }
 
 /** Give a composed tool a terminal-friendly result view, changing nothing else. */

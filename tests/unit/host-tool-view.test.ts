@@ -39,6 +39,15 @@ describe("fitting a tool result to the terminal", () => {
     everyLineFits(lines, 45);
   });
 
+  it("implements invalidate so Pi MouseRegion can wrap it", () => {
+    // Pi: `this.child.invalidate()` with no optional chaining. A `{ render }` object
+    // drew, then crashed the TUI when highlight grammars loaded (`ui.invalidate()`).
+    const result = { content: [{ type: "text", text: "ok" }], details: { saved: "portfolio.csv" } };
+    const view = renderToolResult(result, { expanded: false, isPartial: false }, "scratch_write");
+    assert.equal(typeof view.invalidate, "function");
+    view.invalidate();
+  });
+
   it("wraps an expanded payload to the pane rather than assuming 20 columns of slack", () => {
     const text = "x".repeat(200);
     const result = { content: [{ type: "text", text }], details: {} };

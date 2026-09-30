@@ -6,7 +6,7 @@
  * width-safe Component so pi-tui never enters the package graph.
  */
 
-import { fitLine, wrapToWidth } from "../pi-tool-view.ts";
+import { fitLine, tuiComponent, wrapToWidth } from "../pi-tool-view.ts";
 import type { Component, ToolRenderResultOptions } from "../../pi-api.ts";
 import { formatElapsed, liveStatusLine, previewTask } from "./progress.ts";
 
@@ -72,9 +72,7 @@ export function renderSubagentCall(args: Record<string, unknown>, theme: unknown
   const task = typeof args.task === "string" ? args.task : "...";
   const title = `${paint(theme, "toolTitle", paintBold(theme, "subagent"))} ${paint(theme, "accent", agent)}`;
   const preview = paint(theme, "dim", previewTask(task, 80));
-  return {
-    render: (width) => [fitLine(title, width), fitLine(`  ${preview}`, width)],
-  };
+  return tuiComponent((width) => [fitLine(title, width), fitLine(`  ${preview}`, width)]);
 }
 
 export function renderSubagentResult(
@@ -105,7 +103,7 @@ export function renderSubagentResult(
     if (details.latestTool) extra.push(paint(theme, "muted", `→ ${details.latestTool}`));
     if (details.usage) extra.push(paint(theme, "dim", details.usage));
     if (failed && details.errorMessage) extra.push(paint(theme, "error", details.errorMessage));
-    return { render: (width) => extra.map((line) => fitLine(line, width)) };
+    return tuiComponent((width) => extra.map((line) => fitLine(line, width)));
   }
 
   if (options.isPartial && !options.expanded) {
@@ -114,11 +112,10 @@ export function renderSubagentResult(
     if (details.task) lines.push(paint(theme, "dim", previewTask(details.task, 90)));
     if (details.usage) lines.push(paint(theme, "dim", details.usage));
     for (const tool of tools) lines.push(paint(theme, "muted", `→ ${tool}`));
-    return { render: (width) => lines.map((line) => fitLine(line, width)) };
+    return tuiComponent((width) => lines.map((line) => fitLine(line, width)));
   }
 
-  return {
-    render: (width) => {
+  return tuiComponent((width) => {
       const lines: string[] = [header];
       if (details.halt) lines.push(paint(theme, "warning", "Automatic dispatch stopped"));
       if (details.task) {
@@ -145,8 +142,7 @@ export function renderSubagentResult(
         lines.push(paint(theme, "dim", `elapsed ${formatElapsed(details.elapsedMs)}`));
       }
       return lines.map((line) => fitLine(line, width));
-    },
-  };
+  });
 }
 
 function asDetails(value: unknown): SubagentViewDetails {

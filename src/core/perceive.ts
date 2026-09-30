@@ -155,9 +155,61 @@ const COLLECT = `(() => {
     return tail && tail !== "" ? tail : "";
   };
 
-  const nodes = [...document.querySelectorAll(selector)].filter(
+  const nativeNodes = [...document.querySelectorAll(selector)].filter(
     (el) => visible(el) || editorLike(el),
   );
+  const native = new Set(nativeNodes);
+
+  /*
+   * Anything a person could click, not only the tags HTML happens to call controls.
+   *
+   * A suggestion row, a day cell, an icon-only control: visible, and either the
+   * pointer cursor, a tab stop, or its own click handler. Descendants count. No
+   * class name, no z-index, no "menu" guess. A node inside one we already kept is
+   * the same click, so the ancestor stays and the child goes. A node that wraps a
+   * real control does not replace that control.
+   */
+  const skipTag = { SCRIPT: 1, STYLE: 1, HTML: 1, BODY: 1, HEAD: 1, META: 1, LINK: 1, TITLE: 1 };
+  const clickSignal = (el) => {
+    const style = window.getComputedStyle(el);
+    const tab = el.getAttribute("tabindex");
+    const tabOk = tab != null && tab !== "" && Number(tab) >= 0;
+    return style.cursor === "pointer" || tabOk || typeof el.onclick === "function";
+  };
+  const insideNative = (el) => {
+    let parent = el.parentElement;
+    while (parent) {
+      if (native.has(parent)) return true;
+      parent = parent.parentElement;
+    }
+    return false;
+  };
+  const extras = [];
+  for (const el of document.querySelectorAll("body *")) {
+    if (native.has(el) || skipTag[el.tagName] || !visible(el) || !clickSignal(el)) continue;
+    if (insideNative(el)) continue;
+    let wrapsNative = false;
+    for (const node of nativeNodes) {
+      if (el.contains(node)) {
+        wrapsNative = true;
+        break;
+      }
+    }
+    if (!wrapsNative) extras.push(el);
+  }
+  const extraSet = new Set(extras);
+  const extraKept = new Set(extras.filter((el) => {
+    let parent = el.parentElement;
+    while (parent) {
+      if (extraSet.has(parent)) return false;
+      parent = parent.parentElement;
+    }
+    return true;
+  }));
+  const nodes = [];
+  for (const el of document.querySelectorAll("body *")) {
+    if (native.has(el) || extraKept.has(el)) nodes.push(el);
+  }
 
   const controls = nodes.map((el) => {
     let ref = el.getAttribute(REF_ATTR) || "";
@@ -176,6 +228,8 @@ const COLLECT = `(() => {
     } else if (tag === "textarea") {
       role = role || "textbox";
       inputType = "textarea";
+    } else if (extraKept.has(el)) {
+      role = role || "clickable";
     } else if (!role) {
       role = el.type || tag;
     }
@@ -296,9 +350,12 @@ export async function perceive(
   // Everything downstream counts, diffs and ranks what is present, not what was found: a
   // control we are deliberately not offering should not appear in the delta, and should
   // not inflate the remainder the model is told about.
+  const seen = new Set((context.previous?.controls ?? []).map((control) => control.ref));
+  const hasPrevious = context.previous != null;
   const named = collected.controls.map((control) => ({
     ...control,
     name: displayControlName(control.name, control.href) || control.name,
+    fresh: hasPrevious && !seen.has(control.ref) ? true : undefined,
   }));
   const present = filter ? await filter(named, page) : named;
   const { controls, truncated } = compactControls(present);

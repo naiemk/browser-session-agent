@@ -70,11 +70,17 @@ export function extractDoneSteps(message: string): number[] {
 
 export function markCompletedSteps(text: string, items: TodoItem[]): number {
   const doneSteps = extractDoneSteps(text);
+  let marked = 0;
   for (const step of doneSteps) {
     const item = items.find((todo) => todo.step === step);
-    if (item) item.completed = true;
+    if (!item || item.completed) continue;
+    // Host owns coach review and file assembly. A [DONE:n] in the same
+    // puff as a failed save used to skip Magpie's coder write.
+    if (isCoachRoleText(item.text) || isAssembleRoleText(item.text)) continue;
+    item.completed = true;
+    marked += 1;
   }
-  return doneSteps.length;
+  return marked;
 }
 
 /** COACH-09: first numbered step whose wording is the coach role. */
@@ -88,24 +94,62 @@ export function coachStepNumber(items: readonly TodoItem[]): number | undefined 
   return items.find((item) => isCoachRoleText(item.text))?.step;
 }
 
+/** First numbered step whose wording is assembling a harvest file, not browsing. */
+export function isAssembleRoleText(text: string): boolean {
+  if (/\b(scout|harvest|coach|setup|manifest)\b/i.test(text)) return false;
+  if (/^\s*(and\s+)?report\b/i.test(text)) return false;
+  if (/\bscratch_read\b/i.test(text) && !/\b(output|assemble|write|build)\b/i.test(text)) {
+    return false;
+  }
+  if (/\b[\w./-]+\.(csv|tsv)\b/i.test(text)) return true;
+  if (/\boutput\s+csv\b/i.test(text)) return true;
+  if (/\bdeliver\b/i.test(text) && /\b(file|csv|scratch|artifact|list)\b/i.test(text)) return true;
+  if (/\b(assemble|build)\b/i.test(text) && /\b(csv|spreadsheet|portfolio|file)\b/i.test(text)) {
+    return true;
+  }
+  if (/\bsave\b/i.test(text) && /\bfinal\b/i.test(text) && /\b(file|list|csv|scratch)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+export function assembleStepNumber(items: readonly TodoItem[]): number | undefined {
+  return items.find((item) => isAssembleRoleText(item.text))?.step;
+}
+
+export function deliverableNameFromStep(text: string): string {
+  const named = text.match(/\b([\w./-]+\.(csv|tsv|json|md))\b/i);
+  if (named?.[1] && !/^addresses\.csv$/i.test(named[1])) return named[1];
+  if (/\bcsv\b/i.test(text) || /\bspreadsheet\b/i.test(text)) return "portfolio.csv";
+  return "candidates.csv";
+}
+
 /**
  * Work the executor is allowed to see (COACH-15).
  *
  * Before an artifact: only steps before the coach-role todo.
  * After: only steps after it. No coach-role todo means known_flow — all remaining.
+ * Assemble-role steps (Output CSV / Deliver) stay host-owned until the file exists.
  */
 export function executorRemaining(
   items: readonly TodoItem[],
   hasArtifact: boolean,
+  hasDeliverable = false,
 ): TodoItem[] {
   const coachStep = coachStepNumber(items);
-  if (coachStep === undefined) {
-    return items.filter((todo) => !todo.completed);
-  }
-  if (!hasArtifact) {
-    return items.filter((todo) => todo.step < coachStep && !todo.completed);
-  }
-  return items.filter((todo) => todo.step > coachStep && !todo.completed);
+  const assembleStep = assembleStepNumber(items);
+  return items.filter((todo) => {
+    if (todo.completed) return false;
+    if (coachStep !== undefined) {
+      if (!hasArtifact && todo.step >= coachStep) return false;
+      if (hasArtifact && todo.step <= coachStep) return false;
+    }
+    if (assembleStep !== undefined) {
+      if (!hasDeliverable && todo.step >= assembleStep) return false;
+      if (hasDeliverable && todo.step <= assembleStep) return false;
+    }
+    return true;
+  });
 }
 
 export function preCoachComplete(items: readonly TodoItem[]): boolean {
@@ -124,6 +168,22 @@ export function markCoachRoleComplete(items: TodoItem[]): boolean {
   return true;
 }
 
+export function preAssembleComplete(items: readonly TodoItem[]): boolean {
+  const assembleStep = assembleStepNumber(items);
+  if (assembleStep === undefined) return false;
+  const pre = items.filter((item) => item.step < assembleStep);
+  return pre.length > 0 && pre.every((todo) => todo.completed);
+}
+
+export function markAssembleComplete(items: TodoItem[]): boolean {
+  const assembleStep = assembleStepNumber(items);
+  if (assembleStep === undefined) return false;
+  const item = items.find((todo) => todo.step === assembleStep);
+  if (!item || item.completed) return false;
+  item.completed = true;
+  return true;
+}
+
 /** Host advanced past scout (DONE or coach started/finished) — clear the Scout → freeze. */
 export function markPreCoachComplete(items: TodoItem[]): number {
   const coachStep = coachStepNumber(items);
@@ -136,6 +196,17 @@ export function markPreCoachComplete(items: TodoItem[]): number {
     }
   }
   return marked;
+}
+
+export function assistantHasToolCalls(message: unknown): boolean {
+  if (!message || typeof message !== "object") return false;
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return false;
+  return content.some((block) => {
+    if (!block || typeof block !== "object") return false;
+    const type = (block as { type?: string }).type;
+    return type === "toolCall" || type === "toolUse" || type === "functionCall";
+  });
 }
 
 export function assistantText(message: unknown): string {
