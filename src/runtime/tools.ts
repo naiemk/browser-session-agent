@@ -20,6 +20,7 @@ import { viewWithoutSession } from "../core/perspective.ts";
 import { surveyCounts } from "../core/survey.ts";
 import { stepCheck } from "../core/task.ts";
 import { CoreError, type ActionRequest, type ParkedOutcome } from "../core/types.ts";
+import { isBrowserApp, type WindowPort } from "../core/window-port.ts";
 import {
   TOOL_ACT,
   TOOL_ASK,
@@ -33,10 +34,12 @@ import {
   TOOL_PROBE,
   TOOL_REMEMBER,
   TOOL_SAVE,
+  TOOL_SEE,
   TOOL_SIDE_CLOSE,
   TOOL_SIDE_OPEN,
   TOOL_STRANGER,
   TOOL_SURVEY,
+  TOOL_USE,
 } from "./names.ts";
 import { hashOf, observationStats } from "./metrics.ts";
 import { isYieldKind, yieldInput } from "./coach/yield.ts";
@@ -108,11 +111,19 @@ export interface ToolContext {
    */
   onChallengeTakeover?: (info: ChallengeTakeoverInfo) => Promise<void>;
   challengeGuard?: InteractiveChallengeGuard;
+  /** Desktop channel. Omitted by the suite and the hosted runtime. */
+  window?: WindowPort;
+  /** After `use` leaves Chrome, reconnect CDP so the next observe still has refs. */
+  onLeaveBrowser?: () => Promise<void>;
 }
 
 export const DEFAULT_STRANGER_VIEW_BUDGET = 3;
 
-type Result = { content: Array<{ type: "text"; text: string }>; details: unknown; terminate?: boolean };
+type ToolContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
+type Result = { content: ToolContentPart[]; details: unknown; terminate?: boolean };
 
 /**
  * Our tool shape. Params are `unknown` on purpose: the schema is enforced by the engine,
@@ -171,7 +182,9 @@ function measured(
 
       const result = await tool.execute(toolCallId, params);
       const turn = context.turn?.() ?? 0;
-      const text = result.content.map((part) => part.text).join("");
+      const text = result.content
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join("");
       const hash = hashOf(text);
 
       payloads.write({ at: new Date().toISOString(), turn, tool: tool.name, bytes: text.length, hash, text });
@@ -894,6 +907,100 @@ export function buildTools(context: ToolContext): AgentTool[] {
       },
     },
   ];
+
+  if (context.window) {
+    const desktop = context.window;
+    const see = async (): Promise<Result> => {
+      try {
+        const windows = await desktop.list();
+        const focused = windows.find((window) => window.focused) ?? windows[0];
+        const body = {
+          windows: windows.map((window) => ({
+            app: window.app,
+            title: window.title,
+            focused: window.focused,
+          })),
+          focused: focused ? { app: focused.app, title: focused.title } : undefined,
+        };
+        if (!focused) return reply({ ...body, error: "no windows" });
+        const image = await desktop.capture(focused.id);
+        return {
+          content: [
+            { type: "text", text: wireText(body) },
+            { type: "image", data: image.data, mimeType: image.mimeType },
+          ],
+          details: { ...body, windowId: focused.id },
+        };
+      } catch (err) {
+        return reply({ error: describeError(err) });
+      }
+    };
+
+    tools.push(
+      {
+        name: TOOL_SEE,
+        label: "See",
+        description:
+          "List desktop windows and attach one image of the focused window. Coordinates are not browser refs.",
+        promptSnippet: "Look at the focused desktop window when the page has no named control.",
+        parameters: Type.Object({}),
+        execute: async () => see(),
+      },
+      {
+        name: TOOL_USE,
+        label: "Use",
+        description:
+          "One desktop action on the focused window: focus, click, type, key, or scroll. Returns the next see. Not a browser ref.",
+        promptSnippet: "One desktop action, then look again.",
+        parameters: Type.Object({
+          action: Type.String({ description: "focus | click | type | key | scroll" }),
+          title: Type.Optional(Type.String({ description: "Window title or app name for focus" })),
+          x: Type.Optional(Type.Number()),
+          y: Type.Optional(Type.Number()),
+          text: Type.Optional(Type.String()),
+          key: Type.Optional(Type.String()),
+          dy: Type.Optional(Type.Number()),
+        }),
+        execute: async (_id: string, params: unknown) => {
+          const raw = params as {
+            action?: string;
+            title?: string;
+            x?: number;
+            y?: number;
+            text?: string;
+            key?: string;
+            dy?: number;
+          };
+          try {
+            const action = String(raw.action ?? "");
+            if (action === "focus") {
+              const outcome = await desktop.focus(String(raw.title ?? ""));
+              if (!outcome.ok) {
+                return reply({
+                  titles: outcome.titles,
+                  note: "Two windows share that title. Pick one.",
+                });
+              }
+              if (!isBrowserApp(outcome.window.app)) await context.onLeaveBrowser?.();
+              return see();
+            }
+            const windows = await desktop.list();
+            const focused = windows.find((window) => window.focused) ?? windows[0];
+            if (!focused) return reply({ error: "no focused window" });
+            if (action === "click") await desktop.click(focused.id, Number(raw.x ?? 0), Number(raw.y ?? 0));
+            else if (action === "type") await desktop.type(String(raw.text ?? ""));
+            else if (action === "key") await desktop.key(String(raw.key ?? ""));
+            else if (action === "scroll") await desktop.scroll(Number(raw.dy ?? 0));
+            else return reply({ error: `unknown desktop action: ${action}` });
+            if (!isBrowserApp(focused.app)) await context.onLeaveBrowser?.();
+            return see();
+          } catch (err) {
+            return reply({ error: describeError(err) });
+          }
+        },
+      },
+    );
+  }
 
   // One cast, at the boundary where the engine takes over.
   return tools.map((tool) => measured(tool, context, view, guard)) as unknown as AgentTool[];

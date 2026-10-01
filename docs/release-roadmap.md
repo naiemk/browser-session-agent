@@ -4,8 +4,9 @@ Living checklist. Tick boxes here as work lands. Do not rewrite a ticked step; a
 dated note under it if the outcome was partial.
 
 **As of 2026-09-30.** Priority stack: **P0 long-running jobs → P1 important
-perf/reliability → P2 next idea (unnamed).** Evidence runs (R1.E2, E-QUAL) and
-chrome (R6 polish, R7) stay valuable; they do **not** own the queue.
+perf/reliability → P2 computer use (R8).** Evidence runs (R1.E2, E-QUAL) and
+chrome (R6 polish, R7) stay valuable; they do **not** own the queue. R8.1
+`see` / `use` is in tree. R8.2–R8.5 do not start while P0 and P1 do.
 
 Interactive Magpie chat works. `/plan` Execute leases `/coach` after scout; host
 assemble writes the harvest file from remember notes. Clickable perception + unique
@@ -25,6 +26,7 @@ the gates**, not a second spec.
 | R5 | Recurring multi-case campaigns over calendar time | **P0 after R2 exit** |
 | R6 | Parent agents delegate via Pi session ids (Grok Bot / Hermes / OpenClaw) | **E2 landed; R6.E3 / exit auth deferred** |
 | R7 | Hosted canvas: AG-UI protocol, human slider, scratch tray (not chat-first) | **R7.1 done; R7.2 deferred behind P0/P1** |
+| R8 | Harvest switches between browser tools and computer tools | **P2 — R8.1 landed; R8.2–R8.5 behind P0/P1** |
 
 Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 [`docs/parent-agent.md`](parent-agent.md),
@@ -33,6 +35,7 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 [`docs/live-run-investigation-plan.md`](live-run-investigation-plan.md),
 [`docs/live-run-evidence-log.md`](live-run-evidence-log.md),
 [`docs/challenge-and-approval-handling.md`](challenge-and-approval-handling.md),
+[`docs/computer-use.md`](computer-use.md),
 [`docs/autonomous-agent.md`](autonomous-agent.md).
 
 ---
@@ -47,8 +50,9 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
 3. A **release** ticks only when its exit criteria are all ticked. Soft cutover is
    not a release.
 4. Do not start the next release's *product claim* until that release's evaluation
-   gate is ticked. Parallel *build* is allowed for P0/P1; do not let R1.E2, E-QUAL,
-   R6.E3, or R7 steal the queue from long-running jobs and named perf wins.
+   gate is ticked. Parallel *build* is allowed for P0/P1. R8.1 landed; R8.2+
+   does not start while those own the cycle. Do not let R1.E2, E-QUAL, R6.E3,
+   or R7 steal the queue from long-running jobs and named perf wins.
 
 ---
 
@@ -72,10 +76,13 @@ Related: [`docs/coach.md`](coach.md), [`docs/jobs-v2-spec.md`](jobs-v2-spec.md),
   **PERF-06** context rollover, **PERF-07** phase-scoped tool schemas.
 - Still collect: PERF-01 switched-model live rows; PERF-10 duplicate-probe sample.
 
-**P2 — Next idea**
+**P2 — Computer use (R8)**
 
-- Placeholder only. Name it after P0/P1 land. Do not start a new product surface
-  while R2.E3 / R2.3 are open.
+- R8.1 landed (`see` / `use`, fake window port). Spec:
+  [`docs/computer-use.md`](computer-use.md) (D61). CU-01-T02..T05 stay behind
+  R2.E3 / R2.3.
+- Harvest keeps `observe` / `act` and gains `see` / `use`. The tool result
+  names the channel. Captcha rounds continue while the widget advances.
 
 **Valuable, not the queue head**
 
@@ -493,11 +500,36 @@ sessions (Track B), already listed above.
 
 ---
 
-## P2 — Next idea (unnamed)
+## R8 — Computer use
 
-Slot only. Fill the name and tickets after **P0** (R2.E3 / R2.3 at minimum) and
-named **P1** perf wins land. Do not invent a release letter here until the idea is
-chosen. Pitch materials under `pitch/` are not roadmap authority.
+**Operator:** during harvest, browser tools and computer tools are both available.
+The latest tool result says which one can see the target. Spec:
+[`docs/computer-use.md`](computer-use.md). Epic:
+[`work-items/epics/computer-use.md`](../work-items/epics/computer-use.md).
+
+P2. R8.1 landed. Do not start R8.2+ while P0 / P1 own the cycle.
+
+### Build
+
+- [x] **R8.1** CU-01-T01 — `see` / `use` / `focus` on harvest only; CDP reattach
+      2026-09-30: started because this slice was requested. P0 and P1 still own the queue.
+- [ ] **R8.2** CU-01-T02 — one live image, hash gate, caption eviction (D52)
+- [ ] **R8.3** CU-01-T03 — tool result names `act` or `see`
+- [ ] **R8.4** CU-01-T04 — one vision-pin turn after `no visible change`; then ask
+- [ ] **R8.5** CU-01-T05 — captcha continues while the widget advances (D61)
+
+### Evaluation
+
+- [ ] Unit: fake window port, hash gate, channel line, escalation, captcha stop
+- [ ] One live harvest that `act`s in Chrome, `use`s another window, returns to
+      `observe`, and `remember`s a fact from each side
+
+### Exit
+
+- [ ] Scout and coach never see `see` / `use`
+- [ ] A repeated captcha prompt parks for takeover without a new session
+
+Out of this release: app-skill catalog, desktop accessibility tree, set-of-marks.
 
 ---
 
@@ -543,7 +575,7 @@ Do **not** claim R7 shipped at T01. Do **not** restyle `app.js` before T02.
    Product claim still waits on R1.E2 + R2.1.
 3. **P1:** ship loop/cost wins — PERF-02, PERF-06, PERF-07 — plus PERF-01/10 live
    samples. Keep QUAL and perception/prompt PERF gated on E-QUAL review.
-4. **P2:** name the next idea only after those land.
+4. **P2 / R8:** R8.1 landed. Do not start R8.2–R8.5 while P0 and P1 are open.
 5. Evidence when capacity allows (not queue head): **R1.E2**, **E-QUAL**. Leave
    challenge/approval flags **off** on comparable live runs.
 6. Deferred: R6.E3 notes, **R7.2** AG-UI import. Do not restyle chat ahead of T02.
@@ -555,6 +587,12 @@ Do **not** claim R7 shipped at T01. Do **not** restyle `app.js` before T02.
 
 | Date | What |
 | --- | --- |
+| 2026-10-01 | R8.1 `see` / `use` lands on harvest, with CDP reattach. R8.2–R8.5 stay behind P0 and P1. |
+| 2026-09-30 | R8.1 CU-01-T01 started (`see` / `use`, fake window port). The
+      rest of R8 stays behind P0 and P1. |
+| 2026-09-30 | R8 computer use named as P2 (`docs/computer-use.md`, D61,
+      CU-01-T01..T05). Still behind P0 jobs and P1 perf. Captcha progress
+      replaces the blanket solver ban. |
 | 2026-09-30 | Re-prioritized: P0 long-running jobs (R2.E3/R2.3 → R3 → R5), P1
       perf (D60/assemble landed; PERF-02/06/07 next), P2 next-idea placeholder.
       R1.E2 / E-QUAL / R6.E3 / R7.2 deferred from queue head. |

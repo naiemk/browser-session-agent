@@ -38,9 +38,9 @@ The story forbids opaque self-modification. Approved knowledge is retrieved as t
 
 The operator must see the tab. Tests launch headless against fixture HTML so CI does not need a display.
 
-## D10. No credential store, no CAPTCHA solver, no live job-board traffic in tests
+## D10. No credential store; captcha progress is D61; no live job-board traffic in tests
 
-Takeover is the MVP answer for logins. Fixture pages cover forms, dialogs, verification, and the JSONLint prompt E2E. Hitting real application sites is a manual operator path, not an automated test. Live jsonlint.com is an optional dry-run flag, not the CI gate.
+Takeover is the MVP answer for logins. A captcha is not a standing ban: D61 lets the computer-use channel continue while the widget advances and stops before a lockout. There is still no captcha-solver service, no fingerprint spoofing, and no proxy rotation. Fixture pages cover forms, dialogs, verification, and the JSONLint prompt E2E. Hitting real application sites is a manual operator path, not an automated test. Live jsonlint.com is an optional dry-run flag, not the CI gate.
 
 ## D11. Desktop is the browser node; the VPS does not run Chrome
 
@@ -657,6 +657,36 @@ A control is not only the tags HTML calls interactive. A visible node is a contr
 The parent only clicks refs (D5) and does not steer from pictures (D16). A chooser that appears because of a type often unmounts before the next model turn, and a cheap model will not win that race. When the type produced exactly one new control whose name contains the typed text, `act` clicks it before it returns (D17). Zero or several matches are left as refs. Guessing the first match is a wrong commit.
 
 This is the collector the parent sees (`src/core/perceive.ts`), not the legacy worker script.
+
+## D61. Computer use is a second tool pair in the same harvest
+
+Status: accepted. R8.1 `see` / `use` landed. Image budget, channel naming, the
+vision pin, and captcha progress are not implemented. Spec:
+[`docs/computer-use.md`](computer-use.md). Roadmap: R8, behind P0 jobs and P1 perf.
+
+Harvest keeps `observe` and `act`. It also gets `see` and `use`. Scout and coach
+do not. `see` is a text window list plus one image of the focused window. `use`
+clicks, types, presses a key, scrolls, or focuses a window from that list. The
+harness performs the action and returns the next `see` (D17). The browser worker
+reattaches afterward so `observe` can return refs again.
+
+The latest tool result names the next channel. A named control means `act`. No
+named control means `see`. Chrome in front with named controls means `act`.
+Otherwise stay on `use`. There is no mode switch.
+
+Images follow the snapshot budget (D52): frontmost window, capped long edge,
+unchanged frame is text with no image, one live image, older frames become
+captions at a sub-goal boundary. Facts still go through `remember`.
+
+On an ordinary window, one stronger vision pin gets a single `see` and `use`
+after `no visible change`. A second miss asks the person.
+
+A captcha continues across rounds while the widget advances (new prompt, accepted
+selection, or the challenge gone). Stop for takeover when the same prompt returns,
+the widget resets or repeats a failure, the page shows a rate limit or lockout,
+or the session challenge breaker is already open. Do not open a new session to
+retry a live block. The stronger pin is not another captcha pass. This amends the
+captcha sentence in D10. Credentials, OTP, and payment confirm still park.
 
 ## D30. Rehearsal is deferred, not rejected
 

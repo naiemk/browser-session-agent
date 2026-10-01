@@ -84,6 +84,14 @@ export class WorkerBrowserPort extends PlaywrightBrowserPort {
     };
   }
 
+  /** Reconnect CDP after the desktop left Chrome, then adopt the same tabs again. */
+  async reattach(): Promise<void> {
+    await this.worker.reattach();
+    this.resetTrackedPages();
+    this.adopted = false;
+    await this.ensureReady();
+  }
+
   /** The worker keeps the browser: the agent finishing a task must not close it. */
   async close(): Promise<void> {
     this.pages.clear();

@@ -16,10 +16,12 @@ import {
   TOOL_PROBE,
   TOOL_REMEMBER,
   TOOL_SAVE,
+  TOOL_SEE,
   TOOL_SIDE_CLOSE,
   TOOL_SIDE_OPEN,
   TOOL_STRANGER,
   TOOL_SURVEY,
+  TOOL_USE,
   TOOL_PARK,
   TOOL_DISCOVER,
 } from "../runtime/names.ts";
@@ -214,8 +216,12 @@ Start with: ${first}
 After completing a step, include a [DONE:n] tag in your response.`;
 }
 
+const COMPUTER_TOOL_NAMES = new Set<string>([TOOL_SEE, TOOL_USE]);
+
 export function parentSafeTools(names: readonly string[]): string[] {
-  return [...new Set(names.filter((name) => !PARENT_NEVER_TOOLS.has(name)))];
+  return [
+    ...new Set(names.filter((name) => !PARENT_NEVER_TOOLS.has(name) && !COMPUTER_TOOL_NAMES.has(name))),
+  ];
 }
 
 export function planModeTools(activeToolNames: string[]): string[] {
@@ -338,6 +344,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
       return;
     }
     autoAssembleStarted = true;
+    syncComputerTools();
     capabilities.constrain("assembling", { disable: ASSEMBLING_DISABLED_TOOLS });
     updateStatus(ctx);
     persistState();
@@ -346,7 +353,15 @@ After completing a step, include a [DONE:n] tag in your response.`;
       autoAssembleStarted = false;
       capabilities.release("assembling");
       constrainHostAssemble();
+      syncComputerTools();
     }
+  }
+
+  function syncComputerTools(): void {
+    const harvest =
+      executionMode && hasArtifact() && !awaitingHostCoach() && !autoAssembleStarted && !deliverableReady;
+    if (harvest) capabilities.constrain("computer-use", { enable: [TOOL_SEE, TOOL_USE] });
+    else capabilities.release("computer-use");
   }
 
   function constrainAwaitingCoach(): void {
@@ -355,6 +370,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     } else {
       capabilities.release("awaiting-coach");
     }
+    syncComputerTools();
   }
 
   function constrainHostAssemble(): void {
@@ -369,6 +385,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     } else {
       capabilities.release("host-assemble");
     }
+    syncComputerTools();
   }
 
   function updateStatus(ctx: ExtensionContext): void {
@@ -460,6 +477,7 @@ After completing a step, include a [DONE:n] tag in your response.`;
     restoreNormalModeTools();
     capabilities.release("host-assemble");
     capabilities.release("assembling");
+    capabilities.release("computer-use");
     if (planHeld) {
       await options.models?.leave(ctx);
       planHeld = false;

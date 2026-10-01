@@ -7,14 +7,15 @@ Related work:
 - PERF-11 through PERF-13 in `docs/live-run-investigation-plan.md`
 - `work-items/stories/agent-13-challenge-resilience.md`
 - `work-items/stories/agent-14-effect-aware-approval.md`
+- `docs/computer-use.md` (D61 captcha progress; CU-01-T05)
 - `docs/jobs-v2-spec.md` (HUMAN-*, EFFECT-*; CAMPAIGN-03-T02..T04)
 - `docs/jobs-v2-evaluation.md`
 - `docs/long-running-jobs.md` (product overview; defers to Jobs V2 spec)
 - `work-items/epics/v2-campaigns.md`
 
 Jobs V2 consumes the attempt-level challenge and approval contracts defined here; it does
-not claim CAPTCHA solving, nondelegable enforcement, or headed rehydration are
-implemented before their AGENT-13/14 and CAMPAIGN-03 evidence gates pass.
+not claim captcha progress rounds (D61), nondelegable enforcement, or headed rehydration are
+implemented before their CU-01-T05, AGENT-13/14, and CAMPAIGN-03 evidence gates pass.
 ## Evidence
 
 Run `goal_mtt17kx6001` took about 108 minutes.
@@ -45,14 +46,26 @@ These are distinct failures:
    user's explicit request.
 2. Never let a generic control name or sticky approval authorize a different workflow
    stage.
-3. Detect challenge pages from observable evidence and terminate the current operation.
+3. Detect challenge pages from observable evidence. A captcha follows D61 (continue
+   while it advances). Other challenges terminate the current operation.
 4. Offer one clear takeover or durable parked continuation.
 5. Prevent repeated blocked or no-progress actions without adding site-specific logic.
 6. Preserve the current guard, evidence, browser ownership, and final-commit protections.
 
+## Captcha progress (D61)
+
+When the detector classifies a captcha, the harvest stays on `see` / `use` for
+as long as the widget advances: a new prompt, an accepted selection, or the
+challenge gone. Then it returns to `observe` / `act`.
+
+Stop for takeover when the same prompt returns, the widget resets or repeats a
+failure, the page shows a rate limit or lockout, or the session challenge
+breaker is already open. Do not open a new session to retry a live block. Do
+not spend the stronger vision pin on a second captcha pass.
+
 ## Non-goals
 
-- Solving CAPTCHAs automatically.
+- A captcha-solver service, a fixed click budget, or a retry session against a live block.
 - Fingerprint spoofing, proxy rotation, bypass services, or stealth automation.
 - Encoding seller, social network, or Cloudflare-specific business logic.
 - Treating every 403, login page, or empty page as a CAPTCHA.
@@ -214,8 +227,9 @@ Raw accessible name is supporting evidence, not the identity. Controls such as
 `form Options[_nextpage]` can recur across stages and must not share approval merely because
 their names match.
 
-Nondelegable actions such as CAPTCHA completion, credential entry, and final financial
-commit remain outside reusable grants.
+Credential entry and final financial commit remain outside reusable grants. A captcha
+is not a reusable grant either: progress rounds are D61, one live challenge, and
+they end in takeover when the widget stops advancing.
 
 ## Telemetry
 

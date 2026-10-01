@@ -17,7 +17,9 @@ import { bindSessionGoal, isSubagentProcess } from "./host/pi-session-goal.ts";
 import { bindSubagent, CHAT_WORKER_HINT, standingPlanPrompt, standingScratchPrompt } from "./host/pi-subagent/bind.ts";
 import { standingLastCoderPrompt, reconstructProgress } from "./host/pi-subagent/progress.ts";
 import { operatorCanConfirm } from "./host/pi-subagent/unattended.ts";
+import { localWindowPort } from "./host/mac-window-port.ts";
 import { composeAgent, fixedOverhead } from "./runtime/agent.ts";
+import { TOOL_SEE, TOOL_USE } from "./runtime/names.ts";
 import { viewByName } from "./runtime/view/index.ts";
 import { BrowserSession } from "./session.ts";
 
@@ -64,6 +66,7 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
       | undefined,
   };
 
+  const browser = WorkerBrowserPort.lazy(session.worker);
   const composed = composeAgent({
     card: {
       objective:
@@ -75,7 +78,9 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
     tools: {
       // Lazy: the browser starts when the agent first needs a page, rather than only as
       // a side effect of starting a run.
-      browser: WorkerBrowserPort.lazy(session.worker),
+      browser,
+      window: localWindowPort(),
+      onLeaveBrowser: () => browser.reattach(),
       askUser: async (question) => {
         const typed =
           sessionUi.current && operatorCanConfirm(lastToolCtx)
@@ -173,7 +178,8 @@ export default function browserSessionAgent(pi: ExtensionAPI): void {
    * loading, since the runtime that would carry them out does not exist yet.
    */
   pi.on("session_start", () => {
-    pi.setActiveTools(names);
+    // see/use stay registered. Harvest turns them on; scout and coach do not.
+    pi.setActiveTools(names.filter((name) => name !== TOOL_SEE && name !== TOOL_USE));
   });
 
   // Identity first so `before_agent_start` yields the browser system prompt as result[0].

@@ -22,6 +22,12 @@ export const TOOL_SIDE_CLOSE = "side_tab_close";
 export const TOOL_FORK = "note_fork";
 export const TOOL_PARK = "park";
 export const TOOL_DISCOVER = "discover_work";
+/** Desktop window list plus one image of the focused window. Harvest only. */
+export const TOOL_SEE = "see";
+/** One desktop action: click, type, key, scroll, or focus. Returns the next see. */
+export const TOOL_USE = "use";
+
+export const COMPUTER_TOOLS = [TOOL_SEE, TOOL_USE] as const;
 
 export const ALL_TOOLS = [
   TOOL_OBSERVE,

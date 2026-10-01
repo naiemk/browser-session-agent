@@ -262,6 +262,17 @@ export class BrowserWorker {
     // Keep this.info + trackedPids so stop() can still kill Chromium.
   }
 
+  /**
+   * Drop the CDP client and attach again. Chromium keeps the profile.
+   * Used after a desktop action that left Chrome, so the next observe has live refs.
+   */
+  async reattach(): Promise<void> {
+    const info = this.info ?? (await readWorkerInfo(this.home).catch(() => null));
+    if (!info?.cdpUrl) return;
+    await this.disconnect();
+    await this.attachCdp(info);
+  }
+
   async stop(): Promise<void> {
     await Promise.race([this.stopScreencast(), delay(300)]).catch(() => undefined);
     const fromDisk = this.info ?? (await readWorkerInfo(this.home).catch(() => null));
