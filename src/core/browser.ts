@@ -213,6 +213,15 @@ export abstract class PlaywrightBrowserPort implements BrowserPort {
     await dispose?.().catch(() => undefined);
   }
 
+  /** Drop page handles after a CDP client reconnect. The worker still owns the browser. */
+  protected resetTrackedPages(): void {
+    this.pages.clear();
+    this.consoleByTab.clear();
+    this.failedByTab.clear();
+    this.observations.clear();
+    this.owned.clear();
+  }
+
   /** Start tracking a page. Public so a subclass can adopt tabs it already owns. */
   protected register(tabId: string, page: Page): void {
     this.pages.set(tabId, page);
