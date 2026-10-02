@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { TOOL_ACT, TOOL_OBSERVE } from "../../src/runtime/names.ts";
+import { COMPUTER_TOOLS, TOOL_ACT, TOOL_OBSERVE } from "../../src/runtime/names.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -244,13 +244,18 @@ describe("Pi package and extension contract", () => {
 
     await pi.startSession();
     const jobTools = ["job_read", "job_update_draft", "job_propose_plan"];
+    const idle = new Set<string>([...jobTools, ...COMPUTER_TOOLS]);
     assert.deepEqual(
       pi.active.slice().sort(),
-      [...pi.tools.keys()].filter((name) => !jobTools.includes(name)).sort(),
+      [...pi.tools.keys()].filter((name) => !idle.has(name)).sort(),
       "the browser tools, and only those: the coding tools are never active",
     );
     for (const name of jobTools) {
       assert.equal(pi.tools.has(name), true, `${name} is registered but idle until a job is planning`);
+      assert.equal(pi.active.includes(name), false);
+    }
+    for (const name of COMPUTER_TOOLS) {
+      assert.equal(pi.tools.has(name), true, `${name} is registered but idle until harvest`);
       assert.equal(pi.active.includes(name), false);
     }
   });
